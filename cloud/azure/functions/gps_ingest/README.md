@@ -6,6 +6,12 @@ iPhone GPS 수집 이벤트를 검증하고 canonical GPS 이벤트의 핵심 �
 
 현재 공용 Function App의 실제 runtime과 hosting은 Python 3.13 / Flex Consumption입니다. Python 3.13은 이 Function App의 현재 runtime이며 팀 전체 Python 표준을 의미하지 않습니다.
 
+## 배포 주의
+
+`func-canopy-dev`는 팀이 공유하는 공용 Function App이며, 이 디렉터리는 GPS ingestion 컴포넌트의 소유 위치입니다. 향후 공용 Function App에 다른 Function이 함께 존재하는 경우 이 `gps_ingest` 디렉터리만 기준으로 공용 Function App을 단독 재배포하지 않습니다.
+
+공용 Function App을 배포하기 전에는 팀 저장소의 전체 Function 구성과 배포 패키지 범위를 확인해야 합니다. 이는 현재 팀 협업 안전을 위한 주의사항이며 새로운 Azure 정책이 확정되었음을 의미하지 않습니다.
+
 ## HTTP 경로
 
 - Function: `GpsIngest`

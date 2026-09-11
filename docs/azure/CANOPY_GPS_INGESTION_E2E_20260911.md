@@ -4,6 +4,12 @@
 
 공용 Azure Function App에 배포된 `GpsIngest`의 HTTP validation과 Event Hubs 전달 경로를 synthetic GPS 이벤트로 검증한 결과를 기록한다. 실제 GPS 좌표, 사용자 식별자, 인증 정보는 이 문서에 포함하지 않는다.
 
+## 이관 주의
+
+이 문서의 Azure 배포 및 E2E 결과는 개인 검증 저장소의 `feature/gps-function-ingestion` 브랜치, deployed commit `e3e9ea5`를 기준으로 실제 수행한 결과다. 이후 동일 구현을 팀 모노레포의 `feature/gps-ingestion` 브랜치로 이관했다.
+
+팀 모노레포 이관 과정에서는 로컬 unit test와 정적 검증을 다시 수행했지만 Azure 재배포 및 E2E는 다시 수행하지 않았다. 따라서 이 문서의 기존 E2E 결과를 팀 모노레포 commit의 새로운 배포 검증 결과로 표현하지 않는다.
+
 ## 2. 검증 환경
 
 | 항목 | 확인값 | 상태 |
