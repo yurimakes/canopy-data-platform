@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from typing import Any
 
 import azure.functions as func
@@ -26,15 +25,12 @@ CORE_FIELDS = (
     "schema_version",
 )
 
-STRING_FIELDS = ("event_id", "user_id", "trip_id", "event_time", "schema_version")
-NUMBER_FIELDS = ("lat", "lon", "accuracy")
 
-
-def _is_finite_number(value: Any) -> bool:
+def _extract_core_fields(payload: Any) -> dict[str, Any]:
     return (
-        isinstance(value, (int, float))
-        and not isinstance(value, bool)
-        and math.isfinite(value)
+        {field: payload.get(field) for field in CORE_FIELDS}
+        if isinstance(payload, dict)
+        else {}
     )
 
 
@@ -44,44 +40,6 @@ def _json_response(payload: dict[str, Any], status_code: int) -> func.HttpRespon
         status_code=status_code,
         mimetype="application/json",
     )
-
-
-def _validation_error(code: str, field: str | None = None) -> func.HttpResponse:
-    payload: dict[str, Any] = {"code": code}
-    if field is not None:
-        payload["field"] = field
-    logger.warning("GPS request rejected: code=%s field=%s", code, field)
-    return _json_response(payload, 400)
-
-
-def _validate(payload: dict[str, Any]) -> tuple[str, str] | None:
-    for field in CORE_FIELDS:
-        if field not in payload:
-            return "missing_required_field", field
-
-    for field in STRING_FIELDS:
-        value = payload[field]
-        if not isinstance(value, str) or not value.strip():
-            return "invalid_type_or_empty", field
-
-    for field in NUMBER_FIELDS:
-        if not _is_finite_number(payload[field]):
-            return "invalid_number", field
-
-    if not -90 <= payload["lat"] <= 90:
-        return "out_of_range", "lat"
-    if not -180 <= payload["lon"] <= 180:
-        return "out_of_range", "lon"
-
-    speed = payload["speed"]
-    if speed is not None and not _is_finite_number(speed):
-        return "invalid_number", "speed"
-
-    sequence = payload["sequence"]
-    if not isinstance(sequence, int) or isinstance(sequence, bool):
-        return "invalid_integer", "sequence"
-
-    return None
 
 
 @app.function_name(name="GpsIngest")
@@ -95,34 +53,23 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
     try:
         payload = req.get_json()
     except ValueError:
-        return _validation_error("invalid_json")
+        logger.warning("GPS request rejected: body is not valid JSON")
+        return _json_response({"code": "invalid_json"}, 400)
 
-    if not isinstance(payload, dict):
-        return _validation_error("invalid_json_object")
+    core_fields = _extract_core_fields(payload)
 
-    validation_error = _validate(payload)
-    if validation_error is not None:
-        return _validation_error(*validation_error)
+    # Forward the original JSON text so Bronze ingestion does not drop fields,
+    # coerce values, or add application-owned timestamps.
+    event.set(req.get_body().decode("utf-8"))
 
-    canonical_payload = {field: payload[field] for field in CORE_FIELDS}
-    event.set(
-        json.dumps(
-            canonical_payload,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        )
+    present_core_field_count = (
+        sum(field in payload for field in core_fields)
+        if isinstance(payload, dict)
+        else 0
     )
-
     logger.info(
-        "GPS event accepted: event_id=%s trip_id=%s",
-        payload["event_id"],
-        payload["trip_id"],
+        "GPS event accepted: core_fields_present=%d/%d",
+        present_core_field_count,
+        len(CORE_FIELDS),
     )
-    return _json_response(
-        {
-            "status": "accepted",
-            "event_id": payload["event_id"],
-            "trip_id": payload["trip_id"],
-        },
-        202,
-    )
+    return _json_response({"status": "accepted"}, 202)
