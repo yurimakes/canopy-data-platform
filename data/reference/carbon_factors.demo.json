@@ -1,0 +1,18 @@
+{
+  "version": "demo_kr_green_event_2008_v1",
+  "status": "demo_only_not_team_approved",
+  "production_approved": false,
+  "unit": "gCO2e/passenger-km",
+  "boundary": "passenger travel; distance-based operational/allocated emissions; excludes infrastructure lifecycle",
+  "source": "Ministry of Environment Korea, Low-carbon Green Event Guideline (2008), as reproduced by Busan MICE platform; current Canopy production factors are still pending team approval",
+  "source_url": "https://www.busanmice.or.kr/portal/ghgEmsns/view.do?mid=0407000000",
+  "factors": {
+    "WALK": 0.0,
+    "BIKE": 0.0,
+    "BUS": 27.7,
+    "SUBWAY": 1.53,
+    "TRAIN": 20.0,
+    "KTX": 30.0,
+    "CAR": 210.0
+  }
+}
