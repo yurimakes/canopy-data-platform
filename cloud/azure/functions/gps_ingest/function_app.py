@@ -63,7 +63,7 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
     event.set(req.get_body().decode("utf-8"))
 
     present_core_field_count = (
-        sum(field in payload for field in core_fields)
+        sum(field in payload for field in CORE_FIELDS)
         if isinstance(payload, dict)
         else 0
     )
