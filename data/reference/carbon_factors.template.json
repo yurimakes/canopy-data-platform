@@ -1,0 +1,18 @@
+{
+  "version": "carbon_YYYY_v1",
+  "status": "pending_team_approval",
+  "production_approved": false,
+  "unit": "gCO2e/passenger-km",
+  "boundary": "define before production",
+  "source": "TBD",
+  "source_url": "TBD",
+  "factors": {
+    "WALK": 0.0,
+    "BIKE": 0.0,
+    "BUS": null,
+    "SUBWAY": null,
+    "TRAIN": null,
+    "KTX": null,
+    "CAR": null
+  }
+}
