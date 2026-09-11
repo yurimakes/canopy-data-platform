@@ -1,0 +1,85 @@
+{
+  "schema_version_note": "All cases use the current collector source version; the final canonical version is not decided.",
+  "cases": [
+    {
+      "name": "normal",
+      "events": [
+        {
+          "event_id": "evt_test_normal_0001",
+          "user_id": "user_test_01",
+          "trip_id": "trip_test_001",
+          "event_time": "2026-09-11T01:00:01.123Z",
+          "lat": 10.123456,
+          "lon": 20.654321,
+          "accuracy": 7.5,
+          "speed": 1.2,
+          "sequence": 1,
+          "schema_version": "canopy.gps.collector.v0.1"
+        }
+      ]
+    },
+    {
+      "name": "duplicate_event_id",
+      "events": [
+        {
+          "event_id": "evt_test_duplicate_0001",
+          "user_id": "user_test_02",
+          "trip_id": "trip_test_002",
+          "event_time": "2026-09-11T02:00:01.123Z",
+          "lat": -10.111111,
+          "lon": 30.222222,
+          "accuracy": 9.0,
+          "speed": 0.8,
+          "sequence": 2,
+          "schema_version": "canopy.gps.collector.v0.1"
+        },
+        {
+          "event_id": "evt_test_duplicate_0001",
+          "user_id": "user_test_02",
+          "trip_id": "trip_test_002",
+          "event_time": "2026-09-11T02:00:01.123Z",
+          "lat": -10.111111,
+          "lon": 30.222222,
+          "accuracy": 9.0,
+          "speed": 0.8,
+          "sequence": 2,
+          "schema_version": "canopy.gps.collector.v0.1"
+        }
+      ]
+    },
+    {
+      "name": "invalid_coordinate",
+      "events": [
+        {
+          "event_id": "evt_test_invalid_coord_0001",
+          "user_id": "user_test_03",
+          "trip_id": "trip_test_003",
+          "event_time": "2026-09-11T03:00:01.123Z",
+          "lat": 91.0,
+          "lon": 181.0,
+          "accuracy": 12.0,
+          "speed": 2.0,
+          "sequence": 1,
+          "schema_version": "canopy.gps.collector.v0.1"
+        }
+      ]
+    },
+    {
+      "name": "missing_speed",
+      "events": [
+        {
+          "event_id": "evt_test_missing_speed_0001",
+          "user_id": "user_test_04",
+          "trip_id": "trip_test_004",
+          "event_time": "2026-09-11T04:00:01.123Z",
+          "lat": 40.333333,
+          "lon": -70.444444,
+          "accuracy": 15.0,
+          "speed": null,
+          "sequence": 1,
+          "schema_version": "canopy.gps.collector.v0.1"
+        }
+      ]
+    }
+  ]
+}
