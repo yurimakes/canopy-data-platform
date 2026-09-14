@@ -291,6 +291,8 @@ def _gps_json_response(payload, status_code):
     methods=["POST"],
     auth_level=func.AuthLevel.FUNCTION,
 )
+# `EVENTHUB` is an identity-based connection prefix in Azure configuration.
+# It must resolve through Managed Identity/RBAC, not an Event Hubs SAS connection string.
 @app.event_hub_output(
     arg_name="event",
     event_hub_name="%EVENTHUB_NAME%",
@@ -325,9 +327,10 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
 # ---------------------------------------------------------
 # 6. Carbon calculator integration smoke test
 # ---------------------------------------------------------
-# This endpoint is for validating that Azure Functions uses the same
-# carbon_policy.yaml + carbon_calculator.py as later Trip result APIs.
-# It is not the final client-facing Trip result contract.
+# This endpoint validates the shared carbon policy/calculator only.
+# Carbon calculation currently uses predicted_mode only.
+# User confirmation/correction is intentionally not applied until team agreement.
+# The calculator itself does not require an Azure credential or connection string.
 @app.route(
     route="carbon-smoke",
     methods=["POST"],
