@@ -1,3 +1,5 @@
-# API runtime dependencies
-# 실제 API 구현에서 필요한 패키지만 추가합니다.
-# 예: fastapi, uvicorn, python-dotenv
+azure-functions>=1.21,<2
+azure-cosmos>=4.9,<5
+azure-identity>=1.19,<2
+PyJWT[crypto]>=2.10,<3
+python-dotenv>=1.0,<2

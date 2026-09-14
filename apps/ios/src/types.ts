@@ -27,6 +27,8 @@ export type CurrentGpsEvent = Omit<GpsEvent,'schema_version'|'label'|'collection
   schema_version: typeof SCHEMA;
 } & ({collection_mode:'user';label:null} | {collection_mode:'developer';label:TransportMode});
 export type Trip = Identity & {
+  collection_mode?: "user" | "developer";
+  server?: { api_url: string; request_id: string };
   trip_id: string; schema_version: typeof SCHEMA | typeof LEGACY_SCHEMA; started_at: string; ended_at: string | null;
   status: 'recording' | 'completed' | 'interrupted'; interruption_reason: string | null;
   recovered_at: string | null; foreground_only: boolean;

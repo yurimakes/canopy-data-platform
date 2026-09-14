@@ -5,6 +5,7 @@ import { openDatabaseAsync } from 'expo-sqlite';
 import type { LocationObject } from 'expo-location';
 import { Storage } from './storage';
 import { Uploader, type ApiConfig } from './upload';
+import { TripApi, type TripConfig } from './tripApi';
 
 export const LOCATION_TASK = 'canopy-gps-background-v1';
 let storage: Promise<Storage> | undefined;
@@ -21,6 +22,13 @@ export function apiConfig(): ApiConfig | null {
 }
 let uploader: Uploader | undefined;
 export async function getUploader() {return uploader ??= new Uploader(await getStorage(),apiConfig,Crypto.randomUUID);}
+let tripApi: TripApi | undefined;
+export function tripConfig():TripConfig|null {
+  const extra=Constants.expoConfig?.extra;
+  return extra?.tripApiUrl ? {url:extra.tripApiUrl,token:extra.tripAccessToken??'',
+    functionKey:extra.tripFunctionKey||extra.gpsFunctionKey,allowLocalHttp:__DEV__ && extra.tripAllowLocalHttp===true}:null;
+}
+export async function getTripApi() {return tripApi ??= new TripApi(await getStorage(),tripConfig,Crypto.randomUUID);}
 
 // Imported by index.ts before React mounts; works when iOS wakes the JS task alone.
 TaskManager.defineTask<{locations:LocationObject[]}>(LOCATION_TASK, async ({data,error}) => {
@@ -40,4 +48,5 @@ TaskManager.defineTask<{locations:LocationObject[]}>(LOCATION_TASK, async ({data
   }
   // Storage is committed before networking. iOS may suspend retries; next wake resumes.
   await (await getUploader()).tick(2);
+  await (await getTripApi()).tick();
 });

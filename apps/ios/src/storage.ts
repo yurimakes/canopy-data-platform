@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { encode, normalize } from './normalize';
 import type { LocationObject } from 'expo-location';
 import type { Diagnostic, GpsEvent, Identity, Summary, Trip, TransportMode } from './types';
-export type ActiveTrip = { trip_id: string; labels: Array<{ at: number; mode: TransportMode }>; stop_at?: number; error?: string };
+export type ActiveTrip = { trip_id: string; labels: Array<{ at: number; mode: TransportMode | null }>; stop_at?: number; error?: string };
 export type Delivery = { event_id: string; payload: string; endpoint: string; retry_count: number; lease_token: string };
 export const DDL = `
 PRAGMA journal_mode = WAL;
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS diagnostics (id INTEGER PRIMARY KEY AUTOINCREMENT, tr
 -- Disable the old automatic send queue without deleting any recorded GPS.
 DROP TRIGGER IF EXISTS gps_outbox_insert;
 CREATE TABLE IF NOT EXISTS active_trip (singleton INTEGER PRIMARY KEY CHECK(singleton=1), payload TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS trip_sync (key TEXT PRIMARY KEY, payload TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS gps_delivery (
  event_id TEXT PRIMARY KEY REFERENCES events(event_id), endpoint TEXT,
  send_status TEXT NOT NULL DEFAULT 'pending', retry_count INTEGER NOT NULL DEFAULT 0,
@@ -24,7 +25,7 @@ CREATE TABLE IF NOT EXISTS gps_delivery (
 CREATE TRIGGER IF NOT EXISTS gps_delivery_insert AFTER INSERT ON events BEGIN
  INSERT INTO gps_delivery(event_id) VALUES (NEW.event_id);
 END;
-PRAGMA user_version = 5;`;
+PRAGMA user_version = 6;`;
 export class Storage {
   private tail: Promise<unknown> = Promise.resolve();
   constructor(private db: SQLiteDatabase) {}
@@ -46,7 +47,17 @@ export class Storage {
     const row=await this.db.getFirstAsync<{payload:string}>('SELECT payload FROM identity WHERE singleton=1');
     return JSON.parse(row!.payload);
   }
-  saveTrip(trip: Trip) { return this.serial(() => this.db.runAsync('INSERT INTO trips VALUES (?, ?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload', trip.trip_id, encode(trip))); }
+  saveTrip(trip: Trip) { return this.transaction(async () => {
+    await this.db.runAsync('INSERT INTO trips VALUES (?, ?) ON CONFLICT(trip_id) DO UPDATE SET payload=excluded.payload', trip.trip_id, encode(trip));
+    if (trip.server) await this.db.runAsync("DELETE FROM trip_sync WHERE key='start' AND json_extract(payload,'$.request_id')=?",trip.server.request_id);
+  }); }
+  async syncValue<T>(key: string): Promise<T | null> {
+    const row=await this.db.getFirstAsync<{payload:string}>('SELECT payload FROM trip_sync WHERE key=?',key);
+    return row ? JSON.parse(row.payload) : null;
+  }
+  saveSync(key: string, value: unknown) {
+    return this.serial(()=>this.db.runAsync('INSERT INTO trip_sync VALUES (?,?) ON CONFLICT(key) DO UPDATE SET payload=excluded.payload',key,encode(value)));
+  }
   async list(): Promise<Summary[]> {
     const rows = await this.db.getAllAsync<{ trip_id: string }>('SELECT trip_id FROM trips ORDER BY rowid DESC');
     return Promise.all(rows.map(r => this.summary(r.trip_id)));
@@ -84,11 +95,12 @@ export class Storage {
     const row = await this.db.getFirstAsync<{payload:string}>('SELECT payload FROM active_trip WHERE singleton=1');
     return row ? JSON.parse(row.payload) : null;
   }
-  startActive(trip: Trip, mode: TransportMode) {
+  startActive(trip: Trip, mode: TransportMode | null) {
     return this.transaction(async () => {
       if (await this.active()) throw new Error('이미 측정 중인 Trip이 있습니다.');
       await this.db.runAsync('INSERT INTO trips VALUES (?,?)', trip.trip_id, encode(trip));
       await this.db.runAsync('INSERT INTO active_trip VALUES (1,?)', encode({trip_id:trip.trip_id,labels:[{at:Date.parse(trip.started_at),mode}]}));
+      if(trip.server) await this.db.runAsync("DELETE FROM trip_sync WHERE key='start' AND json_extract(payload,'$.request_id')=?",trip.server.request_id);
     });
   }
   changeLabel(id: string, mode: TransportMode, at: number) {

@@ -3,6 +3,7 @@ import { normalize } from './normalize';
 import { SCHEMA, MODES, currentMode, type TransportMode, type GpsEvent, type Identity, type Trip } from './types';
 import type { Storage } from './storage';
 export type CollectorPorts = {
+  startTrip(identity: Identity): Promise<Pick<Trip,'trip_id'|'user_id'|'started_at'|'server'>>;
   permission(): Promise<void>;
   watch?(cb: (l: LocationObject) => void, error: (s: string) => void): Promise<{ remove(): void }>;
   background?: {start(): Promise<void>; stop(): Promise<void>; isRunning(): Promise<boolean>};
@@ -15,6 +16,7 @@ export class Collector {
   lastReceived: string | null = null; appState = 'active';
   foregroundNotice = '';
   backgroundRunning = false;
+  collectionMode: "user" | "developer" = "developer";
   mode: TransportMode | null = null;
   private labels: Array<{ at: number; mode: TransportMode }> = [];
   private subscription?: { remove(): void };
@@ -24,7 +26,14 @@ export class Collector {
   private stopAt?: number;
   private revision=0;
   constructor(private db: Storage, private identity: Identity, private p: CollectorPorts, public changed = () => {}) {}
+  selectCollectionMode(mode: "user" | "developer") {
+    if (this.trip?.status === "recording" || ["starting", "recording", "stopping"].includes(this.phase)) return;
+    this.collectionMode = mode; this.error = '';
+    this.trip=null; this.count=0; this.latest=null; this.lastReceived=null;
+    this.changed();
+  }
   async selectMode(mode: TransportMode) {
+    if (this.collectionMode !== "developer") return;
     if (!MODES.some(m => m.value === mode)) throw new Error('지원하지 않는 이동수단');
     if (this.phase === 'starting' || this.phase === 'stopping' || this.mode === mode) return;
     if (this.p.background && this.trip?.status === 'recording') await this.db.changeLabel(this.trip.trip_id,mode,Date.parse(this.p.now()));
@@ -36,8 +45,8 @@ export class Collector {
     if (this.phase === 'starting') return this.starting!;
     if (this.phase === 'recording' || this.phase === 'stopping') return Promise.resolve();
     if (this.trip?.status === 'recording') return Promise.resolve();
-    if (!this.mode) { this.error = '이동수단을 먼저 선택하세요.'; this.changed(); return Promise.resolve(); }
-    this.labels = [{ at: -Infinity, mode: this.mode }];
+    if (this.collectionMode === "developer" && !this.mode) { this.error = '이동수단을 먼저 선택하세요.'; this.changed(); return Promise.resolve(); }
+    this.labels = this.collectionMode === "developer" ? [{ at: -Infinity, mode: this.mode! }] : [];
     this.revision++;
     this.phase = 'starting'; this.error = ''; this.fault = null; this.stopRequested = false; this.stopAt=undefined;
     this.trip = null; this.count = 0; this.latest = null; this.lastReceived = null; this.foregroundNotice = ''; this.changed();
@@ -47,10 +56,11 @@ export class Collector {
     try {
       await this.p.permission();
       if (this.stopRequested) { this.phase = 'idle'; return; }
-      const trip: Trip = { ...this.identity, trip_id: this.p.uuid(), schema_version: SCHEMA, started_at: this.p.now(),
+      const remote = await this.p.startTrip(this.identity);
+      const trip: Trip = { ...this.identity, ...remote, schema_version: SCHEMA, collection_mode: this.collectionMode,
         ended_at: null, status: 'recording', interruption_reason: null, recovered_at: null, foreground_only: !this.p.background,
         collection_settings: this.p.settings, environment: this.p.environment };
-      if (this.p.background) await this.db.startActive(trip,this.mode!);
+      if (this.p.background) await this.db.startActive(trip,this.collectionMode === "user" ? null : this.mode!);
       else await this.db.saveTrip(trip);
       this.trip = trip;
       await this.db.diagnostic(trip.trip_id, { recorded_at: this.p.now(), kind: 'permission_granted', detail: 'foreground' });
@@ -81,7 +91,7 @@ export class Collector {
     const received = this.lastReceived;
     // Use the GPS measurement timestamp, including delayed callbacks. Snapshot
     // before the asynchronous save so a button change cannot relabel queued GPS.
-    const label = [...this.labels].reverse().find(x => x.at <= raw.timestamp)?.mode ?? this.mode!;
+    const label = trip.collection_mode === "user" ? null : [...this.labels].reverse().find(x => x.at <= raw.timestamp)?.mode ?? this.mode!;
     this.enqueue(async () => {
       let event: GpsEvent;
       try { event = normalize(raw, trip, this.count + 1, this.p.uuid(), received, this.latest, label); }
@@ -127,7 +137,7 @@ export class Collector {
     try {
       if (this.trip) {
         const final: Trip = { ...this.trip, status: this.fault ? 'interrupted' : 'completed',
-          ended_at: this.fault ? null : this.p.now(), interruption_reason: this.fault };
+          ended_at: this.fault ? null : new Date(this.stopAt!).toISOString(), interruption_reason: this.fault };
         await this.db.diagnostic(final.trip_id, { recorded_at: this.p.now(), kind: 'collection_end', detail: { reason: this.fault, saved_count: this.count } });
         await this.db.saveTrip(final); this.trip = final;
         this.count = (await this.db.summary(final.trip_id)).gps_count;
@@ -166,7 +176,10 @@ export class Collector {
     const summary=await this.db.summary(active.trip_id);
     if (revision!==this.revision || ['starting','stopping'].includes(this.phase)) return;
     this.trip=summary;this.count=summary.gps_count;this.latest=summary.latest;
-    this.lastReceived=summary.latest?.received_at??null;this.mode=currentMode(active.labels.at(-1)!.mode);
+    this.lastReceived=summary.latest?.received_at??null;
+    const savedMode=active.labels.at(-1)?.mode ?? null;
+    this.collectionMode=summary.collection_mode ?? (savedMode===null ? "user" : "developer");
+    this.mode=savedMode===null ? null : currentMode(savedMode);
     if (active.stop_at!==undefined) {await this.stop();return;}
     this.phase=running?'recording':'error';
     this.error=active.error || (running?'':'백그라운드 위치 수집이 꺼져 있습니다. 같은 Trip 재개 또는 측정 종료를 선택하세요.');
