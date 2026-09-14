@@ -5,11 +5,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# NOTE:
-# $FunctionUrl may include a Function key because the HTTP endpoint uses FUNCTION auth.
-# This key authenticates the HTTP request only. It is not used for Azure resource access.
-# Azure-to-Azure access in Canopy remains Managed Identity/RBAC based.
-
 function Invoke-CarbonCase {
     param(
         [string]$Name,
@@ -47,7 +42,7 @@ function Invoke-CarbonCase {
     }
 
     if ($result.user_confirmation_applied -ne $false) {
-        throw "$Name failed: user_confirmation_applied must be false"
+        throw "$Name failed: user_confirmation_applied should be false"
     }
 
     Write-Host "PASS $Name emission_kgco2e=$actual factor_version=$($result.factor_version) policy_version=$($result.policy_version) mode_source=$($result.mode_source)"
@@ -63,10 +58,17 @@ Invoke-CarbonCase `
     )
 
 Invoke-CarbonCase `
-    -Name "predicted-car-3km" `
-    -Expected 0.49773 `
+    -Name "user-confirmation-ignored" `
+    -Expected 0.37656 `
     -Segments @(
-        @{ segment_id = "seg-car"; predicted_mode = "car"; distance_m = 3000 }
+        @{
+            segment_id = "seg-2"
+            predicted_mode = "bus"
+            user_confirmed_mode = "car"
+            corrected = $true
+            distance_m = 3000
+            emission_kgco2e = 0.49773
+        }
     )
 
 Write-Host "Carbon Functions integration verification completed."
