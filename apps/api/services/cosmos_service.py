@@ -18,19 +18,16 @@ class TripStore(Protocol):
 
 
 class CosmosTripStore:
-    def __init__(self, endpoint: str, database: str, container: str, partition_field: str):
+    def __init__(self, endpoint: str, database: str, container: str):
         from azure.cosmos import CosmosClient
         from azure.identity import DefaultAzureCredential
-        if partition_field not in ("user_id", "pk", "trip_id"):
-            raise ValueError("Trip partition must be confirmed as /user_id, /pk or /trip_id")
-        self.partition_field = partition_field
         self.client = CosmosClient(endpoint, credential=DefaultAzureCredential())
         self.container = self.client.get_database_client(database).get_container_client(container)
-        if self.container.read()["partitionKey"]["paths"] != ["/" + partition_field]:
+        if self.container.read()["partitionKey"]["paths"] != ["/user_id"]:
             raise ValueError("configured Trip partition key differs from the existing container")
 
     def key(self, trip_id: str, user_id: str) -> str:
-        return trip_id if self.partition_field == "trip_id" else user_id
+        return user_id
 
     def read(self, trip_id: str, user_id: str) -> dict | None:
         from azure.cosmos.exceptions import CosmosResourceNotFoundError
@@ -42,7 +39,6 @@ class CosmosTripStore:
     def create(self, item: dict) -> dict:
         from azure.cosmos.exceptions import CosmosResourceExistsError
         body = dict(item)
-        body[self.partition_field] = self.key(item["trip_id"], item["user_id"])
         try:
             return self.container.create_item(body)
         except CosmosResourceExistsError as exc:

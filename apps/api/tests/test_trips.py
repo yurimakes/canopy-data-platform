@@ -50,6 +50,7 @@ class TripTests(unittest.TestCase):
         saved = self.store.read(trip["trip_id"], "alice")
         self.assertEqual(saved["user_id"], "alice")
         self.assertEqual(saved["segments"], [])
+        self.assertEqual(saved["campaign_id"], "local-test")
 
     def test_2_duplicate_concurrent_start_same_trip(self):
         with ThreadPoolExecutor(max_workers=8) as pool:
@@ -68,6 +69,11 @@ class TripTests(unittest.TestCase):
         self.assertEqual(saved["status"], "ready")
         self.assertEqual([s["mode"] for s in saved["segments"]], ["walk", "bus", "walk"])
         self.assertTrue(saved["is_mock"])
+        first = saved["segments"][0]
+        self.assertEqual(first["model_prediction"], first["mode"])
+        self.assertEqual(first["started_at"], first["start_time"])
+        self.assertIsNone(first["confirmed_mode"])
+        self.assertFalse(first["corrected"])
 
     def test_4_get_ready_segments_and_id(self):
         _, trip = self.start()

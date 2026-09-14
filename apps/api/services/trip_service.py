@@ -32,14 +32,15 @@ def required(body: dict, key: str) -> str:
 
 
 def public(item: dict) -> dict:
-    fields = ("trip_id", "user_id", "device_id", "status", "started_at", "ended_at", "created_at", "updated_at",
+    fields = ("trip_id", "user_id", "device_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at",
               "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon")
     return {key: item.get(key) for key in fields}
 
 
 class TripService:
-    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900):
+    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test"):
         self.store, self.processor, self.clock = store, processor, clock
+        self.campaign_id = campaign_id
         self.grace_seconds, self.lease_seconds = grace_seconds, lease_seconds
 
     def get(self, trip_id: str, user_id: str) -> dict:
@@ -59,6 +60,7 @@ class TripService:
         fingerprint = hashlib.sha256(device_id.encode()).hexdigest()
         now = iso(self.clock())
         item = {"id": trip_id, "type": "trip", "trip_id": trip_id, "user_id": user_id, "device_id": device_id,
+                "campaign_id": self.campaign_id, "planned_route": None,
                 "start_request_id": request_id, "start_fingerprint": fingerprint,
                 "status": "collecting", "started_at": now, "ended_at": None, "created_at": now, "updated_at": now,
                 "segments": [], "model_version": None, "failed_step": None, "error_message": None,
@@ -113,7 +115,15 @@ class TripService:
             try:
                 result = self.processor.process_trip(claimed)
                 validate_result(claimed, result)
-                claimed.update(segments=result["segments"], model_version=result["model_version"],
+                segments = [{**segment, "model_prediction": segment["mode"],
+                             "confirmed_mode": None, "corrected": False, "correction_status": "none",
+                             "confirmation_time": None, "last_request_id": None,
+                             "start_name": segment.get("start_name"), "end_name": segment.get("end_name"),
+                             "route_name": segment.get("route_name"),
+                             "started_at": segment["start_time"], "ended_at": segment["end_time"],
+                             "duration_min": (timestamp(segment["end_time"]) - timestamp(segment["start_time"])).total_seconds() / 60}
+                            for segment in result["segments"]]
+                claimed.update(segments=segments, model_version=result["model_version"],
                                is_mock=result["model_version"] == "mock_v1", status="ready")
             except Exception as exc:
                 step = exc.step if isinstance(exc, ProcessingError) else "process_trip"

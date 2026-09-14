@@ -31,7 +31,7 @@ export class TripApi {
     const config=this.configuration(url), abort=new AbortController();
     const timeout=setTimeout(()=>abort.abort(),10000);
     try {
-      const response=await this.request(config.url+path,{method,signal:abort.signal,
+      const response=await this.request(config.url+path,{method,signal:abort.signal,redirect:'error',
         headers:{Authorization:'Bearer '+config.token,'Content-Type':'application/json',
           ...(config.functionKey?{'x-functions-key':config.functionKey}:{})},
         ...(body===undefined?{}:{body:JSON.stringify(body)})});
@@ -51,6 +51,7 @@ export class TripApi {
     }
     if(intent.device_id!==identity.device_id) throw new Error('대기 중인 시작 요청의 기기가 다릅니다.');
     const result=await this.call('/trips/start','POST',{request_id:intent.request_id,device_id:intent.device_id},intent.api_url);
+    if(result.device_id!==intent.device_id) throw new Error('시작 응답의 기기 ID가 일치하지 않습니다.');
     if(result.status!=='collecting') throw new Error('이 시작 요청의 Trip은 이미 종료됐습니다. 저장된 Trip 상태를 확인하세요.');
     // Storage clears this start intent atomically when the local Trip is saved.
     return {trip_id:result.trip_id,user_id:result.user_id,started_at:result.started_at,

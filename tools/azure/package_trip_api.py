@@ -6,7 +6,11 @@ import shutil
 def package(root: Path):
     source = root / "cloud/azure/functions/func_canopy_dev"
     api = root / "apps/api"
-    target = api / "build/func_canopy_dev"
+    target = (api / "build/func_canopy_dev").resolve()
+    if target.parent != (api / "build").resolve():
+        raise ValueError("Package path is outside apps/api/build")
+    if target.exists():
+        shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
     for name in ("host.json", "function_app.py"):
         shutil.copy2(source / name, target / name)

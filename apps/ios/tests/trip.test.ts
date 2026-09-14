@@ -25,7 +25,7 @@ beforeAll(async()=>{
   server=spawn(python,['local.py'],{cwd:api,windowsHide:true,env:{...process.env,
     APP_ENV:'development',TRIP_STORE:'sqlite',TRIP_SQLITE_PATH:join(directory,'server.sqlite'),
     API_HOST:'127.0.0.1',API_PORT:'0',TRIP_AUTH_MODE:'local',TRIP_LOCAL_TOKENS:JSON.stringify({alice:token}),
-    TRIP_PROCESSOR:'mock',TRIP_PROCESS_DELAY_SECONDS:'0',WEBSITE_HOSTNAME:''},stdio:['ignore','pipe','pipe']});
+    TRIP_PROCESSOR:'mock',TRIP_CAMPAIGN_ID:'local-test',TRIP_PROCESS_DELAY_SECONDS:'0',WEBSITE_HOSTNAME:''},stdio:['ignore','pipe','pipe']});
   await new Promise<void>((done,fail)=>{
     const timeout=setTimeout(()=>fail(new Error('Local Trip API did not start')),15000);
     server.once('error',fail);

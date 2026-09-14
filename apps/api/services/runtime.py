@@ -21,7 +21,7 @@ def service():
         store = SQLiteTripStore(os.getenv("TRIP_SQLITE_PATH", ".local-data/trips.sqlite"))
     else:
         store = CosmosTripStore(os.environ["COSMOS_ENDPOINT"], os.environ["COSMOS_DATABASE"],
-                                os.environ["COSMOS_TRIPS_CONTAINER"], os.environ["COSMOS_TRIPS_PARTITION_FIELD"])
+                                os.environ["COSMOS_TRIPS_CONTAINER"])
     selection = os.environ.get("TRIP_PROCESSOR", "mock")
     if selection == "mock":
         processor = MockTripProcessor()
@@ -29,7 +29,10 @@ def service():
         # Trusted deployment configuration, never an HTTP parameter.
         module_name, class_name = selection.split(":", 1)
         processor = getattr(importlib.import_module(module_name), class_name)()
-    return TripService(store, processor, grace_seconds=int(os.getenv("TRIP_PROCESS_DELAY_SECONDS", "5")),
+    campaign_id = os.environ["TRIP_CAMPAIGN_ID"]
+    if not campaign_id.strip():
+        raise RuntimeError("TRIP_CAMPAIGN_ID is required")
+    return TripService(store, processor, campaign_id=campaign_id, grace_seconds=int(os.getenv("TRIP_PROCESS_DELAY_SECONDS", "5")),
                        lease_seconds=int(os.getenv("TRIP_PROCESS_LEASE_SECONDS", "900")))
 
 

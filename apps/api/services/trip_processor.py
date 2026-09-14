@@ -49,7 +49,7 @@ def timestamp(value: str) -> datetime:
 def validate_result(trip: dict, result: ProcessorResult) -> None:
     """Only validate derived processor output. GPS ingestion remains untouched."""
     try:
-        if result["trip_id"] != trip["trip_id"] or not result["model_version"]:
+        if result["trip_id"] != trip["trip_id"] or not isinstance(result["model_version"], str) or not result["model_version"].strip():
             raise ValueError("result identity/model_version mismatch")
         segments = result["segments"]
         if not isinstance(segments, list) or not segments or len(segments) > 1000:
