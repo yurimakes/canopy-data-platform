@@ -11,7 +11,7 @@ from unittest.mock import patch
 from services.cosmos_service import SQLiteTripStore
 from services.mock_trip_processor import MockTripProcessor
 from services.trip_processor import ProcessingError
-from services.trip_service import TripService
+from services.trip_service import ApiError, TripService
 from services.runtime import authenticate
 from trip_routes import dispatch, bp
 
@@ -19,6 +19,20 @@ TOKEN = "local-test-token-" + "x" * 32
 
 
 class TripTests(unittest.TestCase):
+    def test_expiring_test_auth_requires_test_environment_and_never_trusts_user_input(self):
+        import hashlib, time
+        secret = "x" * 48
+        credentials = {"device-test": {"sha256": hashlib.sha256(secret.encode()).hexdigest(), "expires_at": time.time()+60}}
+        with patch.dict(os.environ, {"APP_ENV":"test", "WEBSITE_HOSTNAME":"azure-test", "TRIP_AUTH_MODE":"test", "TRIP_TEST_CREDENTIALS":json.dumps(credentials)}):
+            self.assertEqual(authenticate({"authorization":"Bearer "+secret}), "device-test")
+            with self.assertRaises(ApiError) as denied: authenticate({"authorization":"Bearer "+"y"*48})
+            self.assertEqual(denied.exception.status, 401)
+            with patch.dict(os.environ, {"APP_ENV":"production"}):
+                with self.assertRaises(ApiError): authenticate({"authorization":"Bearer "+secret})
+            credentials["device-test"]["expires_at"] = time.time()-1
+            with patch.dict(os.environ, {"TRIP_TEST_CREDENTIALS":json.dumps(credentials)}):
+                with self.assertRaises(ApiError): authenticate({"authorization":"Bearer "+secret})
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

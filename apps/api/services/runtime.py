@@ -1,4 +1,6 @@
 """Configuration and authentication; no Azure access until a handler needs it."""
+import hashlib
+import time
 import hmac
 import importlib
 import json
@@ -49,6 +51,18 @@ def authenticate(headers) -> str:
     if not authorization.startswith("Bearer "):
         raise ApiError(401, "unauthorized", "login required")
     token = authorization[7:]
+    if os.getenv("TRIP_AUTH_MODE", "jwt") == "test":
+        # Explicit, expiring internal-test credentials; not registration or role assignment.
+        if os.getenv("APP_ENV") != "test":
+            raise ApiError(503, "configuration_error", "test authentication requires test environment")
+        digest = hashlib.sha256(token.encode()).hexdigest()
+        for user_id, entry in json.loads(os.environ.get("TRIP_TEST_CREDENTIALS", "{}")).items():
+            if (isinstance(user_id, str) and 0 < len(user_id) <= 200 and isinstance(entry, dict)
+                    and isinstance(entry.get("sha256"), str) and isinstance(entry.get("expires_at"), (int, float))
+                    and entry["expires_at"] > time.time() and len(token) >= 32
+                    and hmac.compare_digest(entry["sha256"], digest)):
+                return user_id
+        raise ApiError(401, "unauthorized", "invalid or expired test credential")
     if os.getenv("TRIP_AUTH_MODE", "jwt") == "local":
         if not local_mode():
             raise ApiError(503, "configuration_error", "local authentication is disabled on Azure")
