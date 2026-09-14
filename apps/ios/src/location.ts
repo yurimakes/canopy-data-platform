@@ -3,7 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Crypto from 'expo-crypto';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { LOCATION_TASK } from './backgroundLocationTask';
+import { LOCATION_TASK, getTripApi } from './backgroundLocationTask';
 import type { CollectorPorts } from './collector';
 const options: Location.LocationTaskOptions = {
   accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 0,
@@ -14,6 +14,7 @@ const options: Location.LocationTaskOptions = {
 let starting: Promise<void> | undefined;
 export const foregroundOnly = Constants.appOwnership === 'expo';
 export const ports: CollectorPorts = {
+  async startTrip(identity) {return (await getTripApi()).start(identity);},
   async permission() {
     if (Platform.OS!=='ios' || (!foregroundOnly && !(await TaskManager.isAvailableAsync())))
       throw new Error('백그라운드 측정은 iPhone에 설치한 Canopy 앱에서 사용하세요. Expo Go에서는 지원하지 않습니다.');

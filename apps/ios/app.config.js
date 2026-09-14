@@ -5,5 +5,9 @@ module.exports = ({config}) => ({
   extra: {...config.extra,
     gpsApiUrl: process.env.CANOPY_GPS_API_URL || '',
     gpsFunctionKey: process.env.CANOPY_GPS_FUNCTION_KEY || '',
+    tripApiUrl: process.env.CANOPY_TRIP_API_URL || '',
+    tripAccessToken: process.env.CANOPY_TRIP_ACCESS_TOKEN || '',
+    tripFunctionKey: process.env.CANOPY_TRIP_FUNCTION_KEY || '',
+    tripAllowLocalHttp: process.env.CANOPY_TRIP_ALLOW_LOCAL_HTTP === 'true',
   },
 });

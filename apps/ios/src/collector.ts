@@ -3,6 +3,7 @@ import { normalize } from './normalize';
 import { SCHEMA, MODES, currentMode, type TransportMode, type GpsEvent, type Identity, type Trip } from './types';
 import type { Storage } from './storage';
 export type CollectorPorts = {
+  startTrip(identity: Identity): Promise<Pick<Trip,'trip_id'|'user_id'|'started_at'|'server'>>;
   permission(): Promise<void>;
   watch?(cb: (l: LocationObject) => void, error: (s: string) => void): Promise<{ remove(): void }>;
   background?: {start(): Promise<void>; stop(): Promise<void>; isRunning(): Promise<boolean>};
@@ -47,7 +48,8 @@ export class Collector {
     try {
       await this.p.permission();
       if (this.stopRequested) { this.phase = 'idle'; return; }
-      const trip: Trip = { ...this.identity, trip_id: this.p.uuid(), schema_version: SCHEMA, started_at: this.p.now(),
+      const remote = await this.p.startTrip(this.identity);
+      const trip: Trip = { ...this.identity, ...remote, schema_version: SCHEMA,
         ended_at: null, status: 'recording', interruption_reason: null, recovered_at: null, foreground_only: !this.p.background,
         collection_settings: this.p.settings, environment: this.p.environment };
       if (this.p.background) await this.db.startActive(trip,this.mode!);
@@ -127,7 +129,7 @@ export class Collector {
     try {
       if (this.trip) {
         const final: Trip = { ...this.trip, status: this.fault ? 'interrupted' : 'completed',
-          ended_at: this.fault ? null : this.p.now(), interruption_reason: this.fault };
+          ended_at: this.fault ? null : new Date(this.stopAt!).toISOString(), interruption_reason: this.fault };
         await this.db.diagnostic(final.trip_id, { recorded_at: this.p.now(), kind: 'collection_end', detail: { reason: this.fault, saved_count: this.count } });
         await this.db.saveTrip(final); this.trip = final;
         this.count = (await this.db.summary(final.trip_id)).gps_count;
