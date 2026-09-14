@@ -7,4 +7,5 @@ C05,rail 10km,rail / 10000m,0.1549,PASS,10 x 0.01549
 C06,multi-segment,walk 0.4km + bus 5km + walk 0.3km,0.6276,PASS,sum raw segment emissions
 C07,user correction,bus 3km -> car 3km,0.49773,PASS,stale bus emission must not be reused
 C08,missing distance,bus / distance_m missing,,ERROR,missing_distance
-C09,unsupported motorcycle,motorcycle / 1000m,,ERROR,unsupported_mode
+C09,missing factor,bus / factor value missing,,ERROR,missing_factor
+C10,unsupported motorcycle,motorcycle / 1000m,,ERROR,unsupported_mode
