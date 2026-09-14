@@ -60,3 +60,22 @@ tenant/subscription ID 및 인증 정보는 문서에 기록하지 않는다.
 - Capture Body와 source JSON의 text-level 차이 원인 확인
 
 위 항목은 이번 과제의 “실제 iPhone GPS가 ADLS Raw에 저장되는지” 검증 완료 여부와는 분리하여 관리한다.
+
+## 2026-09-14 Shared Function App integration
+
+The initial 10-record iPhone GPS E2E verification was performed using the temporary dedicated Function App `func-canopy-gps-dev`.
+
+After confirming the team's shared Function App architecture, `GpsIngest` was integrated into `func-canopy-dev`.
+
+Post-migration verification:
+
+- Existing Functions preserved: `health`, `gps_smoke`, `cosmos_smoke`, `keyvault_smoke`
+- `GpsIngest` registered in `func-canopy-dev`
+- `GpsIngest` returned HTTP 202
+- A new Event Hubs Capture Avro file was created
+- The migration verification event was found in Capture: 1/1
+- The duplicate Function App `func-canopy-gps-dev` was deleted after successful verification
+
+The current Azure Function App target for GPS ingestion is `func-canopy-dev`.
+
+The earlier 10-record GPS verification result is retained above as historical execution evidence and is not rewritten as if it had originally been executed on `func-canopy-dev`.
