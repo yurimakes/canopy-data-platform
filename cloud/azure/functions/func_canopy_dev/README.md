@@ -23,6 +23,21 @@ The standalone `GpsIngest` implementation and tests remain under:
 
 Before future deployments, verify that the shared app version and standalone GPS ingestion behavior remain aligned.
 
+## Azure identity rule
+
+Canopy Azure-to-Azure connections use Managed Identity/RBAC.
+
+- Function → Event Hubs: Function System Assigned Managed Identity
+- Function → Cosmos DB: `DefaultAzureCredential` → Function System Assigned Managed Identity
+- Function → Key Vault: `DefaultAzureCredential` → Function System Assigned Managed Identity
+- Event Hubs Capture → ADLS: Event Hubs Namespace System Assigned Managed Identity
+- ADF → ADLS: ADF System Assigned Managed Identity
+- Databricks → ADLS: Access Connector Managed Identity
+
+This carbon calculation change does not introduce any Azure connection string, account key, Cosmos key, Event Hubs SAS key, or Key Vault secret into source code.
+
+The HTTP Function key used to invoke a `FUNCTION`-auth test endpoint is request authentication for the HTTP endpoint; it is not used for Azure resource-to-resource authentication. Azure resource access remains Managed Identity based.
+
 ## Carbon calculation policy
 
 Runtime source of truth:
@@ -33,8 +48,9 @@ Runtime source of truth:
 Key rules:
 
 - segment distance input is `distance_m` and is converted to km before calculation
-- `user_confirmed_mode` overrides `predicted_mode` when present
-- a correction triggers full recalculation; an old `emission_kgco2e` value is never reused
+- carbon calculation currently uses **`predicted_mode` only**
+- user confirmation/correction is intentionally **not applied** until the team agrees on that policy
+- a previously stored `emission_kgco2e` value is never reused as an input to the calculation
 - walk and human-powered bike are `0 kgCO2e` within the Canopy MVP operational-use boundary
 - motorcycle, e-bike and e-scooter are not supported in the current MVP
 - factor version: `2026_v1`
