@@ -2,6 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MODES, currentMode, type TransportMode, type GpsEvent, type Summary } from '../types';
+import type { ServerTrip } from '../tripApi';
 export type MeasurementProps = {
   mode: TransportMode | null; phase: string; ready: boolean; count: number; duration: string;
   accuracy: number | null; latestLabel?: GpsEvent['label']; tripId?: string; error: string;
@@ -13,6 +14,7 @@ export type MeasurementProps = {
   foregroundOnly?:boolean; eventId?:string; eventTime?:string; confirmedEvent?:GpsEvent;
   retryCount?:number; canShareEvent?:boolean; onShareEvent?():void;
   resultTrip?:Summary; sent?:number; blocked?:number; onShareCheck?():void;
+  serverTrip?:ServerTrip;tripError?:string;onRetryTrip?():void;
 };
 export function MeasurementScreen(p: MeasurementProps) {
   const busy = p.active || ['starting','recording','stopping'].includes(p.phase);
@@ -52,6 +54,20 @@ export function MeasurementScreen(p: MeasurementProps) {
         <Text>Event Hubs / Raw: 원본 대조 대기</Text>
         <Text style={s.note}>측정 결과 파일을 Capture 담당자에게 공유하세요. 저장된 Avro 파일과 대조하면 같은 ID와 모든 원본 값의 보존 여부를 확인할 수 있습니다. 이 화면의 API 접수만으로 2단계 전체 완료로 판정하지 않습니다.</Text>
         <Pressable accessibilityRole="button" disabled={p.sharing} onPress={p.onShareCheck} style={s.export}><Text style={s.modeText}>2단계 확인용 측정 결과 공유</Text></Pressable>
+      </View>}
+      {!busy && p.resultTrip?.server && <View style={s.card}>
+        <Text style={s.status}>Trip 처리 결과</Text>
+        <Text>{p.serverTrip?.status==='ready'?'처리 완료':p.serverTrip?.status==='failed'?'처리 실패':p.serverTrip?.status==='processing'?'서버 처리 중':'GPS 전송 및 종료 접수 대기'}</Text>
+        {!!p.tripError && <Text style={s.error}>{p.tripError}</Text>}
+        {p.serverTrip?.is_mock && <Text style={s.note}>Mock 테스트 결과입니다. 표시된 이동수단과 거리는 실제 GPS 분석 결과가 아닙니다.</Text>}
+        {p.serverTrip?.segments.map(segment=><View key={segment.segment_id}>
+          <Text>{MODES.find(mode=>mode.value===segment.mode)?.title??segment.mode} {Math.round(segment.distance_m)} m</Text>
+          <Text style={s.id}>{new Date(segment.start_time).toLocaleTimeString('ko-KR')} ~ {new Date(segment.end_time).toLocaleTimeString('ko-KR')}</Text>
+        </View>)}
+        {p.serverTrip?.status==='failed' && <>
+          <Text style={s.error}>{p.serverTrip.failed_step}: {p.serverTrip.error_message}</Text>
+          <Pressable accessibilityRole="button" onPress={p.onRetryTrip}><Text style={s.modeText}>Trip 처리 재시도</Text></Pressable>
+        </>}
       </View>}
       {!!p.error && <Text accessibilityRole="alert" style={s.error}>{p.error}</Text>}
       {!!p.error && <Pressable accessibilityRole="button" onPress={p.onSettings}><Text style={s.modeText}>iPhone 설정 열기</Text></Pressable>}

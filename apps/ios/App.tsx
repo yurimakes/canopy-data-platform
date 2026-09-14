@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Network from 'expo-network';
-import { getStorage, getUploader } from './src/backgroundLocationTask';
+import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
 import { MeasurementScreen } from './src/ui/MeasurementScreen';
 import { Collector } from './src/collector';
 import { Storage } from './src/storage';
@@ -10,6 +10,7 @@ import { ports, foregroundOnly } from './src/location';
 import { files } from './src/files';
 import { exportTrip } from './src/exporter';
 import type { Summary } from './src/types';
+import type { ServerTrip } from './src/tripApi';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -25,6 +26,8 @@ export default function App() {
   const [delivery,setDelivery]=useState<{pending:number;blocked:number;sent:number;last_success:string|null}>();
   const [uploadError,setUploadError]=useState('');
   const [resultTrip,setResultTrip]=useState<Summary>();
+  const [serverTrip,setServerTrip]=useState<ServerTrip>();
+  const [tripError,setTripError]=useState('');
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
     let alive=true;
@@ -42,10 +45,13 @@ export default function App() {
         if(wake)await service!.db.wakeDelivery();
         await service!.collector.refresh();
         const uploader=await getUploader(); await uploader.tick();
+        const tripApi=await getTripApi(); await tripApi.tick(wake);
         const id=service!.collector.trip?.trip_id ?? (await service!.db.list())[0]?.trip_id;
         const summary=id ? await service!.db.summary(id) : undefined;
         const status=await service!.db.deliveryStatus(id??null);
         const proof=await service!.db.deliveryEvidence(id??null);
+        const remote=id ? await tripApi.result(id) : null;
+        if(alive){setServerTrip(remote?.result);setTripError(remote?.error??tripApi.error);}
         if(alive){setResultTrip(summary);setDelivery(status);setEvidence(proof);setUploadError(proof.head?.last_error || uploader.error);}
       }catch(e){if(alive)setError(String(e));}finally{refreshing=false;}
     }
@@ -104,6 +110,8 @@ export default function App() {
     confirmedEvent={resultMatches?evidence?.sent??undefined:undefined} retryCount={resultMatches?evidence?.head?.retry_count:undefined}
     resultTrip={resultMatches?resultTrip:undefined} sent={delivery?.sent} blocked={delivery?.blocked} onShareCheck={()=>{void shareCheck();}}
     canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
+    serverTrip={serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
+    onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;
 }
