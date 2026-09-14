@@ -36,7 +36,7 @@ Canopy Azure-to-Azure connections use Managed Identity/RBAC.
 
 This carbon calculation change does not introduce any Azure connection string, account key, Cosmos key, Event Hubs SAS key, or Key Vault secret into source code.
 
-The HTTP Function key used to invoke a `FUNCTION`-auth test endpoint is request authentication for the HTTP endpoint; it is not used for Azure resource-to-resource authentication. Azure resource access remains Managed Identity based.
+The HTTP Function key used to invoke a `FUNCTION`-auth test endpoint is request authentication for the HTTP endpoint only. It is not used for Azure resource-to-resource authentication. Azure resource access remains Managed Identity based.
 
 ## Carbon calculation policy
 
