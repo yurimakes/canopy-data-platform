@@ -65,7 +65,6 @@ if (($functionNames -join "`n") -notmatch "carbon") {
 }
 
 # Resolve the exact invoke URL from the deployed function metadata first.
-# This is more robust than assuming defaultHostName is populated for every Function App plan/API shape.
 $invokeUrl = az functionapp function show `
     --resource-group $ResourceGroup `
     --name $FunctionAppName `
@@ -74,7 +73,6 @@ $invokeUrl = az functionapp function show `
     -o tsv
 
 if (-not $invokeUrl) {
-    # Fallback 1: function app default hostname.
     $hostName = az functionapp show `
         --resource-group $ResourceGroup `
         --name $FunctionAppName `
@@ -82,7 +80,6 @@ if (-not $invokeUrl) {
         -o tsv
 
     if (-not $hostName) {
-        # Fallback 2: first hostname entry if defaultHostName is empty/null.
         $hostName = az functionapp show `
             --resource-group $ResourceGroup `
             --name $FunctionAppName `
@@ -109,8 +106,18 @@ if (-not $functionKey) {
     throw "Could not retrieve the default Function key."
 }
 
-$separator = if ($invokeUrl.Contains("?")) { "&" } else { "?" }
-$carbonUrl = "$invokeUrl${separator}code=$functionKey"
+# Azure CLI output can carry surrounding whitespace and Function keys can contain URI-sensitive characters.
+$invokeUrl = ([string]$invokeUrl).Trim()
+$functionKey = ([string]$functionKey).Trim()
+$encodedKey = [System.Uri]::EscapeDataString($functionKey)
+
+$uriBuilder = [System.UriBuilder]::new($invokeUrl)
+$uriBuilder.Query = "code=$encodedKey"
+$carbonUrl = $uriBuilder.Uri.AbsoluteUri
+
+if (-not [System.Uri]::IsWellFormedUriString($carbonUrl, [System.UriKind]::Absolute)) {
+    throw "Constructed carbon-smoke URL is not a valid absolute URI."
+}
 
 Write-Host "[7/7] Calling carbon-smoke in Azure..."
 & $verifyScript -FunctionUrl $carbonUrl
