@@ -65,25 +65,18 @@ def test_multi_segment_trip():
     assert result.emission_kgco2e == 0.6276
 
 
-def test_user_correction_recalculates_with_car_factor():
-    before = calculate_trip_carbon(
-        [{"segment_id": "seg-2", "predicted_mode": "bus", "distance_m": 3000}],
-        POLICY,
-    )
-    after = calculate_trip_carbon(
+def test_user_confirmation_is_ignored_until_policy_is_agreed():
+    result = calculate_trip_carbon(
         [{
             "segment_id": "seg-2",
             "predicted_mode": "bus",
             "user_confirmed_mode": "car",
-            "corrected": True,
             "distance_m": 3000,
-            "emission_kgco2e": before.emission_kgco2e,
         }],
         POLICY,
     )
-    assert before.emission_kgco2e == 0.37656
-    assert after.emission_kgco2e == 0.49773
-    assert after.segments[0].effective_mode == "car"
+    assert result.emission_kgco2e == 0.37656
+    assert result.segments[0].predicted_mode == "bus"
 
 
 def test_missing_distance_is_error_not_zero():
