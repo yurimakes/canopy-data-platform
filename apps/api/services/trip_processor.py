@@ -27,6 +27,9 @@ class TripProcessor(Protocol):
 
         Implementations must be idempotent by trip_id + processing_generation:
         a host crash can cause the same durable job to be delivered again.
+        expected_last_sequence is supplied by the phone after its GPS queue drains.
+        Real processors must wait for Raw/Curated completeness (Capture can lag)
+        and deduplicate event_id before deriving segments; the mock reads no GPS.
         """
         ...
 

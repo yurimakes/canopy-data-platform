@@ -172,6 +172,52 @@ class TripTests(unittest.TestCase):
         self.assertEqual({f.get_function_name() for f in app.get_functions()},
                          {"trip_start", "trip_stop", "trip_get", "trip_worker"})
 
+    def test_stop_preserves_expected_sequence_for_capture_lag(self):
+        _, trip = self.start()
+        self.stop(trip, {"expected_last_sequence": 211})
+        self.assertEqual(self.api.get(trip["trip_id"], "alice")["expected_last_sequence"], 211)
+        self.stop(trip, {"expected_last_sequence": 999})
+        self.assertEqual(self.api.get(trip["trip_id"], "alice")["expected_last_sequence"], 211)
+
+    def test_jwt_signature_expiry_and_audience_are_checked(self):
+        import jwt
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from types import SimpleNamespace
+        private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        claims = {"iss": "https://issuer.test", "aud": "canopy", "sub": "alice",
+                  "exp": int(datetime.now(timezone.utc).timestamp()) + 600}
+        with patch.dict(os.environ, {"TRIP_AUTH_MODE": "jwt", "TRIP_JWT_ISSUER": claims["iss"],
+                                    "TRIP_JWT_AUDIENCE": "canopy", "TRIP_JWKS_URL": "https://issuer.test/keys"}):
+            with patch("services.runtime.jwt_keys") as keys:
+                keys.return_value.get_signing_key_from_jwt.return_value = SimpleNamespace(key=private.public_key())
+                valid = jwt.encode(claims, private, algorithm="RS256")
+                self.assertEqual(authenticate({"authorization": "Bearer " + valid}), "alice")
+                for wrong in ({**claims, "aud": "other"}, {**claims, "exp": 0}):
+                    invalid = jwt.encode(wrong, private, algorithm="RS256")
+                    self.assertEqual(self.request("GET", "/trips/missing", token=invalid)[0], 401)
+
+    def test_cosmos_adapter_uses_team_partition_and_etag_without_creating_resources(self):
+        from unittest.mock import MagicMock
+        from azure.core import MatchConditions
+        from azure.cosmos.exceptions import CosmosHttpResponseError
+        from services.cosmos_service import CosmosTripStore, Conflict
+        container = MagicMock()
+        container.read.return_value = {"partitionKey": {"paths": ["/user_id"]}}
+        with patch("azure.cosmos.CosmosClient") as client, patch("azure.identity.DefaultAzureCredential"):
+            client.return_value.get_database_client.return_value.get_container_client.return_value = container
+            store = CosmosTripStore("https://cosmos.test", "canopy-db", "trips")
+            store.read("trip-1", "alice")
+            container.read_item.assert_called_once_with("trip-1", partition_key="alice")
+            item = {"id": "trip-1", "trip_id": "trip-1", "user_id": "alice", "_etag": "v1"}
+            store.replace(item)
+            container.replace_item.assert_called_once_with("trip-1", item, etag="v1", match_condition=MatchConditions.IfNotModified)
+            container.replace_item.side_effect = CosmosHttpResponseError(status_code=412)
+            with self.assertRaises(Conflict):
+                store.replace(item)
+            container.read.return_value = {"partitionKey": {"paths": ["/pk"]}}
+            with self.assertRaises(ValueError):
+                CosmosTripStore("https://cosmos.test", "canopy-db", "trips")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

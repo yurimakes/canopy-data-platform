@@ -159,3 +159,21 @@ it('does not reroute an existing Trip to a different API after a config change',
   await changed.tick(true);
   expect((await changed.result(s.collector.trip!.trip_id))?.error).toContain('서버 주소');
 });
+
+it('retries a lost stop response without losing the stored Trip or starting a new one',async()=>{
+  let loseStop=true;let stopCount=0;
+  const request=(async(url,options)=>{
+    const response=await fetch(url,options);
+    if(String(url).endsWith('/stop')) {
+      stopCount++;
+      if(loseStop){loseStop=false;throw Error('stop response lost');}
+    }
+    return response;
+  }) as typeof fetch;
+  const s=await setup(':memory:',request);await s.collector.start();await s.collector.stop();
+  const id=s.collector.trip!.trip_id;
+  await s.api.tick(true);expect((await s.api.result(id))?.error).toContain('response lost');
+  const recovered=new TripApi(s.db,config,randomUUID,request);await recovered.tick(true);
+  expect((await recovered.result(id))?.result?.trip_id).toBe(id);
+  expect(stopCount).toBe(2);expect(await s.db.list()).toHaveLength(1);
+});

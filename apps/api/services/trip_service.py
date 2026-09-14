@@ -85,6 +85,9 @@ class TripService:
                     return item
             now = self.clock()
             if item["status"] == "collecting":
+                expected = body.get("expected_last_sequence")
+                if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or not 0 <= expected <= 10000000):
+                    raise ApiError(400, "invalid_field", "expected_last_sequence must be a nonnegative integer")
                 try:
                     ended = timestamp(body.get("ended_at", iso(now)))
                 except (ValueError, TypeError) as exc:
@@ -92,6 +95,7 @@ class TripService:
                 if ended < timestamp(item["started_at"]) or ended > now + timedelta(minutes=2):
                     raise ApiError(400, "invalid_field", "ended_at is outside the Trip interval")
                 item["ended_at"] = iso(ended)
+                item["expected_last_sequence"] = expected
             item.update(status="processing", updated_at=iso(now), segments=[], model_version=None,
                         failed_step=None, error_message=None, is_mock=False,
                         process_after=iso(now + timedelta(seconds=self.grace_seconds)), lease_until="",

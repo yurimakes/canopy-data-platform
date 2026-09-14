@@ -77,7 +77,8 @@ export class TripApi {
           if(!result || result.status==='collecting' || state.retry_request_id) {
             const ended_at=trip.ended_at ?? trip.last_event_time ?? trip.recovered_at ?? trip.started_at;
             result=await this.call(`/trips/${trip.trip_id}/stop`,'POST',{
-              ended_at, ...(state.retry_request_id?{retry:true,retry_request_id:state.retry_request_id}:{})},trip.server.api_url);
+              ended_at, expected_last_sequence:trip.gps_count,
+              ...(state.retry_request_id?{retry:true,retry_request_id:state.retry_request_id}:{})},trip.server.api_url);
           } else {
             result=await this.call(`/trips/${trip.trip_id}`,'GET',undefined,trip.server.api_url);
           }
