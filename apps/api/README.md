@@ -1,6 +1,6 @@
 # Trip API 실행 및 인계
 
-04단계 Trip 시작, 종료, 상태 조회를 구현했습니다. 현재 처리기는 `MockTripProcessor`이며 실제 이동수단을 판별하지 않습니다. Azure 리소스 생성, 설정 변경, 배포는 수행하지 않았습니다.
+04단계 Trip 시작, 종료, 상태 조회를 구현했습니다. 현재 처리기는 `MockTripProcessor`이며 실제 이동수단을 판별하지 않습니다. 2026-09-14 기존 func-canopy-dev에 추가 배포했고, 실제 Cosmos 저장과 Event Hubs Capture 원본 보존을 합성 데이터로 검증했습니다. 신규 Azure 리소스는 만들지 않았습니다. 실제 iPhone 검사는 별도입니다.
 
 ## 연결 구조
 
@@ -10,7 +10,7 @@
 
 ## API 계약
 
-모든 Trip 요청에 `Authorization: Bearer <사용자 access token>`이 필요합니다. Azure Functions에서는 기존 `x-functions-key`도 필요합니다. 함수 키만으로는 사용자를 구분할 수 없어 Trip 소유자 검증을 대신하지 않습니다. 현재 저장소에는 사용자 로그인 구현이 없으므로 실제 issuer/audience와 앱 로그인 연결은 배포 전에 설정해야 합니다.
+모든 Trip 요청에 `Authorization: Bearer <사용자 access token>`이 필요합니다. Azure Functions에서는 기존 `x-functions-key`도 필요합니다. 함수 키만으로는 사용자를 구분할 수 없어 Trip 소유자 검증을 대신하지 않습니다. 사용자 로그인은 팀 구현과 연결할 예정입니다. 현재는 APP_ENV=test, TRIP_AUTH_MODE=test로 만료되는 내부 테스트 토큰을 사용합니다. 서버에는 토큰의 SHA-256 해시와 만료 시각만 저장합니다. 앱의 화면 선택 버튼은 인증이나 개발자 권한을 부여하지 않습니다. 실제 서비스 전환 시 팀의 JWT issuer/audience와 로그인 세션을 연결합니다.
 
 | Method / 경로 | 입력 | 성공 응답 |
 | --- | --- | --- |
@@ -129,7 +129,7 @@ apps/api/.venv/Scripts/python.exe tools/azure/package_trip_api.py
 
 # 이후 명령은 실제 배포: 운영자가 실행
 cd apps/api/build/func_canopy_dev
-func azure functionapp publish func-canopy-dev --build remote
+func azure functionapp publish func-canopy-dev --python --build remote
 ```
 
 6. `func-canopy-dev` → 개요 → 함수에서 기존 health/gps_smoke/cosmos_smoke/keyvault_smoke/GpsIngest와 trip_start/trip_stop/trip_get/trip_worker를 확인합니다. 실제 함수 호스트 주소는 Portal의 기본 도메인을 사용합니다.
@@ -140,7 +140,7 @@ func azure functionapp publish func-canopy-dev --build remote
 
 ## 검증 결과
 
-2026-09-14 로컬 실행 기준입니다. 실제 Azure Cosmos 쓰기/조회와 실제 iPhone 시험은 수행하지 않았습니다.
+2026-09-14 로컬 시험과 실제 Azure 합성 데이터 시험 결과입니다. 실제 iPhone 시험은 아직 별도 확인이 필요합니다.
 
 | 요청 테스트 | 결과 |
 | --- | --- |
@@ -150,9 +150,33 @@ func azure functionapp publish func-canopy-dev --build remote
 | TEST 4 GET 결과 | 통과. 같은 Trip ID와 Mock segments 반환 |
 | TEST 5 중복 stop | 통과. 동시에 worker를 실행해도 정상 처리 1회 |
 | TEST 6 강제 실패 | 통과. failed_step 저장, 명시적 재시도 및 중복 재시도 확인 |
-| TEST 7 iPhone 전체 흐름 | 실제 iPhone은 배포 후 시험 필요. PC에서 앱 collector/SQLite와 실제 로컬 HTTP 서버를 연결한 대체 시험 통과 |
+| TEST 7 iPhone 전체 흐름 | 실제 iPhone 시험 필요. PC에서 앱 collector/SQLite와 실제 로컬 HTTP 서버를 연결한 대체 시험 통과 |
 
-서버 테스트 14개, 앱 통합 테스트 7개, TypeScript 검사를 통과했습니다. Cosmos SDK 어댑터의 파티션·ETag 검사는 mock 컨테이너로 실행했습니다. DB가 실제 Azure에 저장됐다는 의미는 아닙니다.
+서버 테스트 16개, 앱 통합 테스트 9개, TypeScript 검사를 통과했습니다. 위 자동 테스트와 별도로 아래 실제 Azure 검증을 수행했습니다.
+
+- 기존 Functions 5개의 소스/host.json/requirements.txt가 저장소와 일치하는 것을 확인한 후 Trip Blueprint를 추가 배포했습니다. 기존 COSMOS_DATABASE=canopy-smoke, COSMOS_CONTAINER=infra-smoke와 GPS/Event Hubs/Capture 설정은 유지했습니다.
+- API start/stop/get, 동일 시작 요청의 동일 ID, 중복 종료, 다른 사용자 접근 차단, 미인증 요청 및 잘못된 JSON 거부를 확인했습니다.
+- Cosmos canopy-db/trips (/user_id)에서 아래 두 문서가 ready로 저장됐고 GET 응답과 Mock segments가 일치했습니다. Application Insights에서도 같은 Trip ID의 시작/ready 로그를 확인했습니다.
+- 사용자용 Trip: `aa419aa0-0912-57dd-8e50-68fb50f2f6b1`
+- 개발자용 Trip: `83d28ed2-a0bf-50db-abcb-667813595eba`
+- 두 문서의 user_id=`canopy-e2e-test`, campaign_id=`canopy-integration-test`입니다. 실제 사용자 이동이나 학습 데이터로 취급하지 않습니다.
+- 합성 GPS 원본 4건과 재전송 2건이 Raw에 저장됐습니다. 원본 객체 전체를 비교해 null/라벨/raw_location/추가 test_context 필드가 유지됐음을 확인했습니다. 중복은 Raw에서 그대로 보존됩니다.
+- Capture 파일은 raw 컨테이너의 `gps/evhns-canopy-dev/evh-canopy-gps-dev/{0,1,2}/2026/09/14/08/52/` 아래입니다. 상세 event_id/파일 경로는 로컬 검증 결과 JSON에 있습니다.
+
+앱의 실제 테스트 환경은 Git에서 제외된 `apps/ios/.env`에 설정했습니다. 테스트 사용자 hayden-device-test의 인증값은 2026-09-21 17:51 KST에 만료됩니다. TRIP_WORKER_SCHEDULE=`0 * * * * *`이므로 종료 후 Mock 결과까지 약 1분이 걸릴 수 있습니다. 로그인팀 연동 시 TRIP_AUTH_MODE=jwt와 팀 JWT 설정으로 교체하고 TRIP_TEST_CREDENTIALS는 제거합니다. 테스트를 더 이상 하지 않으면 기존 안내대로 Trip timer만 중지할 수 있습니다.
+
+### 실제 Azure 재검증
+
+저장소 루트에서 아래 명령을 실행합니다. 기본 실행은 이전 시험의 API 상태/Cosmos/Raw를 읽으며 새 GPS를 보내지 않습니다.
+
+```powershell
+apps/api/.venv/Scripts/python.exe -m pip install azure-storage-blob fastavro
+apps/api/.venv/Scripts/python.exe tools/azure/check_trip_e2e.py
+# 새 합성 Trip 2개와 GPS 6건을 실제 전송하려는 경우에만:
+apps/api/.venv/Scripts/python.exe tools/azure/check_trip_e2e.py --send-test
+```
+
+설정 파일은 `apps/api/.local-data/azure-test-access.json`, 결과는 같은 폴더의 `azure-trip-e2e.json`입니다. 설정과 결과는 커밋하지 않습니다. 다른 개발 환경에서는 설정에 host(실제 Function 기본 URL), key(기존 host key), tokens(canopy-e2e-test/hayden-device-test의 서로 다른 유효 테스트 토큰), cosmos_endpoint, cosmos_readonly_key, storage_url을 넣고 Azure CLI로 Raw 읽기 권한이 있는 팀 계정에 로그인합니다. Cosmos 검증 키는 읽기 전용입니다. Cosmos/Raw 리소스를 생성하거나 Capture 설정을 바꾸는 스크립트가 아닙니다. 실제 iPhone 검증을 대체하지 않습니다.
 
 ## 파일과 인계 위치
 
@@ -168,7 +192,7 @@ func azure functionapp publish func-canopy-dev --build remote
 | 신규 | shared/schemas/trip.schema.json | 기존 Cosmos 필드와 Trip API 결과 계약 |
 | 신규 | apps/ios/src/tripApi.ts | 영속 시작 요청, stop 재전송, GET polling |
 | 신규 | apps/api/tests/test_trips.py, apps/ios/tests/trip.test.ts | 상태·장애·ID 일치 검증 |
-| 신규 | tools/azure/package_trip_api.py, tools/repo/check_trip.ps1 | 공용 Functions 패키지, 로컬 검증 명령 |
+| 신규 | tools/azure/package_trip_api.py, tools/azure/check_trip_e2e.py, tools/repo/check_trip.ps1 | 공용 Functions 패키지, 로컬 검증 명령 |
 | 수정 | apps/api/README.md, .env.example, requirements.txt | 인계/설정/의존성 |
 | 수정 | apps/ios/src/collector.ts, location.ts | 서버 생성 trip_id로 측정 시작 |
 | 수정 | apps/ios/src/storage.ts, types.ts | SQLite 시작 요청 보존 및 server 메타데이터 |
