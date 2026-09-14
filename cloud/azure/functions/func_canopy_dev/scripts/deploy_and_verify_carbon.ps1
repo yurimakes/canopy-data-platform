@@ -39,8 +39,8 @@ try {
         throw "Carbon unit tests failed. Deployment stopped."
     }
 
-    Write-Host "[5/7] Publishing the whole func-canopy-dev deployment unit..."
-    func azure functionapp publish $FunctionAppName
+    Write-Host "[5/7] Publishing the whole func-canopy-dev deployment unit as Python..."
+    func azure functionapp publish $FunctionAppName --python
     if ($LASTEXITCODE -ne 0) {
         throw "Azure Functions publish failed."
     }
