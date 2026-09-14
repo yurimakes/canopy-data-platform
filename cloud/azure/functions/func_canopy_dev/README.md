@@ -50,6 +50,7 @@ Key rules:
 - segment distance input is `distance_m` and is converted to km before calculation
 - carbon calculation currently uses **`predicted_mode` only**
 - user confirmation/correction is intentionally **not applied** until the team agrees on that policy
+- if `user_confirmed_mode` is present in input, the calculator ignores it for now and still uses `predicted_mode`
 - a previously stored `emission_kgco2e` value is never reused as an input to the calculation
 - walk and human-powered bike are `0 kgCO2e` within the Canopy MVP operational-use boundary
 - motorcycle, e-bike and e-scooter are not supported in the current MVP
