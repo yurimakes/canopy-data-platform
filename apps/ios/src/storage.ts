@@ -2,7 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { encode, normalize } from './normalize';
 import type { LocationObject } from 'expo-location';
 import type { Diagnostic, GpsEvent, Identity, Summary, Trip, TransportMode } from './types';
-export type ActiveTrip = { trip_id: string; labels: Array<{ at: number; mode: TransportMode }>; stop_at?: number; error?: string };
+export type ActiveTrip = { trip_id: string; labels: Array<{ at: number; mode: TransportMode | null }>; stop_at?: number; error?: string };
 export type Delivery = { event_id: string; payload: string; endpoint: string; retry_count: number; lease_token: string };
 export const DDL = `
 PRAGMA journal_mode = WAL;
@@ -95,7 +95,7 @@ export class Storage {
     const row = await this.db.getFirstAsync<{payload:string}>('SELECT payload FROM active_trip WHERE singleton=1');
     return row ? JSON.parse(row.payload) : null;
   }
-  startActive(trip: Trip, mode: TransportMode) {
+  startActive(trip: Trip, mode: TransportMode | null) {
     return this.transaction(async () => {
       if (await this.active()) throw new Error('이미 측정 중인 Trip이 있습니다.');
       await this.db.runAsync('INSERT INTO trips VALUES (?,?)', trip.trip_id, encode(trip));

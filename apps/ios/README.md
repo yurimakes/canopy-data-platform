@@ -28,7 +28,7 @@ npm run start:tunnel
 
 ## 공통 계약
 
-[GPS JSON Schema](../../shared/schemas/gps.collector.schema.json)를 사용합니다. 새 Trip은 `canopy.gps.collector.v0.2`, `collection_mode=developer`, `label=walk|bike|car|bus|rail`로 기록합니다. 라벨은 실제 측정 시각 기준입니다. 사용자용 화면은 추후 별도로 구현하며 `collection_mode=user`, `label=null` 계약입니다. label은 튜플이 아니며 undefined는 사용하지 않습니다.
+[GPS JSON Schema](../../shared/schemas/gps.collector.schema.json)를 사용합니다. 개발자용 새 Trip은 `canopy.gps.collector.v0.2`, `collection_mode=developer`, `label=walk|bike|car|bus|rail`로 기록합니다. 라벨은 실제 측정 시각 기준입니다. 첫 화면의 사용자용 버튼은 `collection_mode=user`, `label=null`로 수집하고, 개발자용 버튼은 라벨 선택 화면으로 진입합니다. 측정 중에는 화면 종류를 바꿀 수 없습니다. 버튼은 임시 화면 선택이며 계정 생성이나 인증 권한 부여를 하지 않습니다. 팀 로그인 연동 시 이 진입 선택을 인증 결과로 교체하면 됩니다. Trip API의 기존 토큰 설정은 여전히 필요합니다. label은 튜플이 아니며 undefined는 사용하지 않습니다.
 
 기존 v0.1 원본·대기열을 수정하지 않고, 진행 중인 v0.1 Trip도 종료까지 기존 라벨을 유지합니다. 공통 스키마는 생산자 계약이며 Raw 수신 서버의 필드 선별/차단을 추가하지 않습니다. 기존 `gps_event_schema.xlsx`는 이전 계약 문서로 보존하며 v0.2의 추가 필드/라벨은 JSON Schema를 기준으로 검토합니다.
 

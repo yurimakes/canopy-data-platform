@@ -177,3 +177,26 @@ it('retries a lost stop response without losing the stored Trip or starting a ne
   expect((await recovered.result(id))?.result?.trip_id).toBe(id);
   expect(stopCount).toBe(2);expect(await s.db.list()).toHaveLength(1);
 });
+
+it('user screen collects unlabeled GPS and cannot switch to developer during a Trip',async()=>{
+  const s=await setup();s.collector.selectCollectionMode('user');
+  await s.collector.start();expect(s.collector.phase).toBe('recording');
+  s.collector.selectCollectionMode('developer');await s.collector.selectMode('bus');
+  expect(s.collector.collectionMode).toBe('user');
+  s.emit();await s.collector.stop();
+  const events=await acceptGps(s.db);
+  expect(events).toHaveLength(1);
+  expect(events[0]).toMatchObject({collection_mode:'user',label:null});
+  s.collector.selectCollectionMode('developer');await s.collector.selectMode('bus');
+  await s.collector.start();s.emit();await s.collector.stop();
+  expect((await acceptGps(s.db))[0]).toMatchObject({collection_mode:'developer',label:'bus'});
+});
+it('user background Trip refresh preserves null labels',async()=>{
+  const s=await setup(':memory:',fetch,true);s.collector.selectCollectionMode('user');
+  await s.collector.start();
+  await s.db.appendBackground([location()],new Date().toISOString(),randomUUID);
+  await s.collector.refresh();
+  expect(s.collector.collectionMode).toBe('user');expect(s.collector.mode).toBeNull();
+  expect(s.collector.latest).toMatchObject({collection_mode:'user',label:null});
+  await s.collector.stop();
+});

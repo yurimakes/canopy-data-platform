@@ -3,7 +3,7 @@ import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Network from 'expo-network';
 import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
-import { MeasurementScreen } from './src/ui/MeasurementScreen';
+import { EntryScreen, MeasurementScreen } from './src/ui/MeasurementScreen';
 import { Collector } from './src/collector';
 import { Storage } from './src/storage';
 import { ports, foregroundOnly } from './src/location';
@@ -21,6 +21,7 @@ function initialize() { return runtime ??= (async () => {
 export default function App() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
+  const [screen,setScreen]=useState<'user'|'developer'|null>(null);
   const [error,setError]=useState(''); const [sharing,setSharing]=useState(false);
   const [now,setNow]=useState(Date.now()); const c=service?.collector;
   const [delivery,setDelivery]=useState<{pending:number;blocked:number;sent:number;last_success:string|null}>();
@@ -31,7 +32,7 @@ export default function App() {
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
     let alive=true;
-    void initialize().then(s=>{ if(!alive)return; setService(s); s.collector.changed=()=>redraw(n=>n+1); }).catch(e=>setError(String(e)));
+    void initialize().then(s=>{ if(!alive)return; setService(s); if(s.collector.trip?.status==='recording')setScreen(s.collector.collectionMode); s.collector.changed=()=>redraw(n=>n+1); }).catch(e=>setError(String(e)));
     const timer=setInterval(()=>setNow(Date.now()),1000);
     const sub=AppState.addEventListener('change',state=>{void runtime?.then(s=>s.collector.appStateChanged(state));});
     return ()=>{alive=false;clearInterval(timer);sub.remove();void runtime?.then(s=>{s.collector.changed=()=>{};void s.collector.interrupt('화면 종료');});};
@@ -63,7 +64,7 @@ export default function App() {
   },[service]);
   useEffect(()=>{if(service && c?.phase!=='recording' && c?.phase!=='starting') void service.db.list().then(setTrips).catch(e=>setError(String(e)));},[service,c?.phase]);
   const trip=c?.trip; const seconds=trip ? Math.max(0,Math.floor(((trip.ended_at ? Date.parse(trip.ended_at) : trip.status==='recording' ? now : Date.parse(c?.latest?.received_at ?? trip.started_at))-Date.parse(trip.started_at))/1000)) : 0;
-  const resultMatches=!trip || trip.trip_id===resultTrip?.trip_id;
+  const resultMatches=(!trip || trip.trip_id===resultTrip?.trip_id) && (resultTrip?.collection_mode??'developer')===screen;
   const duration=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
   async function share(id:string) {
     if(!service||sharing)return;setSharing(true);setError('');
@@ -98,7 +99,10 @@ export default function App() {
       await files.share(file.uri,'metadata');
     }catch(e){setError('측정 결과 공유 오류: '+String(e));}finally{setSharing(false);}
   }
+  if(screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><EntryScreen ready={!!c} error={error}
+    onEnter={mode=>{if(c){c.selectCollectionMode(mode);setError('');setScreen(c.collectionMode);}}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><MeasurementScreen
+    collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))setScreen(null);}}
     ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={c?.count??0} duration={duration}
     accuracy={c?.latest?.accuracy??null} latestLabel={c?.latest?.label} tripId={trip?.trip_id}
     error={error||c?.error||''} onMode={mode=>{void c?.selectMode(mode).catch(e=>setError(String(e)));}} onStart={()=>{void c?.start();}}
@@ -110,7 +114,7 @@ export default function App() {
     confirmedEvent={resultMatches?evidence?.sent??undefined:undefined} retryCount={resultMatches?evidence?.head?.retry_count:undefined}
     resultTrip={resultMatches?resultTrip:undefined} sent={delivery?.sent} blocked={delivery?.blocked} onShareCheck={()=>{void shareCheck();}}
     canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
-    serverTrip={serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
+    serverTrip={resultMatches && serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
     onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;
