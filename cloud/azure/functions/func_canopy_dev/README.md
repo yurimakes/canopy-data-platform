@@ -87,7 +87,7 @@ The script:
 3. publishes the whole `func-canopy-dev` deployment unit
 4. confirms the carbon Function is registered
 5. calls `carbon-smoke`
-6. verifies expected emissions and policy/version fields
+6. verifies expected emissions plus `mode_source`, user-confirmation flag and policy/version fields
 
 If the script completes successfully, no post-test code change is required for this WBS. Record the Azure PASS evidence, then the PR can be reviewed/merged according to the team process.
 
