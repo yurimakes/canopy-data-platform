@@ -179,6 +179,17 @@ class TripTests(unittest.TestCase):
         self.stop(trip, {"expected_last_sequence": 999})
         self.assertEqual(self.api.get(trip["trip_id"], "alice")["expected_last_sequence"], 211)
 
+    def test_trip_database_does_not_reuse_or_change_smoke_database(self):
+        from services.runtime import service
+        service.cache_clear()
+        self.addCleanup(service.cache_clear)
+        with patch.dict(os.environ, {"TRIP_STORE": "cosmos", "COSMOS_ENDPOINT": "https://cosmos.test",
+                                    "COSMOS_DATABASE": "canopy-smoke", "COSMOS_TRIPS_DATABASE": "canopy-db",
+                                    "COSMOS_TRIPS_CONTAINER": "trips", "TRIP_CAMPAIGN_ID": "test-campaign"}):
+            with patch("services.runtime.CosmosTripStore") as store:
+                service()
+                store.assert_called_once_with("https://cosmos.test", "canopy-db", "trips")
+                self.assertEqual(os.environ["COSMOS_DATABASE"], "canopy-smoke")
     def test_jwt_signature_expiry_and_audience_are_checked(self):
         import jwt
         from cryptography.hazmat.primitives.asymmetric import rsa

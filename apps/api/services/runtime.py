@@ -20,7 +20,7 @@ def service():
             raise RuntimeError("SQLite is available only for local development")
         store = SQLiteTripStore(os.getenv("TRIP_SQLITE_PATH", ".local-data/trips.sqlite"))
     else:
-        store = CosmosTripStore(os.environ["COSMOS_ENDPOINT"], os.environ["COSMOS_DATABASE"],
+        store = CosmosTripStore(os.environ["COSMOS_ENDPOINT"], os.environ["COSMOS_TRIPS_DATABASE"],
                                 os.environ["COSMOS_TRIPS_CONTAINER"])
     selection = os.environ.get("TRIP_PROCESSOR", "mock")
     if selection == "mock":
