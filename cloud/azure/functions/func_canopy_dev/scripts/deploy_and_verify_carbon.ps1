@@ -64,11 +64,40 @@ if (($functionNames -join "`n") -notmatch "carbon") {
     throw "carbon-smoke Function was not found after deployment."
 }
 
-$hostName = az functionapp show `
+# Resolve the exact invoke URL from the deployed function metadata first.
+# This is more robust than assuming defaultHostName is populated for every Function App plan/API shape.
+$invokeUrl = az functionapp function show `
     --resource-group $ResourceGroup `
     --name $FunctionAppName `
-    --query "defaultHostName" `
+    --function-name carbon_smoke `
+    --query "invokeUrlTemplate" `
     -o tsv
+
+if (-not $invokeUrl) {
+    # Fallback 1: function app default hostname.
+    $hostName = az functionapp show `
+        --resource-group $ResourceGroup `
+        --name $FunctionAppName `
+        --query "defaultHostName" `
+        -o tsv
+
+    if (-not $hostName) {
+        # Fallback 2: first hostname entry if defaultHostName is empty/null.
+        $hostName = az functionapp show `
+            --resource-group $ResourceGroup `
+            --name $FunctionAppName `
+            --query "hostNames[0]" `
+            -o tsv
+    }
+
+    if ($hostName) {
+        $invokeUrl = "https://$hostName/api/carbon-smoke"
+    }
+}
+
+if (-not $invokeUrl) {
+    throw "Could not resolve carbon-smoke invoke URL from Function metadata or Function App hostname."
+}
 
 $functionKey = az functionapp keys list `
     --resource-group $ResourceGroup `
@@ -76,14 +105,12 @@ $functionKey = az functionapp keys list `
     --query "functionKeys.default" `
     -o tsv
 
-if (-not $hostName) {
-    throw "Could not resolve Function App hostname."
-}
 if (-not $functionKey) {
     throw "Could not retrieve the default Function key."
 }
 
-$carbonUrl = "https://$hostName/api/carbon-smoke?code=$functionKey"
+$separator = if ($invokeUrl.Contains("?")) { "&" } else { "?" }
+$carbonUrl = "$invokeUrl${separator}code=$functionKey"
 
 Write-Host "[7/7] Calling carbon-smoke in Azure..."
 & $verifyScript -FunctionUrl $carbonUrl
