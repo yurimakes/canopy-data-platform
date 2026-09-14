@@ -5,6 +5,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# NOTE:
+# $FunctionUrl may include a Function key because the HTTP endpoint uses FUNCTION auth.
+# This key authenticates the HTTP request only. It is not used for Azure resource access.
+# Azure-to-Azure access in Canopy remains Managed Identity/RBAC based.
+
 function Invoke-CarbonCase {
     param(
         [string]$Name,
