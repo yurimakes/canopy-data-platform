@@ -1,0 +1,10 @@
+case_id,scenario,input,expected_kgCO2e,expected_status,note
+C01,walk 1.2km,walk / 1200m,0.0,PASS,operational-use phase zero
+C02,bike 5km,bike / 5000m,0.0,PASS,human-powered bicycle
+C03,bus 3km,bus / 3000m,0.37656,PASS,3 x 0.12552
+C04,car 3km,car / 3000m,0.49773,PASS,3 x 0.16591; one user per vehicle assumption
+C05,rail 10km,rail / 10000m,0.1549,PASS,10 x 0.01549
+C06,multi-segment,walk 0.4km + bus 5km + walk 0.3km,0.6276,PASS,sum raw segment emissions
+C07,user correction,bus 3km -> car 3km,0.49773,PASS,stale bus emission must not be reused
+C08,missing distance,bus / distance_m missing,,ERROR,missing_distance
+C09,unsupported motorcycle,motorcycle / 1000m,,ERROR,unsupported_mode
