@@ -52,7 +52,8 @@ azure_identity:
   note: >
     Azure 리소스 간 연결은 Managed Identity/RBAC를 사용한다.
     탄소 계산기는 자체 계산 로직이므로 Azure credential을 직접 요구하지 않는다.
-    이후 Cosmos DB 등 Azure 리소스 접근은 DefaultAzureCredential로 Function의 System Assigned Managed Identity를 사용한다.
+    이후 Cosmos DB 등 Azure 리소스 접근은 DefaultAzureCredential을 통해
+    func-canopy-dev의 System Assigned Managed Identity를 사용하고 connection string이나 account key를 사용하지 않는다.
 
 factors:
   walk:
