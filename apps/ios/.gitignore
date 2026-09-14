@@ -1,0 +1,16 @@
+node_modules/
+.expo/
+dist/
+dist-*/
+coverage/
+exports/
+SQLite/
+ios/
+android/
+*.gps.json
+*.gps.jsonl
+*.trip-check.json
+*.metadata.json
+*.avro
+*.ipa
+*.xcarchive

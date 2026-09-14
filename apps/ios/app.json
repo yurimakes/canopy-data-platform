@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Canopy GPS",
+    "slug": "canopy-gps-collector",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "kr.canopy.gpscollector",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "isIosBackgroundLocationEnabled": true,
+          "locationWhenInUsePermission": "이동수단 학습용 GPS 데이터를 수집하기 위해 위치 접근이 필요합니다.",
+          "locationAlwaysAndWhenInUsePermission": "측정 중 화면을 잠그거나 다른 앱을 사용해도 이동 기록을 저장하려면 항상 위치 접근이 필요합니다."
+        }
+      ],
+      "expo-sharing"
+    ]
+  }
+}
