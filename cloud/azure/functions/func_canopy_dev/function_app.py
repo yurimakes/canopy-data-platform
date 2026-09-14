@@ -3,6 +3,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
 import azure.functions as func
 
@@ -11,8 +12,18 @@ from azure.eventhub import EventHubProducerClient, EventData
 from azure.cosmos import CosmosClient
 from azure.keyvault.secrets import SecretClient
 
+from carbon_calculator import (
+    CarbonCalculationError,
+    calculate_trip_carbon,
+    load_policy,
+    result_to_dict,
+)
+
 
 app = func.FunctionApp()
+
+BASE_DIR = Path(__file__).resolve().parent
+CARBON_POLICY = load_policy(BASE_DIR / "carbon_policy.yaml")
 
 
 # ---------------------------------------------------------
@@ -238,6 +249,8 @@ def keyvault_smoke(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
             mimetype="application/json"
         )
+
+
 # ---------------------------------------------------------
 # 5. GPS Bronze ingestion -> Event Hubs
 # ---------------------------------------------------------
@@ -307,3 +320,77 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
     )
 
     return _gps_json_response({"status": "accepted"}, 202)
+
+
+# ---------------------------------------------------------
+# 6. Carbon calculator integration smoke test
+# ---------------------------------------------------------
+# This endpoint is for validating that Azure Functions uses the same
+# carbon_policy.yaml + carbon_calculator.py as later Trip result APIs.
+# It is not the final client-facing Trip result contract.
+@app.route(
+    route="carbon-smoke",
+    methods=["POST"],
+    auth_level=func.AuthLevel.FUNCTION,
+)
+def carbon_smoke(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        payload = req.get_json()
+    except ValueError:
+        return func.HttpResponse(
+            json.dumps({"status": "FAIL", "code": "invalid_json"}),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    segments = payload.get("segments") if isinstance(payload, dict) else None
+    if not isinstance(segments, list) or not segments:
+        return func.HttpResponse(
+            json.dumps({
+                "status": "FAIL",
+                "code": "invalid_segments",
+                "message": "segments must be a non-empty array",
+            }),
+            status_code=400,
+            mimetype="application/json",
+        )
+
+    try:
+        result = calculate_trip_carbon(segments, CARBON_POLICY)
+        response = result_to_dict(result)
+        response["status"] = "PASS"
+
+        logging.info(
+            "carbon_smoke_success segments=%d factor_version=%s policy_version=%s",
+            len(segments),
+            result.factor_version,
+            result.policy_version,
+        )
+
+        return func.HttpResponse(
+            json.dumps(response, ensure_ascii=False),
+            status_code=200,
+            mimetype="application/json",
+        )
+
+    except CarbonCalculationError as e:
+        logging.warning("carbon_smoke_rejected code=%s", e.code)
+        return func.HttpResponse(
+            json.dumps({
+                "status": "FAIL",
+                "code": e.code,
+                "message": str(e),
+            }),
+            status_code=422,
+            mimetype="application/json",
+        )
+    except Exception:
+        logging.exception("carbon_smoke_failed")
+        return func.HttpResponse(
+            json.dumps({
+                "status": "FAIL",
+                "code": "internal_error",
+            }),
+            status_code=500,
+            mimetype="application/json",
+        )
