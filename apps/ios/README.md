@@ -8,13 +8,23 @@ React Native + Expo SDK 57 개발자용 수집 화면입니다. Trip 시작/종�
 cd apps/ios
 npm ci
 Copy-Item .env.example .env
-# .env에 팀 GPS API 주소와 함수 키 설정
+# .env에 GPS 및 Trip API 설정 (아래 Trip API 연결 참고)
 npm run start:tunnel
 ```
 
 이미 `.env`가 있으면 복사로 덮어쓰지 않습니다. QR을 iPhone에서 열고 라벨 선택 → 측정 시작 → 종료합니다. GPS는 측정 중 자동 전송되고 종료 후에도 미전송 데이터는 남습니다. Expo Go에서는 화면을 켜 두어야 합니다. 환경설정 변경 후 Metro 재시작/앱 재로드가 필요합니다.
 
 `POST /api/gps`, `x-functions-key` 헤더로 원본 이벤트 한 건을 전송합니다. HTTP 202와 `status=accepted` 응답에서 접수 완료로 처리합니다. 응답에 ID가 있으면 일치 여부도 확인합니다. API 접수는 Capture/Raw 저장 완료 증거가 아닙니다. 새 API 주소로 바꿔도 이전 주소에 묶인 대기열을 임의로 다른 서버에 전송하지 않습니다.
+
+## Trip API 연결
+
+`CANOPY_TRIP_API_URL=https://<Function App의 실제 호스트>/api`, `CANOPY_TRIP_ACCESS_TOKEN`에 해당 사용자의 유효한 access token, `CANOPY_TRIP_FUNCTION_KEY`에 Trip API용 함수 키 또는 공통 host key를 설정합니다. GPS 전용 함수 키는 Trip 함수에 사용할 수 없습니다. EAS 빌드에도 같은 설정이 필요합니다. 현재 앱에는 로그인 화면이 없으므로 환경변수의 access token은 개발 테스트용이며 만료되면 갱신해야 합니다. 로그인 기능을 붙일 때는 `backgroundLocationTask.ts`의 `tripConfig()`가 로그인 세션에서 최신 token을 가져오도록 연결합니다.
+
+측정 시작은 `POST /api/trips/start` 응답을 받은 뒤 GPS를 수집합니다. 처음 시작할 때 인터넷이 필요하며 앱이 별도 Trip ID를 만들지 않습니다. 시작 응답이 유실되면 같은 요청 ID로 다시 시도합니다. 시작한 뒤에는 인터넷이 끊겨도 GPS를 로컬에 저장합니다.
+
+측정 종료는 GPS 수집을 먼저 중단합니다. 해당 Trip의 GPS가 모두 접수되면 `POST /api/trips/{trip_id}/stop`을 보내고 `GET /api/trips/{trip_id}`를 조회합니다. `processing`, `ready`, `failed`와 segment 결과를 같은 화면에 표시합니다. 미전송 GPS와 종료 상태는 앱 재실행 후에도 남습니다. 앱이 강제 종료된 동안 재시도는 실행되지 않으며 다음 실행 시 이어집니다.
+
+서버 설치, 로컬 테스트, Azure 배포는 [Trip API 실행 및 인계](../api/README.md)를 참고하세요. `npm test`는 PC의 Python 로컬 서버와 SQLite를 사용하며 Azure나 실제 iPhone에 접속하지 않습니다.
 
 ## 공통 계약
 

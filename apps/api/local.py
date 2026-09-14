@@ -3,6 +3,9 @@ import json
 import logging
 import os
 import threading
+import secrets
+import sys
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dotenv import load_dotenv
 from trip_routes import dispatch
@@ -32,6 +35,16 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
+    if "--init" in sys.argv:
+        path = Path(__file__).with_name(".env")
+        if path.exists():
+            raise RuntimeError(".env already exists; existing configuration was not overwritten")
+        token = secrets.token_urlsafe(32)
+        template = path.with_name(".env.example").read_text(encoding="utf-8")
+        template = template.replace("TRIP_LOCAL_TOKENS={}", "TRIP_LOCAL_TOKENS=" + json.dumps({"developer-test": token}))
+        path.write_text(template, encoding="utf-8")
+        print("Created apps/api/.env with a local-only test credential. No Azure settings were changed.")
+        return
     load_dotenv()
     if not local_mode() or os.getenv("TRIP_STORE") != "sqlite":
         raise RuntimeError("local.py requires APP_ENV=development and TRIP_STORE=sqlite")
