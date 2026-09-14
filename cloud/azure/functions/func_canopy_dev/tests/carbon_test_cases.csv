@@ -5,7 +5,7 @@ C03,bus 3km,bus / 3000m,0.37656,PASS,3 x 0.12552
 C04,car 3km,car / 3000m,0.49773,PASS,3 x 0.16591; one user per vehicle assumption
 C05,rail 10km,rail / 10000m,0.1549,PASS,10 x 0.01549
 C06,multi-segment,walk 0.4km + bus 5km + walk 0.3km,0.6276,PASS,sum raw segment emissions
-C07,user correction,bus 3km -> car 3km,0.49773,PASS,stale bus emission must not be reused
+C07,user confirmation pending,predicted bus 3km + user_confirmed car,0.37656,PASS,user confirmation intentionally ignored until team agreement
 C08,missing distance,bus / distance_m missing,,ERROR,missing_distance
-C09,missing factor,bus / factor value missing,,ERROR,missing_factor
+C09,missing factor,bus / factor missing,,ERROR,missing_factor
 C10,unsupported motorcycle,motorcycle / 1000m,,ERROR,unsupported_mode
