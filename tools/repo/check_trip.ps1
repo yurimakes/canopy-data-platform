@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $tripRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $tripPython = Join-Path $tripRoot 'apps/api/.venv/Scripts/python.exe'
 if (-not (Test-Path -LiteralPath $tripPython)) { throw 'apps/api/README.md의 최초 설치 명령을 먼저 실행하세요.' }

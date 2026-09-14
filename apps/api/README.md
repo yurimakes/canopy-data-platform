@@ -6,7 +6,7 @@
 
 앱 시작 버튼 → Trip API의 서버 생성 ID → 기존 GPS collector/SQLite/`POST /api/gps` → 앱 종료 버튼 → 미전송 GPS 접수 완료 → Trip 종료 API → DB의 `processing` 문서 → worker → processor → DB에 segments 저장 → `ready` 조회 순서입니다.
 
-기존 `cloud/azure/functions/func_canopy_dev`의 GPS 수신과 4개 점검 함수는 수정하지 않았습니다. `tools/azure/package_trip_api.py`가 기존 앱에 Trip Blueprint를 등록한 배포 폴더를 만듭니다. Functions는 현재 팀 코드의 `DefaultAzureCredential`, `COSMOS_ENDPOINT`, `COSMOS_DATABASE`를 재사용합니다. GPS payload, Event Hubs와 Capture 경로는 그대로입니다.
+기존 `cloud/azure/functions/func_canopy_dev`의 GPS 수신과 4개 점검 함수는 수정하지 않았습니다. `tools/azure/package_trip_api.py`가 기존 앱에 Trip Blueprint를 등록한 배포 폴더를 만듭니다. Functions는 현재 팀 코드의 `DefaultAzureCredential`, `COSMOS_ENDPOINT`를 재사용하고 Trip DB는 `COSMOS_TRIPS_DATABASE`로 분리합니다. GPS payload, Event Hubs와 Capture 경로는 그대로입니다.
 
 ## API 계약
 
@@ -117,7 +117,7 @@ GPS API 설정은 기존 팀 주소와 키를 사용합니다. 실제 GPS 전송
 
 아래는 운영자가 수행할 절차입니다. 이 작업에서는 실행하지 않았습니다.
 
-1. `5dt-2nd-team1` → `func-canopy-dev` → 설정 → 환경 변수에서 기존 Cosmos/Event Hubs/Key Vault/스토리지 설정을 유지합니다. COSMOS_DATABASE가 canopy-db인지 확인하고 COSMOS_TRIPS_CONTAINER=trips, APP_ENV=production, TRIP_STORE=cosmos, TRIP_PROCESSOR=mock, TRIP_CAMPAIGN_ID=실제 캠페인 ID를 추가합니다. COSMOS_CONTAINER는 기존 점검 함수가 사용하므로 바꾸지 않습니다.
+1. `5dt-2nd-team1` → `func-canopy-dev` → 설정 → 환경 변수에서 기존 Cosmos/Event Hubs/Key Vault/스토리지 설정을 유지합니다. 기존 COSMOS_DATABASE=canopy-smoke는 유지하고 COSMOS_TRIPS_DATABASE=canopy-db, COSMOS_TRIPS_CONTAINER=trips, APP_ENV=production, TRIP_STORE=cosmos, TRIP_PROCESSOR=mock, TRIP_CAMPAIGN_ID=실제 캠페인 ID를 추가합니다. COSMOS_DATABASE와 COSMOS_CONTAINER는 기존 점검 함수가 사용하므로 바꾸지 않습니다.
 2. 같은 메뉴에 TRIP_AUTH_MODE=jwt, TRIP_JWT_ISSUER, TRIP_JWT_AUDIENCE, TRIP_JWKS_URL, TRIP_USER_ID_CLAIM을 팀 로그인 계약에 맞춰 넣습니다. JWT는 RS256 서명, 만료, issuer, audience를 검증합니다. 아직 로그인 제공자가 정해지지 않았다면 이 값은 임의로 채우지 않습니다. local 인증은 Azure에서 차단됩니다.
 3. 같은 메뉴에 TRIP_WORKER_SCHEDULE=`*/30 * * * * *`, TRIP_PROCESS_DELAY_SECONDS=5, TRIP_PROCESS_LEASE_SECONDS=900을 추가합니다. 테스트가 끝나면 `AzureWebJobs.trip_worker.Disabled=true`로 timer를 멈출 수 있습니다. 다시 테스트할 때 false로 되돌립니다. Timer는 기존 AzureWebJobsStorage를 사용하며 주기적인 Cosmos 읽기가 발생합니다.
 4. Cosmos 계정 → Data Explorer → canopy-db → trips → Settings에서 partition key가 `/user_id`인지 확인합니다. func-canopy-dev의 관리 ID에 이 DB/컨테이너의 Cosmos DB 데이터 읽기·쓰기 권한이 있어야 합니다. 일반 Azure IAM Reader/Contributor만으로 데이터 권한이 충족됐다고 판단하지 않습니다. 권한이 없으면 Cosmos 데이터 역할 할당 담당자에게 요청합니다.
