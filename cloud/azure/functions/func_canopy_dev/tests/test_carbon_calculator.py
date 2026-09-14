@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,18 @@ def test_missing_distance_is_error_not_zero():
             POLICY,
         )
     assert exc.value.code == "missing_distance"
+
+
+def test_missing_factor_is_error_not_zero():
+    policy = deepcopy(POLICY)
+    policy["factors"]["bus"]["value"] = None
+
+    with pytest.raises(CarbonCalculationError) as exc:
+        calculate_trip_carbon(
+            [{"segment_id": "seg-1", "predicted_mode": "bus", "distance_m": 1000}],
+            policy,
+        )
+    assert exc.value.code == "missing_factor"
 
 
 def test_motorcycle_is_explicitly_unsupported():
