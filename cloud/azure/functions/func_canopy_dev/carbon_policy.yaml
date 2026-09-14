@@ -33,10 +33,12 @@ output:
   storage_decimals: 6
   display_decimals: 3
 
-mode_resolution:
-  precedence:
-    - "user_confirmed_mode"
-    - "predicted_mode"
+mode_source:
+  field: "predicted_mode"
+  user_confirmation_applied: false
+  note: >
+    사용자 확인/수정값을 탄소 계산에 반영하는 정책은 팀 합의 전이므로 현재 계산에서는 사용하지 않는다.
+    현재 탄소량은 predicted_mode만 기준으로 계산한다.
 
 missing_value_policy:
   missing_distance: "error"
@@ -44,6 +46,13 @@ missing_value_policy:
   missing_mode: "error"
   unsupported_mode: "error"
   missing_factor: "error"
+
+azure_identity:
+  resource_authentication: "managed_identity"
+  note: >
+    Azure 리소스 간 연결은 Managed Identity/RBAC를 사용한다.
+    탄소 계산기는 자체 계산 로직이므로 Azure credential을 직접 요구하지 않는다.
+    이후 Cosmos DB 등 Azure 리소스 접근은 DefaultAzureCredential로 Function의 System Assigned Managed Identity를 사용한다.
 
 factors:
   walk:
