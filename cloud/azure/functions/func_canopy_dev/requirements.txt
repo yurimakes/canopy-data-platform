@@ -3,3 +3,4 @@ azure-identity
 azure-eventhub
 azure-cosmos
 azure-keyvault-secrets
+PyYAML
