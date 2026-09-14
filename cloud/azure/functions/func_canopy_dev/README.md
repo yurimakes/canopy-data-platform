@@ -57,9 +57,13 @@ Key rules:
 - factor version: `2026_v1`
 - policy version: `carbon-policy-v1`
 
-`carbon-smoke` exists only to validate the Functions integration with the shared policy/calculator. The final client-facing Trip result contract is implemented in the separate Trip result API task.
+The reusable production implementation for this WBS is `carbon_policy.yaml` + `carbon_calculator.py`.
 
-Local validation command:
+`carbon-smoke` in `function_app.py` is an integration-validation route that proves the deployed Function App can load and execute the same shared policy/calculator. It is **not** the final client-facing Trip result API. Because `func-canopy-dev` is the development Function App and existing smoke endpoints are already kept there, `carbon-smoke` may remain after validation; no cleanup code change is required to close this WBS.
+
+The final client-facing Trip result endpoint will be implemented in the separate `Trip 결과와 탄소 계산 Functions API` task and will call the same calculator. That later task will therefore modify `function_app.py` again, but it does not replace or invalidate this WBS implementation.
+
+## Local validation
 
 ```bash
 python -m pip install -r requirements-dev.txt
@@ -67,6 +71,25 @@ python -m pytest -q tests/test_carbon_calculator.py
 ```
 
 Expected result for this change: `10 passed`.
+
+## Azure deployment + verification
+
+From this directory, after `az login`, run:
+
+```powershell
+.\scripts\deploy_and_verify_carbon.ps1
+```
+
+The script:
+
+1. selects the Canopy subscription
+2. runs the 10 carbon tests
+3. publishes the whole `func-canopy-dev` deployment unit
+4. confirms the carbon Function is registered
+5. calls `carbon-smoke`
+6. verifies expected emissions and policy/version fields
+
+If the script completes successfully, no post-test code change is required for this WBS. Record the Azure PASS evidence, then the PR can be reviewed/merged according to the team process.
 
 ## Verified on 2026-09-14 before carbon policy deployment
 
