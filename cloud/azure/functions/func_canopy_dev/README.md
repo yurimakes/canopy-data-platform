@@ -49,7 +49,7 @@ python -m pip install -r requirements-dev.txt
 python -m pytest -q tests/test_carbon_calculator.py
 ```
 
-Expected result for this change: `9 passed`.
+Expected result for this change: `10 passed`.
 
 ## Verified on 2026-09-14 before carbon policy deployment
 
