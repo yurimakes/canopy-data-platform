@@ -1,6 +1,7 @@
 """Optimistic concurrency for existing Cosmos containers; no resource creation."""
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
@@ -74,8 +75,14 @@ class SQLiteTripStore:
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("CREATE TABLE IF NOT EXISTS trips (id TEXT PRIMARY KEY, version INTEGER NOT NULL, payload TEXT NOT NULL)")
 
+    @contextmanager
     def connect(self):
-        return sqlite3.connect(self.path, timeout=30)
+        connection = sqlite3.connect(self.path, timeout=30)
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def read(self, trip_id: str, user_id: str) -> dict | None:
         with self.connect() as db:
