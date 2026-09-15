@@ -29,22 +29,26 @@ class JobArgumentsTest(unittest.TestCase):
                 "predictions",
                 "--checkpoint-root",
                 "/Volumes/catalog_dev/bronze_dev/checkpoints",
-                "--event-hubs-bootstrap-servers",
-                "example.servicebus.windows.net:9093",
+                "--event-hubs-namespace",
+                "example",
                 "--event-hubs-topic",
                 "gps",
                 "--event-hubs-consumer-group",
                 "canopy",
+                "--event-hubs-sas-policy-name",
+                "listen-only",
                 "--event-hubs-secret-scope",
                 "scope",
                 "--event-hubs-secret-key",
                 "key",
                 "--model-uri",
-                "models:/catalog_dev.gold_dev.model@champion",
+                "models:/catalog_dev.ml_dev.model@champion",
             ]
         )
         self.assertEqual(args.catalog, "catalog_dev")
         self.assertEqual(args.features_table, "features")
+        self.assertEqual(args.event_hubs_namespace, "example")
+        self.assertEqual(args.event_hubs_sas_policy_name, "listen-only")
         self.assertEqual(args.trigger_interval, "10 seconds")
 
 

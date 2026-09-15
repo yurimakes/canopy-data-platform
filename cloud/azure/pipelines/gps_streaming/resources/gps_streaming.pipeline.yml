@@ -25,9 +25,10 @@ resources:
         canopy.features_table: ${var.features_table}
         canopy.segments_table: ${var.segments_table}
         canopy.predictions_table: ${var.predictions_table}
-        canopy.event_hubs.bootstrap_servers: ${var.event_hubs_bootstrap_servers}
+        canopy.event_hubs.namespace: ${var.event_hubs_namespace}
         canopy.event_hubs.topic: ${var.event_hubs_topic}
         canopy.event_hubs.consumer_group: ${var.event_hubs_consumer_group}
+        canopy.event_hubs.sas_policy_name: ${var.event_hubs_sas_policy_name}
         canopy.event_hubs.secret_scope: ${var.event_hubs_secret_scope}
         canopy.event_hubs.secret_key: ${var.event_hubs_secret_key}
         canopy.model_uri: ${var.model_uri}

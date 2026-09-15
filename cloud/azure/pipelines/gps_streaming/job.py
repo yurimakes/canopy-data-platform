@@ -1,4 +1,4 @@
-"""Databricks Jobs entry point for the complete Canopy GPS streaming graph."""
+"""Databricks Jobs entry point for the classic Canopy GPS streaming graph."""
 
 from __future__ import annotations
 
@@ -58,9 +58,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--segments-table", required=True)
     parser.add_argument("--predictions-table", required=True)
     parser.add_argument("--checkpoint-root", required=True)
-    parser.add_argument("--event-hubs-bootstrap-servers", required=True)
+    parser.add_argument("--event-hubs-namespace", required=True)
     parser.add_argument("--event-hubs-topic", required=True)
     parser.add_argument("--event-hubs-consumer-group", required=True)
+    parser.add_argument("--event-hubs-sas-policy-name", required=True)
     parser.add_argument("--event-hubs-secret-scope", required=True)
     parser.add_argument("--event-hubs-secret-key", required=True)
     parser.add_argument("--model-uri", required=True)
@@ -129,19 +130,27 @@ def event_hubs_stream(spark, args):
     except ImportError as exc:  # pragma: no cover - Databricks runtime boundary
         raise RuntimeError("Databricks dbutils is required for secret lookup") from exc
 
-    connection_string = dbutils.secrets.get(
+    policy_key = dbutils.secrets.get(
         scope=args.event_hubs_secret_scope,
         key=args.event_hubs_secret_key,
     )
+    connection_string = (
+        f"Endpoint=sb://{args.event_hubs_namespace}.servicebus.windows.net/;"
+        f"SharedAccessKeyName={args.event_hubs_sas_policy_name};"
+        f"SharedAccessKey={policy_key}"
+    )
     escaped = connection_string.replace("\\", "\\\\").replace('"', '\\"')
     jaas = (
-        "org.apache.kafka.common.security.plain.PlainLoginModule required "
+        "kafkashaded.org.apache.kafka.common.security.plain.PlainLoginModule required "
         'username="$ConnectionString" '
         f'password="{escaped}";'
     )
     return (
         spark.readStream.format("kafka")
-        .option("kafka.bootstrap.servers", args.event_hubs_bootstrap_servers)
+        .option(
+            "kafka.bootstrap.servers",
+            f"{args.event_hubs_namespace}.servicebus.windows.net:9093",
+        )
         .option("subscribe", args.event_hubs_topic)
         .option("kafka.security.protocol", "SASL_SSL")
         .option("kafka.sasl.mechanism", "PLAIN")

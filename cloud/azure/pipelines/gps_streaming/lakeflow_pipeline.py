@@ -82,26 +82,33 @@ _INFERENCE_HANDLER = None
 
 
 def _event_hubs_stream():
-    """Build the Event Hubs Kafka source without putting secrets in config."""
+    """Build the Event Hubs Kafka source without putting credentials in config."""
     try:
         from databricks.sdk.runtime import dbutils
     except ImportError as exc:  # pragma: no cover - Databricks runtime boundary
         raise RuntimeError("Databricks dbutils is required for secret lookup") from exc
 
-    connection_string = dbutils.secrets.get(
+    namespace = _conf("event_hubs.namespace")
+    policy_name = _conf("event_hubs.sas_policy_name")
+    policy_key = dbutils.secrets.get(
         scope=_conf("event_hubs.secret_scope"),
         key=_conf("event_hubs.secret_key"),
     )
+    connection_string = (
+        f"Endpoint=sb://{namespace}.servicebus.windows.net/;"
+        f"SharedAccessKeyName={policy_name};"
+        f"SharedAccessKey={policy_key}"
+    )
     escaped = connection_string.replace("\\", "\\\\").replace('"', '\\"')
     jaas = (
-        "org.apache.kafka.common.security.plain.PlainLoginModule required "
+        "kafkashaded.org.apache.kafka.common.security.plain.PlainLoginModule required "
         'username="$ConnectionString" '
         f'password="{escaped}";'
     )
     return (
         _spark()
         .readStream.format("kafka")
-        .option("kafka.bootstrap.servers", _conf("event_hubs.bootstrap_servers"))
+        .option("kafka.bootstrap.servers", f"{namespace}.servicebus.windows.net:9093")
         .option("subscribe", _conf("event_hubs.topic"))
         .option("kafka.security.protocol", "SASL_SSL")
         .option("kafka.sasl.mechanism", "PLAIN")

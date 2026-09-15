@@ -93,14 +93,18 @@ compute policy, and access-mode configuration.
 The Lakeflow source uses the Kafka-compatible Event Hubs endpoint with
 `SASL_SSL` / `PLAIN`.
 
-Safe bundle configuration contains only:
+Development identifiers are:
 
-- bootstrap server;
-- Event Hub entity name;
-- dedicated consumer-group name;
-- Databricks secret scope/key names.
+- namespace: `evhns-canopy-dev`;
+- Event Hub: `evh-canopy-gps-dev`;
+- consumer group: `canopy-databricks`;
+- listen-only SAS policy: `canopy-databricks-listen`;
+- Databricks secret scope/key: `canopy-dev/canopy-databricks-listen`.
 
-The listen-only connection string must live only in Databricks Secrets.
+The secret contains **only the SAS policy key**. The policy name and namespace
+remain non-secret bundle configuration; the Event Hubs connection string is
+assembled at runtime. Do not store the full connection string or policy key in
+Git or bundle variables.
 
 ## Python dependencies
 

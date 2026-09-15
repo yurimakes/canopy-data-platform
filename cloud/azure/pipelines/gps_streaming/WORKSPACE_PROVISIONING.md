@@ -17,9 +17,9 @@ Azure mutations.
 
 The `default` schema is not a Canopy deployment target.
 
-## Required Unity Catalog objects
+## Verified Unity Catalog objects
 
-Create or authorize creation of these schemas under the existing catalog:
+The following schemas exist under the existing catalog:
 
 - `dbw_canopy_dev.bronze`
 - `dbw_canopy_dev.silver`
@@ -44,27 +44,20 @@ The expected registered model is:
 A dedicated checkpoint Volume is **not** required for this Lakeflow target.
 Lakeflow owns per-flow checkpoint/state lifecycle.
 
-## Event Hubs prerequisites
-
-Verified non-secret identifiers:
+## Verified Event Hubs prerequisites
 
 - namespace: `evhns-canopy-dev`
-- Kafka bootstrap: `evhns-canopy-dev.servicebus.windows.net:9093`
 - Event Hub: `evh-canopy-gps-dev`
-- desired consumer group: `canopy-databricks`
+- consumer group: `canopy-databricks`
+- namespace SAS policy: `canopy-databricks-listen`
+- SAS rights: `Listen` only
+- Databricks secret scope: `canopy-dev`
+- Databricks secret key: `canopy-databricks-listen`
 
-Before deployment/run:
-
-1. Create the dedicated consumer group if it does not exist.
-2. Create a listen-only Event Hubs authorization rule; do not use
-   `RootManageSharedAccessKey` for the stream.
-3. Create a Databricks secret scope (development default: `canopy-dev`).
-4. Store the listen-only connection string under the configured secret key
-   (development default: `event-hubs-listen-connection-string`).
-5. Grant the eventual runtime identity access to the secret.
-
-Do not place the connection string in Git, bundle variables, shell history, or
-logs.
+The Databricks secret contains only the listen-only SAS policy key. The
+namespace and policy name are non-secret bundle configuration; the Event Hubs
+connection string is assembled in the runtime. Do not place the SAS key or
+assembled connection string in Git, bundle variables, shell history, or logs.
 
 ## Model prerequisites
 
@@ -86,17 +79,6 @@ Before accepting integration success:
    `predicted_class`, `confidence`, and `probabilities`.
 
 ## Permissions
-
-Provisioning authority needs, at minimum:
-
-- `USE CATALOG` and `CREATE SCHEMA` on `dbw_canopy_dev` (or equivalent owner /
-  metastore-admin authority);
-- authority to create/grant on the four schemas;
-- authority to register the model in `dbw_canopy_dev.ml`;
-- Azure permission to create the Event Hubs consumer group and listen-only SAS
-  rule;
-- Databricks permission to create/manage the secret scope and its ACL;
-- permission to deploy the Declarative Automation Bundle.
 
 The runtime identity needs, at minimum:
 
