@@ -73,3 +73,20 @@ Workspace-specific values are deliberately required at deployment time:
 
 The first observation in a trip has no derived transition. Consequently, 201
 GPS observations are required to produce 200 derived speed points.
+
+## Spark ingestion boundary
+
+`spark_ingestion.py` contains the runtime-stable PySpark layer:
+
+- maps the Event Hubs Kafka envelope to an append-only Bronze Delta table;
+- parses the collector JSON with an explicit schema;
+- separates validated observations from quarantine records;
+- applies event-time watermarking and `event_id` deduplication; and
+- creates the Bronze, parsed-observation, quarantine, feature, and mock-segment
+  table contracts.
+
+The stateful observation-to-feature step is intentionally not bound to a Spark
+API yet. Apache Spark 4 identifies `TransformWithState` as the successor to
+`applyInPandasWithState`; the correct implementation therefore depends on the
+selected Databricks Runtime. The framework-neutral core will be reused either
+way.

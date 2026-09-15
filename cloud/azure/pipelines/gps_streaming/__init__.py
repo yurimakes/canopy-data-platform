@@ -12,6 +12,7 @@ from .gps_preprocessing import (
     GpsRuntimeOutput,
     GpsTransitionProcessor,
 )
+from .spark_ingestion import SparkIngestionConfig
 
 __all__ = [
     "EnrichedSpeedPoint",
@@ -24,6 +25,7 @@ __all__ = [
     "MockDetectorConfig",
     "MockFirstLayerDetector",
     "MockFirstLayerPipeline",
+    "SparkIngestionConfig",
     "SegmentInferenceResult",
     "SegmentEvent",
     "SpeedWindow",
