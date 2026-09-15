@@ -33,11 +33,16 @@ def required(body: dict, key: str) -> str:
 
 def public(item: dict) -> dict:
     fields = ("trip_id", "user_id", "device_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at",
-              "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon")
+              "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon",
+              "original_segments", "confirmed_segments", "revision", "confirmed_at", "confirmed_trip")
     return {key: item.get(key) for key in fields}
 
 
 class TripService:
+    def confirm(self, trip_id, user_id, body):
+        from .trip_confirmation import confirm
+        return confirm(self, trip_id, user_id, body)
+
     def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test"):
         self.store, self.processor, self.clock = store, processor, clock
         self.campaign_id = campaign_id

@@ -2,7 +2,8 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MODES, currentMode, type TransportMode, type GpsEvent, type Summary } from '../types';
-import type { ServerTrip } from '../tripApi';
+import type { Confirmation, ServerTrip } from '../tripApi';
+import {TripResult} from './TripResult';
 export type MeasurementProps = {
   collectionMode?: "user" | "developer"; onBack(): void;
   mode: TransportMode | null; phase: string; ready: boolean; count: number; duration: string;
@@ -16,6 +17,8 @@ export type MeasurementProps = {
   retryCount?:number; canShareEvent?:boolean; onShareEvent?():void;
   resultTrip?:Summary; sent?:number; blocked?:number; onShareCheck?():void;
   serverTrip?:ServerTrip;tripError?:string;onRetryTrip?():void;
+  confirmationPending?:Confirmation[];onConfirm(segments:Confirmation[]):Promise<void>;
+  onHistory?():void;
 };
 // Temporary entry point. Replace the selection with the team's authenticated role later.
 export function EntryScreen(p: {ready:boolean; error:string; onEnter(mode:'user'|'developer'):void}) {
@@ -41,6 +44,7 @@ export function MeasurementScreen(p: MeasurementProps) {
     <ScrollView contentContainerStyle={s.content}>
       <Pressable accessibilityRole="button" disabled={!!busy} onPress={p.onBack} style={busy&&s.disabled}><Text style={s.modeText}>← 화면 선택</Text></Pressable>
       <Text style={s.title}>{developer?'개발자 GPS 데이터 수집':'나의 이동 기록'}</Text>
+      {!busy && <Pressable accessibilityRole="button" onPress={p.onHistory}><Text style={s.modeText}>이전 이동 결과 보기</Text></Pressable>}
       {!developer && <Text style={s.note}>이동을 시작할 때 시작 버튼을 누르고, 도착하면 종료하세요.</Text>}
       {developer && <>
       <Text style={s.note}>이동수단을 선택한 뒤 측정을 시작하세요.</Text>
@@ -83,11 +87,7 @@ export function MeasurementScreen(p: MeasurementProps) {
         <Text style={s.status}>Trip 처리 결과</Text>
         <Text>{p.serverTrip?.status==='ready'?'처리 완료':p.serverTrip?.status==='failed'?'처리 실패':p.serverTrip?.status==='processing'?'서버 처리 중':'GPS 전송 및 종료 접수 대기'}</Text>
         {!!p.tripError && <Text style={s.error}>{p.tripError}</Text>}
-        {p.serverTrip?.is_mock && <Text style={s.note}>Mock 테스트 결과입니다. 표시된 이동수단과 거리는 실제 GPS 분석 결과가 아닙니다.</Text>}
-        {p.serverTrip?.segments.map(segment=><View key={segment.segment_id}>
-          <Text>{MODES.find(mode=>mode.value===segment.mode)?.title??segment.mode} {Math.round(segment.distance_m)} m</Text>
-          <Text style={s.id}>{new Date(segment.start_time).toLocaleTimeString('ko-KR')} ~ {new Date(segment.end_time).toLocaleTimeString('ko-KR')}</Text>
-        </View>)}
+        {p.serverTrip?.status==='ready' && <TripResult key={p.serverTrip.trip_id} trip={p.serverTrip} pending={p.confirmationPending} onConfirm={p.onConfirm}/>}
         {p.serverTrip?.status==='failed' && <>
           <Text style={s.error}>{p.serverTrip.failed_step}: {p.serverTrip.error_message}</Text>
           <Pressable accessibilityRole="button" onPress={p.onRetryTrip}><Text style={s.modeText}>Trip 처리 재시도</Text></Pressable>

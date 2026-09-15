@@ -10,7 +10,7 @@ import { ports, foregroundOnly } from './src/location';
 import { files } from './src/files';
 import { exportTrip } from './src/exporter';
 import type { Summary } from './src/types';
-import type { ServerTrip } from './src/tripApi';
+import type { Confirmation, ServerTrip } from './src/tripApi';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -29,6 +29,8 @@ export default function App() {
   const [resultTrip,setResultTrip]=useState<Summary>();
   const [serverTrip,setServerTrip]=useState<ServerTrip>();
   const [tripError,setTripError]=useState('');
+  const [confirmationPending,setConfirmationPending]=useState<Confirmation[]>();
+  const [selectedTrip,setSelectedTrip]=useState<string>();
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
     let alive=true;
@@ -47,12 +49,12 @@ export default function App() {
         await service!.collector.refresh();
         const uploader=await getUploader(); await uploader.tick();
         const tripApi=await getTripApi(); await tripApi.tick(wake);
-        const id=service!.collector.trip?.trip_id ?? (await service!.db.list())[0]?.trip_id;
+        const id=selectedTrip ?? service!.collector.trip?.trip_id ?? (await service!.db.list())[0]?.trip_id;
         const summary=id ? await service!.db.summary(id) : undefined;
         const status=await service!.db.deliveryStatus(id??null);
         const proof=await service!.db.deliveryEvidence(id??null);
         const remote=id ? await tripApi.result(id) : null;
-        if(alive){setServerTrip(remote?.result);setTripError(remote?.error??tripApi.error);}
+        if(alive){setServerTrip(remote?.result);setConfirmationPending(remote?.confirmation?.segments);setTripError(remote?.error??tripApi.error);}
         if(alive){setResultTrip(summary);setDelivery(status);setEvidence(proof);setUploadError(proof.head?.last_error || uploader.error);}
       }catch(e){if(alive)setError(String(e));}finally{refreshing=false;}
     }
@@ -61,10 +63,10 @@ export default function App() {
     const app=AppState.addEventListener('change',state=>{if(state==='active')void tick(true);});
     const network=Network.addNetworkStateListener(state=>{if(state.isConnected && state.isInternetReachable!==false)void tick(true);});
     return ()=>{alive=false;clearInterval(timer);app.remove();network.remove();};
-  },[service]);
+  },[service,selectedTrip]);
   useEffect(()=>{if(service && c?.phase!=='recording' && c?.phase!=='starting') void service.db.list().then(setTrips).catch(e=>setError(String(e)));},[service,c?.phase]);
   const trip=c?.trip; const seconds=trip ? Math.max(0,Math.floor(((trip.ended_at ? Date.parse(trip.ended_at) : trip.status==='recording' ? now : Date.parse(c?.latest?.received_at ?? trip.started_at))-Date.parse(trip.started_at))/1000)) : 0;
-  const resultMatches=(!trip || trip.trip_id===resultTrip?.trip_id) && (resultTrip?.collection_mode??'developer')===screen;
+  const resultMatches=(selectedTrip?selectedTrip===resultTrip?.trip_id:(!trip || trip.trip_id===resultTrip?.trip_id)) && (resultTrip?.collection_mode??'developer')===screen;
   const duration=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
   async function share(id:string) {
     if(!service||sharing)return;setSharing(true);setError('');
@@ -99,13 +101,34 @@ export default function App() {
       await files.share(file.uri,'metadata');
     }catch(e){setError('측정 결과 공유 오류: '+String(e));}finally{setSharing(false);}
   }
+  async function confirm(segments:Confirmation[]) {
+    if(!resultTrip)throw Error('Trip 결과가 없습니다.');
+    const api=await getTripApi();
+    try {setServerTrip(await api.confirm(resultTrip.trip_id,segments));setTripError('');}
+    finally {
+      const state=await api.result(resultTrip.trip_id);
+      setConfirmationPending(state?.confirmation?.segments);
+      if(state?.result)setServerTrip(state.result);
+      setTripError(state?.error??'');
+    }
+  }
+  function history(offset=0) {
+    const saved=trips.filter(t=>t.server&&t.status!=='recording'&&(t.collection_mode??'developer')===screen);
+    Alert.alert('이전 이동 결과',saved.length?'이동을 선택하면 서버에서 최신 결과를 조회합니다.':'저장된 이동이 없습니다.',[
+      ...saved.slice(offset,offset+5).map(t=>({text:new Date(t.started_at).toLocaleString('ko-KR'),onPress:()=>{
+        setSelectedTrip(t.trip_id);setServerTrip(undefined);setConfirmationPending(undefined);setTripError('');
+        void getTripApi().then(api=>api.refresh(t.trip_id)).then(setServerTrip).catch(e=>setTripError(String(e)));
+      }})),
+      ...(saved.length>offset+5?[{text:'이전 기록 더 보기',onPress:()=>history(offset+5)}]:[]),{text:'취소',style:'cancel'},
+    ]);
+  }
   if(screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><EntryScreen ready={!!c} error={error}
     onEnter={mode=>{if(c){c.selectCollectionMode(mode);setError('');setScreen(c.collectionMode);}}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><MeasurementScreen
     collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))setScreen(null);}}
     ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={c?.count??0} duration={duration}
     accuracy={c?.latest?.accuracy??null} latestLabel={c?.latest?.label} tripId={trip?.trip_id}
-    error={error||c?.error||''} onMode={mode=>{void c?.selectMode(mode).catch(e=>setError(String(e)));}} onStart={()=>{void c?.start();}}
+    error={error||c?.error||''} onMode={mode=>{void c?.selectMode(mode).catch(e=>setError(String(e)));}} onStart={()=>{setSelectedTrip(undefined);void c?.start();}}
     onStop={()=>{void c?.stop().catch(e=>setError(String(e)));}} canExport={trips.some(t=>t.status!=='recording')}
     sharing={sharing} onExport={()=>chooseExport()} active={trip?.status==='recording'} backgroundRunning={c?.backgroundRunning}
     lastReceived={c?.lastReceived} sequence={c?.latest?.sequence} pending={resultMatches?delivery?.pending:undefined} lastSuccess={resultMatches?delivery?.last_success:undefined}
@@ -115,6 +138,7 @@ export default function App() {
     resultTrip={resultMatches?resultTrip:undefined} sent={delivery?.sent} blocked={delivery?.blocked} onShareCheck={()=>{void shareCheck();}}
     canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
     serverTrip={resultMatches && serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
+    confirmationPending={confirmationPending} onConfirm={confirm} onHistory={()=>history()}
     onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;

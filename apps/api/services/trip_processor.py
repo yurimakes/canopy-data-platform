@@ -6,13 +6,16 @@ from typing import Protocol, TypedDict
 MODES = {"walk", "bike", "car", "bus", "rail"}
 
 
-class Segment(TypedDict):
+class FinalSegment(TypedDict):
     segment_id: str
     mode: str
     start_time: str
     end_time: str
     distance_m: float
     confidence: float
+
+
+Segment = FinalSegment  # Compatibility with existing processor integrations.
 
 
 class ProcessorResult(TypedDict):

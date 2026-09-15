@@ -21,3 +21,16 @@ class MockTripProcessor:
             })
             cursor = next_time
         return {"trip_id": trip["trip_id"], "model_version": "mock_v1", "segments": segments}
+
+
+class ConfirmationFixtureProcessor:
+    """Short-trip phone fixture: walk 500m, bus 6200m, walk 300m. Never measured GPS."""
+    def process_trip(self, trip: dict) -> ProcessorResult:
+        start, end = timestamp(trip["started_at"]), timestamp(trip["ended_at"])
+        duration = end - start
+        cuts = [start, start + duration * .2, start + duration * .8, end]
+        return {"trip_id": trip["trip_id"], "model_version": "mock_v1", "segments": [
+            {"segment_id": f"{trip['trip_id']}:segment:{i+1}", "mode": mode,
+             "start_time": cuts[i].isoformat(), "end_time": cuts[i+1].isoformat(),
+             "distance_m": distance, "confidence": 0.0}
+            for i, (mode, distance) in enumerate([("walk", 500), ("bus", 6200), ("walk", 300)])]}

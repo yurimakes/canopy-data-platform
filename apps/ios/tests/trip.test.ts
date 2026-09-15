@@ -59,6 +59,63 @@ function database(path=':memory:') {
   return {db:new Storage(adapter),native};
 }
 function config():TripConfig{return {url:base,token,allowLocalHttp:true};}
+async function finish(s:Awaited<ReturnType<typeof setup>>) {
+  await s.collector.start();s.emit();await s.collector.stop();await acceptGps(s.db);
+  await vi.waitFor(async()=>{await s.api.tick(true);expect((await s.api.result(s.collector.trip!.trip_id))?.result?.status).toBe('ready');},
+    {timeout:7000,interval:100});
+  return (await s.api.result(s.collector.trip!.trip_id))!.result!;
+}
+
+it('confirms, corrects, reloads carbon and preserves original prediction through real HTTP',async()=>{
+  const s=await setup();const result=await finish(s);
+  const original=result.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:segment.mode}));
+  const accepted=await s.api.confirm(result.trip_id,original);
+  expect(accepted.confirmation_status).toBe('confirmed');expect(accepted.revision).toBe(1);
+  expect(accepted.confirmed_trip?.total_carbon_kg).toBe(0);
+  const edited=original.map(segment=>({...segment,confirmed_mode:'car' as const}));
+  const corrected=await s.api.confirm(result.trip_id,edited);
+  expect(corrected.revision).toBe(2);
+  expect(corrected.original_segments![0].mode).toBe('walk');
+  expect(corrected.confirmed_segments![0].mode).toBe('car');
+  expect(corrected.confirmed_trip!.car_distance_m).toBe(result.segments[0].distance_m);
+  expect(corrected.confirmed_trip!.total_carbon_kg).toBeCloseTo(result.segments[0].distance_m/1000*.16591,6);
+  expect((await s.api.refresh(result.trip_id)).confirmed_trip).toEqual(corrected.confirmed_trip);
+});
+
+it('persists a lost confirmation response and retries the same request after SQLite reopen',async()=>{
+  const path=join(directory,randomUUID()+'.sqlite');let drop=true;const ids:string[]=[];
+  const request=(async(url,options)=>{
+    if(String(url).endsWith('/confirm')) {
+      ids.push(JSON.parse(String(options?.body)).request_id);
+      const response=await fetch(url,options);
+      if(drop){drop=false;throw Error('confirmation response lost');}
+      return response;
+    }
+    return fetch(url,options);
+  }) as typeof fetch;
+  const s=await setup(path,request);const trip=await finish(s);
+  const edits=trip.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:'car' as const}));
+  await expect(s.api.confirm(trip.trip_id,edits)).rejects.toThrow('response lost');
+  expect((await s.api.result(trip.trip_id))?.confirmation?.segments).toEqual(edits);
+  const reopened=database(path);await reopened.db.init(randomUUID,new Date().toISOString());
+  const restored=new TripApi(reopened.db,config,randomUUID,request);
+  await restored.tick(true);
+  const state=await restored.result(trip.trip_id);
+  expect(state?.confirmation).toBeUndefined();expect(state?.result?.revision).toBe(1);
+  expect(ids).toHaveLength(2);expect(ids[0]).toBe(ids[1]);
+});
+
+it('reloads a newer revision instead of silently overwriting another confirmation',async()=>{
+  const s=await setup();const trip=await finish(s);
+  const edits=trip.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:'bus' as const}));
+  const response=await fetch(base+`/trips/${trip.trip_id}/confirm`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({request_id:randomUUID(),expected_revision:0,segments:edits})});
+  expect(response.status).toBe(200);
+  await expect(s.api.confirm(trip.trip_id,edits.map(s=>({...s,confirmed_mode:'car' as const})))).rejects.toThrow('409');
+  const state=await s.api.result(trip.trip_id);
+  expect(state?.confirmation).toBeUndefined();expect(state?.result?.revision).toBe(1);
+  expect(state?.result?.confirmed_segments?.[0].mode).toBe('bus');
+});
 function location():LocationObject{return {timestamp:Date.now(),coords:{latitude:37.5,longitude:127,
   accuracy:150,speed:null,heading:null,altitude:null,altitudeAccuracy:null}};}
 async function setup(path=':memory:',request:typeof fetch=fetch,background=false) {

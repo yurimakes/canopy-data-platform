@@ -12,8 +12,9 @@ bp = func.Blueprint()
 def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate):
     try:
         user_id = auth({key.lower(): value for key, value in headers.items()})
-        if len(raw) > 16384:
-            raise ApiError(413, "payload_too_large", "Trip request exceeds 16 KiB")
+        limit = 262144 if path.endswith("/confirm") else 16384
+        if len(raw) > limit:
+            raise ApiError(413, "payload_too_large", "Trip request exceeds the size limit")
         try:
             body = json.loads(raw) if raw else {}
         except (ValueError, UnicodeDecodeError) as exc:
@@ -24,11 +25,13 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate):
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
             return (201 if created else 200), public(trip)
-        match = re.fullmatch(r"/api/trips/([a-zA-Z0-9_-]{1,100})(/stop)?", path)
+        match = re.fullmatch(r"/api/trips/([a-zA-Z0-9_-]{1,100})(/stop|/confirm)?", path)
         if not match:
             raise ApiError(404, "not_found", "route not found")
         trip_id, stop = match.groups()
-        if stop and method == "POST":
+        if stop == "/confirm" and method == "POST":
+            return 200, public(api.confirm(trip_id, user_id, body))
+        if stop == "/stop" and method == "POST":
             trip = api.stop(trip_id, user_id, body)
             return (202 if trip["status"] == "processing" else 200), public(trip)
         if not stop and method == "GET":
@@ -59,6 +62,11 @@ def trip_stop(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.route(route="trips/{trip_id}", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def trip_get(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="trips/{trip_id}/confirm", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def trip_confirm(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 

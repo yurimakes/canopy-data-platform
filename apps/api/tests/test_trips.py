@@ -184,7 +184,77 @@ class TripTests(unittest.TestCase):
         app = func.FunctionApp()
         app.register_functions(bp)
         self.assertEqual({f.get_function_name() for f in app.get_functions()},
-                         {"trip_start", "trip_stop", "trip_get", "trip_worker"})
+                         {"trip_start", "trip_stop", "trip_get", "trip_confirm", "trip_worker"})
+
+    def fixture(self):
+        from services.mock_trip_processor import ConfirmationFixtureProcessor
+        self.api.processor = ConfirmationFixtureProcessor()
+        _, trip = self.start()
+        self.stop(trip)
+        self.api.process_pending()
+        trip = self.api.get(trip["trip_id"], "alice")
+        body = {"request_id": "confirm-1", "expected_revision": 0,
+                "segments": [{"segment_id": s["segment_id"], "confirmed_mode": s["mode"]} for s in trip["segments"]]}
+        return trip, body
+
+    def test_confirmation_preserves_prediction_recalculates_and_survives_restart(self):
+        trip, body = self.fixture()
+        body["segments"][1]["confirmed_mode"] = "car"
+        status, result = self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)
+        self.assertEqual(status, 200)
+        self.assertEqual(result["original_segments"][1]["mode"], "bus")
+        self.assertEqual(result["confirmed_segments"][1]["mode"], "car")
+        self.assertEqual(result["segments"][1]["model_prediction"], "bus")
+        summary = result["confirmed_trip"]
+        self.assertEqual((summary["walk_distance_m"], summary["car_distance_m"], summary["bus_distance_m"]), (800, 6200, 0))
+        self.assertEqual(summary["total_distance_m"], 7000)
+        self.assertEqual(summary["total_carbon_kg"], 1.028642)
+        self.assertEqual(result["carbon"]["kg_co2e"], .778224)
+        self.assertEqual(result["confirmed_segments"][1]["carbon_kg"], 1.028642)
+        restarted = TripService(SQLiteTripStore(self.path), self.processor)
+        self.assertEqual(restarted.get(trip["trip_id"], "alice")["confirmed_trip"], summary)
+        body.update(request_id="confirm-2", expected_revision=1)
+        body["segments"][1]["confirmed_mode"] = "rail"
+        _, updated = self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)
+        self.assertEqual(updated["revision"], 2)
+        self.assertEqual(updated["confirmed_trip"]["total_carbon_kg"], .096038)
+        self.assertEqual(updated["original_segments"], result["original_segments"])
+        self.assertEqual(len(self.api.get(trip["trip_id"], "alice")["confirmation_history"]), 2)
+
+    def test_confirmation_concurrent_retries_and_stale_revision(self):
+        trip, body = self.fixture()
+        path = f"/trips/{trip['trip_id']}/confirm"
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(lambda _: self.request("POST", path, body), range(6)))
+        self.assertTrue(all(status == 200 and result["revision"] == 1 for status, result in results))
+        self.assertEqual(self.request("POST", path, {**body, "request_id": "stale"})[0], 409)
+        self.assertEqual(self.request("POST", path, {**body, "expected_revision": 1})[0], 409)
+        second = {**body, "request_id": "next", "expected_revision": 1}
+        self.assertEqual(self.request("POST", path, second)[1]["revision"], 2)
+        self.assertEqual(self.request("POST", path, body)[1]["revision"], 2)
+
+    def test_confirmation_rejects_wrong_owner_mode_ids_and_client_distance(self):
+        from copy import deepcopy
+        trip, body = self.fixture()
+        path = f"/trips/{trip['trip_id']}/confirm"
+        self.assertEqual(self.request("POST", path, body, token="")[0], 401)
+        with self.assertRaises(ApiError): self.api.confirm(trip["trip_id"], "bob", body)
+        for change in ({"confirmed_mode": "plane"}, {"distance_m": 0}, {"segment_id": "unknown"}, {"confirmed_mode": []}):
+            invalid = deepcopy(body)
+            invalid["segments"][0].update(change)
+            self.assertEqual(self.request("POST", path, invalid)[0], 400)
+        invalid = deepcopy(body)
+        invalid["segments"] = invalid["segments"][:1]
+        self.assertEqual(self.request("POST", path, invalid)[0], 400)
+        self.assertEqual(self.api.get(trip["trip_id"], "alice")["confirmation_status"], "pending")
+
+    def test_carbon_failure_does_not_partially_confirm(self):
+        trip, body = self.fixture()
+        with patch("services.trip_confirmation.carbon_for", side_effect=RuntimeError("unavailable")):
+            self.assertEqual(self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)[0], 503)
+        saved = self.api.get(trip["trip_id"], "alice")
+        self.assertEqual(saved["confirmation_status"], "pending")
+        self.assertNotIn("confirmed_trip", saved)
 
     def test_stop_preserves_expected_sequence_for_capture_lag(self):
         _, trip = self.start()

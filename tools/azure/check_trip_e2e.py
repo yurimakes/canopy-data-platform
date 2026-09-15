@@ -29,6 +29,7 @@ def stamp():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--send-test", action="store_true", help="Create two synthetic Trips and send GPS to Azure")
+    parser.add_argument("--confirm-test", action="store_true", help="Confirm/correct synthetic Trips; requires ConfirmationFixtureProcessor")
     parser.add_argument("--wait-seconds", type=int, default=660)
     args = parser.parse_args()
     cfg = json.loads((DATA / "azure-test-access.json").read_text(encoding="utf-8"))
@@ -91,7 +92,9 @@ def main():
                 call("gps", "POST", event, expected=(202,))
                 if sequence == 1:
                     call("gps", "POST", event, expected=(202,))
-            stop = {"ended_at": stamp(), "expected_last_sequence": 2}
+            # Desktop clocks can lag Azure on very short synthetic Trips. Let the
+            # API timestamp this test stop; phone-provided end times are tested separately.
+            stop = {"expected_last_sequence": 2}
             result = call(f"trips/{trip['trip_id']}/stop", "POST", stop, expected=(202,))
             assert result["status"] == "processing"
             call(f"trips/{trip['trip_id']}/stop", "POST", stop, expected=(200, 202))
@@ -102,6 +105,14 @@ def main():
                                gps_null_and_low_accuracy_accepted=True, gps_duplicate_accepted=True)
         save()
     report = json.loads(report_file.read_text(encoding="utf-8"))
+    for trip in report["trips"]:
+        if not trip.get("stopped_at"):
+            result = call("trips/" + trip["trip_id"])
+            if result["status"] == "collecting":
+                result = call("trips/" + trip["trip_id"] + "/stop", "POST",
+                              {"expected_last_sequence": len(trip["events"])}, expected=(200, 202))
+            trip["stopped_at"] = result["ended_at"]
+    report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     cosmos = CosmosClient(cfg["cosmos_endpoint"], credential=cfg["cosmos_readonly_key"])
     container = cosmos.get_database_client("canopy-db").get_container_client("trips")
     blob = BlobServiceClient(cfg["storage_url"], credential=AzureCliCredential()).get_container_client("raw")
@@ -151,6 +162,40 @@ def main():
         report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"Cosmos ready={ready}; Raw originals={sum(bool(v) for v in hits.values())}/{len(wanted)}; duplicate preservation={report['capture_complete']}", flush=True)
         if ready and report["capture_complete"]:
+            if args.confirm_test:
+                for trip in report["trips"]:
+                    path = "trips/" + trip["trip_id"]
+                    initial = call(path)
+                    originals = initial.get("original_segments") or initial["segments"]
+                    assert [(s["mode"], s["distance_m"]) for s in originals] == [("walk", 500), ("bus", 6200), ("walk", 300)], "Configure the confirmation fixture processor for this opt-in test"
+                    entries = [{"segment_id": s["segment_id"], "confirmed_mode": s["mode"]} for s in originals]
+                    body = {"request_id": "confirmation-e2e-original", "expected_revision": 0, "segments": entries}
+                    original_result = call(path + "/confirm", "POST", body)
+                    assert original_result["carbon"]["kg_co2e"] == .778224
+                    call(path + "/confirm", "POST", body, user=other, expected=(403, 404))
+                    bad = {**body, "request_id": "invalid-mode", "segments": [{"segment_id": "invalid", "confirmed_mode": "plane"}]}
+                    call(path + "/confirm", "POST", bad, expected=(400,))
+                    entries[1]["confirmed_mode"] = "car"
+                    body = {"request_id": "confirmation-e2e-car", "expected_revision": 1, "segments": entries}
+                    edited = call(path + "/confirm", "POST", body)
+                    repeated = call(path + "/confirm", "POST", body)
+                    assert edited["revision"] == repeated["revision"] == 2
+                    latest = call(path)
+                    stored = container.read_item(trip["trip_id"], partition_key=trip["user_id"])
+                    summary = latest["confirmed_trip"]
+                    assert summary == stored["confirmed_trip"] == edited["confirmed_trip"]
+                    assert summary["total_distance_m"] == 7000 and summary["walk_distance_m"] == 800
+                    assert summary["car_distance_m"] == 6200 and summary["bus_distance_m"] == 0
+                    assert summary["total_carbon_kg"] == 1.028642
+                    assert stored["original_segments"][1]["mode"] == "bus"
+                    assert stored["segments"][1]["model_prediction"] == "bus"
+                    assert stored["confirmed_segments"][1]["mode"] == "car"
+                    assert stored["confirmed_segments"][1]["carbon_kg"] == 1.028642
+                    assert len(stored["confirmation_history"]) == 2
+                    trip["confirmation"] = summary
+                    print("CONFIRM PASS original=bus confirmed=car revision=2: " + trip["trip_id"], flush=True)
+                report["checks"]["confirmation_carbon_and_cosmos"] = True
+                report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
             print("PASS: HTTP -> Cosmos lifecycle and GPS -> Event Hubs Capture -> Raw, all original fields preserved.", flush=True)
             print(report_file)
             return
