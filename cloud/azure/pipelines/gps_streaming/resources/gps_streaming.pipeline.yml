@@ -1,0 +1,33 @@
+resources:
+  pipelines:
+    gps_streaming_pipeline:
+      name: canopy-gps-streaming-pipeline-${bundle.target}
+      serverless: true
+      channel: PREVIEW
+      catalog: ${var.catalog}
+      schema: ${var.silver_schema}
+      root_path: ${workspace.file_path}
+      libraries:
+        - file:
+            path: ${workspace.file_path}/gps_streaming/lakeflow_pipeline.py
+      environment:
+        dependencies:
+          - -r ${workspace.file_path}/gps_streaming/requirements.lakeflow.txt
+      configuration:
+        canopy.catalog: ${var.catalog}
+        canopy.bronze_schema: ${var.bronze_schema}
+        canopy.silver_schema: ${var.silver_schema}
+        canopy.gold_schema: ${var.gold_schema}
+        canopy.ml_schema: ${var.ml_schema}
+        canopy.bronze_events_table: ${var.bronze_events_table}
+        canopy.observations_table: ${var.observations_table}
+        canopy.quarantine_table: ${var.quarantine_table}
+        canopy.features_table: ${var.features_table}
+        canopy.segments_table: ${var.segments_table}
+        canopy.predictions_table: ${var.predictions_table}
+        canopy.event_hubs.bootstrap_servers: ${var.event_hubs_bootstrap_servers}
+        canopy.event_hubs.topic: ${var.event_hubs_topic}
+        canopy.event_hubs.consumer_group: ${var.event_hubs_consumer_group}
+        canopy.event_hubs.secret_scope: ${var.event_hubs_secret_scope}
+        canopy.event_hubs.secret_key: ${var.event_hubs_secret_key}
+        canopy.model_uri: ${var.model_uri}
