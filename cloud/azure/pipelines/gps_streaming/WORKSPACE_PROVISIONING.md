@@ -1,95 +1,186 @@
 # GPS streaming workspace provisioning
 
-This document records the actions that remain outside the repository. None of
-them were performed while implementing the runtime adapter.
+This document records the remaining actions outside the repository for the
+serverless Lakeflow deployment. Repository edits do not authorize workspace or
+Azure mutations.
 
 ## Verified target
 
 - Azure resource group: `5dt-2nd-team1`
 - Azure Databricks workspace: `dbw-canopy-dev`
 - Bundle profile: `CANOPY_DEV`
-- Runtime: DBR `17.3.x-scala2.13` (Spark 4.0)
-- Access mode: Standard (`USER_ISOLATION`)
 - Unity Catalog catalog: `dbw_canopy_dev`
+- Execution target: serverless Lakeflow ETL pipeline
+- Orchestration: continuous Databricks Job with one pipeline task
+- Current pipeline channel: `PREVIEW` (required by the current
+  `foreach_batch_sink` design)
 
-The `default` schema is not a deployment target. The bundle and Python config
-reject it for Bronze, Silver, or Gold.
+The `default` schema is not a Canopy deployment target.
 
-## Required before deployment
+## Required Unity Catalog objects
 
-1. Create dedicated `dbw_canopy_dev.bronze`, `dbw_canopy_dev.silver`, and
-   `dbw_canopy_dev.gold` schemas, or supply three other distinct existing
-   schema names through bundle variables.
-2. Create a Unity Catalog Volume for checkpoints. The development template
-   expects `dbw_canopy_dev.bronze.canopy_checkpoints`, exposed as
-   `/Volumes/dbw_canopy_dev/bronze/canopy_checkpoints`.
-3. Grant the eventual job principal:
-   - `USE CATALOG` on `dbw_canopy_dev`;
-   - `USE SCHEMA` and `CREATE TABLE` on all three schemas;
-   - `READ VOLUME` and `WRITE VOLUME` on the checkpoint volume;
-   - read access to the registered MLflow model and alias; and
-   - `CAN_USE` on the selected Job Compute policy.
-4. Create or identify a Databricks secret scope and key containing an Event
-   Hubs **listen-only** connection string. Grant the job principal secret read
-   access. Never put the connection string in bundle variables or source.
-5. Create or identify a dedicated Event Hubs consumer group and set the actual
-   Kafka bootstrap server and Event Hub entity name. The bundle placeholders
-   `REPLACE` must not be deployed.
-6. Register the SpeedTransformer model in Unity Catalog and assign the intended
-   alias. Set `model_uri` to that exact three-part model URI and alias.
-7. Decide whether table creation is owned by provisioning or first job start.
-   The entry point uses `CREATE TABLE IF NOT EXISTS`, so the job principal must
-   retain `CREATE TABLE` if tables are not provisioned ahead of time.
+Create or authorize creation of these schemas under the existing catalog:
 
-## Deployment and run actions requiring explicit authorization
+- `dbw_canopy_dev.bronze`
+- `dbw_canopy_dev.silver`
+- `dbw_canopy_dev.gold`
+- `dbw_canopy_dev.ml`
 
-From this directory, a future operator can validate the resolved template:
+The expected tables are:
+
+- `dbw_canopy_dev.bronze.gps_events`
+- `dbw_canopy_dev.silver.gps_observations`
+- `dbw_canopy_dev.silver.gps_quarantine`
+- `dbw_canopy_dev.silver.gps_features`
+- `dbw_canopy_dev.silver.mode_segments`
+- `dbw_canopy_dev.gold.mode_segment_predictions`
+
+The expected registered model is:
+
+- `dbw_canopy_dev.ml.canopy_speedtransformer`
+- development alias: `champion`
+- URI: `models:/dbw_canopy_dev.ml.canopy_speedtransformer@champion`
+
+A dedicated checkpoint Volume is **not** required for this Lakeflow target.
+Lakeflow owns per-flow checkpoint/state lifecycle.
+
+## Event Hubs prerequisites
+
+Verified non-secret identifiers:
+
+- namespace: `evhns-canopy-dev`
+- Kafka bootstrap: `evhns-canopy-dev.servicebus.windows.net:9093`
+- Event Hub: `evh-canopy-gps-dev`
+- desired consumer group: `canopy-databricks`
+
+Before deployment/run:
+
+1. Create the dedicated consumer group if it does not exist.
+2. Create a listen-only Event Hubs authorization rule; do not use
+   `RootManageSharedAccessKey` for the stream.
+3. Create a Databricks secret scope (development default: `canopy-dev`).
+4. Store the listen-only connection string under the configured secret key
+   (development default: `event-hubs-listen-connection-string`).
+5. Grant the eventual runtime identity access to the secret.
+
+Do not place the connection string in Git, bundle variables, shell history, or
+logs.
+
+## Model prerequisites
+
+The repository snapshot lives under:
+
+`ml/models/speedtransformer/artifacts/playground_v1`
+
+The serverless pipeline dependency file is:
+
+`cloud/azure/pipelines/gps_streaming/requirements.lakeflow.txt`
+
+Before accepting integration success:
+
+1. Register the artifact as `dbw_canopy_dev.ml.canopy_speedtransformer`.
+2. Assign the intended `champion` alias.
+3. Verify `mlflow.pyfunc.load_model()` resolves the alias URI from the
+   serverless pipeline environment.
+4. Run a known 200-speed smoke inference and verify the expected output columns:
+   `predicted_class`, `confidence`, and `probabilities`.
+
+## Permissions
+
+Provisioning authority needs, at minimum:
+
+- `USE CATALOG` and `CREATE SCHEMA` on `dbw_canopy_dev` (or equivalent owner /
+  metastore-admin authority);
+- authority to create/grant on the four schemas;
+- authority to register the model in `dbw_canopy_dev.ml`;
+- Azure permission to create the Event Hubs consumer group and listen-only SAS
+  rule;
+- Databricks permission to create/manage the secret scope and its ACL;
+- permission to deploy the Declarative Automation Bundle.
+
+The runtime identity needs, at minimum:
+
+- `USE CATALOG` on `dbw_canopy_dev`;
+- `USE SCHEMA` on bronze, silver, gold, and ml;
+- the required table read/write privileges on the six pipeline tables;
+- `CREATE TABLE` only if first-run table creation remains runtime-owned;
+- `EXECUTE` / model access on
+  `dbw_canopy_dev.ml.canopy_speedtransformer`;
+- read access to the Databricks secret scope/key;
+- Event Hubs listen access through the supplied SAS credential.
+
+Classic Job Compute policy privileges, node type, worker count, DBR selection,
+and manual checkpoint-Volume privileges are not part of the serverless
+Lakeflow deployment contract.
+
+## Bundle behavior
+
+`resources/gps_streaming.pipeline.yml` defines the serverless pipeline.
+`resources/gps_streaming.job.yml` defines a continuous Job whose pipeline task
+references that pipeline resource.
+
+The Job is intentionally configured with:
+
+```yaml
+continuous:
+  pause_status: PAUSED
+```
+
+A bundle deployment may create/update resource definitions but must not begin
+Event Hubs consumption while the Job remains paused.
+
+Read-only validation to run before deployment:
 
 ```bash
+cd cloud/azure/pipelines/gps_streaming
+
 databricks bundle validate --profile CANOPY_DEV -t dev
+databricks bundle sync --dry-run --profile CANOPY_DEV -t dev
 ```
 
-This read-only validation succeeded during implementation. A sync dry-run also
-confirmed that the upload root is limited to `cloud/azure/pipelines` and no
-workspace files were written.
+Do not run `bundle deploy`, unpause the continuous Job, or invoke a pipeline
+update until explicitly authorized.
 
-After replacing every environment-specific value, these commands modify or
-execute workspace resources and were intentionally not run:
+## State compatibility
 
-```bash
-databricks bundle deploy --profile CANOPY_DEV -t dev
-databricks bundle run --profile CANOPY_DEV -t dev gps_streaming
-```
+The stateful core persists a versioned JSON `ValueState` per `trip_id`.
+The current detector contract is `mock-random-v2` with targets 250-300.
 
-Deploy creates or updates the job definition. Run creates Jobs compute, creates
-missing tables when permitted, opens the Event Hubs consumer, and starts five
-streaming queries.
+For the first Lakeflow integration deployment, use a fresh pipeline/flow state.
+Do not attempt to migrate an old classic Structured Streaming checkpoint that
+may contain `mock-random-v1` targets below 250.
 
-## Checkpoint and state compatibility
+Changing any of the following requires state/checkpoint compatibility review:
 
-- Keep all five checkpoint subdirectories durable and unique: `bronze`,
-  `observations`, `quarantine`, `features-and-segments`, and
-  `segment-inference`.
-- Do not reuse a checkpoint with another source, table set, catalog, or job.
-- The per-trip JSON envelope and neutral runtime snapshot are both versioned.
-  An incompatible state change requires a deliberate migration or a new
-  checkpoint; silently discarding production state is not supported.
-- Changing detector seed, segment limits, grouping key, state schema, or table
-  identities on an existing checkpoint requires compatibility review.
-- The current mock contract rejects restored per-trip state whose persisted
-  target is outside 250–300. A checkpoint containing an older target below 250
-  requires deliberate migration or a new checkpoint before deployment.
-- DBR 17.3 uses RocksDB by default; the bundle sets RocksDB and Avro encoding
-  explicitly so state schema evolution is deliberate.
+- detector version or seed semantics;
+- segment target range;
+- grouping key;
+- `transformWithState` state schema;
+- flow identity/name;
+- table identities that participate in replay/idempotency.
 
-## Operational validation still required
+Lakeflow manages checkpoints per flow. A full refresh or flow reset can cause
+reprocessing; downstream ForEachBatch sinks therefore remain responsible for
+idempotent writes. The existing feature/segment/prediction paths use Delta
+`MERGE` keys for that reason.
 
-Before accepting production traffic, run `TwsTester` on DBR 17.3, then execute
-a synthetic Event Hubs replay in an isolated consumer group. Confirm:
+## Integration validation still required
 
-- restart from checkpoint produces no duplicate feature or segment rows;
-- malformed and unsupported payloads reach quarantine;
-- per-trip ordering assumptions hold across micro-batches;
-- Delta history contains the expected five stream commits;
-- the model alias resolves and closed segments are scored; and
-- checkpoint and state-store growth are bounded for the expected trip volume.
+Before accepting the pipeline for production-like use:
+
+1. Run the Spark `TwsTester` integration test in a compatible Databricks/Spark
+   environment.
+2. Validate the bundle resolves without classic-compute settings.
+3. Deploy the pipeline/job resources while leaving the Job paused.
+4. Confirm all four schemas, tables, secret references, and the model alias
+   resolve under the intended runtime identity.
+5. Run a bounded synthetic Event Hubs replay in an isolated consumer group.
+6. Verify malformed/unsupported payloads reach quarantine.
+7. Verify restart/reprocessing does not duplicate feature, segment, or scored
+   prediction rows.
+8. Verify a normal 250-point mock segment produces three 200-point model
+   windows and a Gold prediction.
+9. Inspect Lakeflow event logs/state metrics for unexpected state growth or
+   serialization errors.
+10. Only after the bounded run succeeds, decide whether to unpause the
+    continuous Job for longer-running testing.
