@@ -12,16 +12,17 @@ _RESERVED_SCHEMAS = {"default", "information_schema"}
 
 @dataclass(frozen=True)
 class CanopyTableConfig:
-    """Build three-part table names without falling back to ``default``.
+    """Build three-part object names without falling back to ``default``.
 
     The development defaults match the verified ``dbw-canopy-dev`` workspace.
-    Every value can be replaced by an Asset Bundle target or job parameter.
+    Every value can be replaced by an Asset Bundle target or pipeline setting.
     """
 
     catalog: str = "dbw_canopy_dev"
     bronze_schema: str = "bronze"
     silver_schema: str = "silver"
     gold_schema: str = "gold"
+    ml_schema: str = "ml"
     bronze_events_name: str = "gps_events"
     observations_name: str = "gps_observations"
     quarantine_name: str = "gps_quarantine"
@@ -35,6 +36,7 @@ class CanopyTableConfig:
             self.bronze_schema,
             self.silver_schema,
             self.gold_schema,
+            self.ml_schema,
             self.bronze_events_name,
             self.observations_name,
             self.quarantine_name,
@@ -45,11 +47,17 @@ class CanopyTableConfig:
         for value in values:
             if not _IDENTIFIER.fullmatch(value):
                 raise ValueError(f"invalid Unity Catalog identifier: {value!r}")
-        for schema in (self.bronze_schema, self.silver_schema, self.gold_schema):
+        schemas = (
+            self.bronze_schema,
+            self.silver_schema,
+            self.gold_schema,
+            self.ml_schema,
+        )
+        for schema in schemas:
             if schema.lower() in _RESERVED_SCHEMAS:
                 raise ValueError(f"pipeline schema cannot be {schema!r}")
-        if len({self.bronze_schema, self.silver_schema, self.gold_schema}) != 3:
-            raise ValueError("bronze, silver, and gold schemas must be distinct")
+        if len(set(schemas)) != len(schemas):
+            raise ValueError("bronze, silver, gold, and ml schemas must be distinct")
 
     @property
     def bronze_table(self) -> str:
