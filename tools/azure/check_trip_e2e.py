@@ -123,6 +123,7 @@ def main():
                 for partition in range(4) for day in dates]
     wanted = {e["event_id"]: e for t in report["trips"] for e in t["events"]}
     hits = {event_id: [] for event_id in wanted}
+    raw_differences = {}
     seen = set()
     deadline = time.monotonic() + args.wait_seconds
     while True:
@@ -151,16 +152,22 @@ def main():
                     event = json.loads(row["Body"])
                     if not isinstance(event, dict) or event.get("event_id") not in wanted:
                         continue
-                    assert event == wanted[event["event_id"]], "Raw event differs from submitted original"
+                    expected = wanted[event["event_id"]]
+                    if event != expected:
+                        raw_differences[event["event_id"]] = {key: {"submitted": expected.get(key), "stored": event.get(key)}
+                            for key in expected.keys() | event.keys()
+                            if expected.get(key) != event.get(key) or (key in expected) != (key in event)}
                     hits[event["event_id"]].append(item.name)
                 seen.add(key)
         report["checks"]["api_and_cosmos_ready_same_id"] = ready
         report["raw_paths_by_event"] = hits
+        report["raw_differences"] = raw_differences
         report["capture_complete"] = all(len(hits[t["events"][0]["event_id"]]) >= 2
                                          and len(hits[t["events"][1]["event_id"]]) >= 1 for t in report["trips"])
+        report["checks"]["raw_originals_identical"] = report["capture_complete"] and not raw_differences
         report["checked_at"] = stamp()
         report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-        print(f"Cosmos ready={ready}; Raw originals={sum(bool(v) for v in hits.values())}/{len(wanted)}; duplicate preservation={report['capture_complete']}", flush=True)
+        print(f"Cosmos ready={ready}; Raw event IDs={sum(bool(v) for v in hits.values())}/{len(wanted)}; duplicate preservation={report['capture_complete']}; changed events={len(raw_differences)}", flush=True)
         if ready and report["capture_complete"]:
             if args.confirm_test:
                 for trip in report["trips"]:
@@ -196,6 +203,9 @@ def main():
                     print("CONFIRM PASS original=bus confirmed=car revision=2: " + trip["trip_id"], flush=True)
                 report["checks"]["confirmation_carbon_and_cosmos"] = True
                 report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            if raw_differences:
+                print("Capture contains all IDs, but Raw field values differ; see raw_differences in " + str(report_file), flush=True)
+                raise AssertionError("Raw original comparison failed; independent confirmation results are saved in the report")
             print("PASS: HTTP -> Cosmos lifecycle and GPS -> Event Hubs Capture -> Raw, all original fields preserved.", flush=True)
             print(report_file)
             return
