@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "artifact_role": "team_playground_snapshot",
+  "model_id": "speedtransformer-aihub-speed-v1",
+  "expected_directory": "ml/models/speedtransformer/artifacts/playground_v1",
+  "export_verified": true,
+  "export_size_mib": 2.84,
+  "checkpoint_sha256": "f72e918051c20ad3b4b3e6eb0bae3ba235b0155e3a33079ffb334a8d97840d06",
+  "scaler_sha256": "6485499bb01ac9f506df5a6a897e6529a3237b9e813ed567b99780d8e058b867",
+  "label_encoder_sha256": "29119f4d7acde3eac5a113a7a887eb3b4aade771a1b23c9ca2fdb9137e3a14f6",
+  "smoke_prediction": "bike",
+  "source_repository": "aletheia-ops/speedtransformer-aihub",
+  "cloud_dependency_required": false,
+  "authoritative_production_artifact": false,
+  "notes_ko": "팀 로컬 실습 및 데모용 snapshot입니다. 운영 배포의 기준 artifact는 MLflow/Model Registry에서 별도로 관리합니다."
+}
