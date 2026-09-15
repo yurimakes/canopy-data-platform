@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from baseline_eligibility import evaluate_global_eligibility, load_eligibility_policy
 
 GOLD_PERSONAL_BASELINE_PATH = os.environ.get(
     "CANOPY_GOLD_PERSONAL_BASELINE_PATH",
@@ -43,7 +44,45 @@ def read_personal_baseline_for_week(spark, campaign_id, evaluation_week):
     )
 
 
-def compute_global_baseline(personal_baseline_df, campaign_id, evaluation_week, policy_version):
+def compute_global_baseline(personal_baseline_df, campaign_id, evaluation_week, policy_version,
+                            eligibility_policy=None):
+    eligibility_policy = eligibility_policy or load_eligibility_policy()
+    scoped = personal_baseline_df.filter(
+        (F.col("campaign_id") == campaign_id) & (F.col("week") == evaluation_week))
+    # Legacy snapshots without eligibility metadata must be reevaluated first.
+    if not {"status", "eligibility_policy_version"}.issubset(scoped.columns):
+        valid = scoped.limit(0)
+    else:
+        valid = scoped.filter(
+            (F.col("status") == eligibility_policy["global"]["participant_rule"]["require_personal_status"])
+            & (F.col("eligibility_policy_version") == eligibility_policy["policy_version"])
+            & (F.col("method") == "personal_cumulative")
+            & F.col("user_id").isNotNull() & (F.length(F.trim(F.col("user_id"))) > 0)
+            & F.col("baseline_g_co2e_per_km").isNotNull()
+            & ~F.isnan("baseline_g_co2e_per_km")
+            & (F.col("baseline_g_co2e_per_km") >= 0)
+            & (F.col("baseline_g_co2e_per_km") < float("inf")))
+    if valid.groupBy("user_id").count().filter(F.col("count") > 1).limit(1).count():
+        raise ValueError("Duplicate Personal snapshot for user/campaign/week")
+    gate = evaluate_global_eligibility(valid.count(), eligibility_policy)
+    if gate["status"] == eligibility_policy["global"]["status"]["below_minimum_participants"]:
+        return personal_baseline_df.sparkSession.range(1).select(
+            F.lit(campaign_id).alias("campaign_id"), F.lit(evaluation_week).alias("week"),
+            F.lit(gate["eligible_participant_count"]).cast("long").alias("valid_participant_count"),
+            F.lit(None).cast("double").alias("baseline_g_co2e_per_km"),
+            F.lit("insufficient_data").alias("method"), F.lit(policy_version).alias("policy_version"),
+            F.lit(gate["status"]).alias("status"), F.lit(None).cast("double").alias("value"),
+            F.lit(gate["eligible_participant_count"]).cast("long").alias("eligible_participant_count"),
+            F.lit(gate["policy_version"]).alias("eligibility_policy_version"))
+    # Invoke the original equal-Personal mean only after the gate succeeds.
+    return (_compute_global_baseline(valid, campaign_id, evaluation_week, policy_version)
+            .withColumn("status", F.lit(gate["status"]))
+            .withColumn("value", F.col("baseline_g_co2e_per_km"))
+            .withColumn("eligible_participant_count", F.col("valid_participant_count"))
+            .withColumn("eligibility_policy_version", F.lit(gate["policy_version"])))
+
+
+def _compute_global_baseline(personal_baseline_df, campaign_id, evaluation_week, policy_version):
     valid = personal_baseline_df.filter(
         (F.col("method") == "personal_cumulative") & F.col("baseline_g_co2e_per_km").isNotNull()
     )
@@ -78,6 +117,7 @@ def write_gold(df, path):
     (
         df.write.format("delta")
         .mode("overwrite")
+        .option("mergeSchema", "true")
         .option("partitionOverwriteMode", "dynamic")
         .partitionBy("campaign_id")
         .save(path)
