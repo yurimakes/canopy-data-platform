@@ -5,6 +5,7 @@
   "type": "object",
   "required": ["id", "feedback_id", "trip_id", "user_id", "has_issue", "feedback_text", "created_at", "review_status"],
   "properties": {
+    "type": {"const": "trip_feedback"},
     "id": {"type": "string", "format": "uuid"},
     "feedback_id": {"type": "string", "format": "uuid"},
     "trip_id": {"type": "string", "minLength": 1},

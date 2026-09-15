@@ -29,7 +29,7 @@ def stamp():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--send-test", action="store_true", help="Create two synthetic Trips and send GPS to Azure")
-    parser.add_argument("--confirm-test", action="store_true", help="Confirm/correct synthetic Trips; requires ConfirmationFixtureProcessor")
+    parser.add_argument("--confirm-test", action="store_true", help="Deprecated: use check_trip_feedback.py instead")
     parser.add_argument("--wait-seconds", type=int, default=660)
     args = parser.parse_args()
     if args.confirm_test:
@@ -171,43 +171,9 @@ def main():
         report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"Cosmos ready={ready}; Raw event IDs={sum(bool(v) for v in hits.values())}/{len(wanted)}; duplicate preservation={report['capture_complete']}; changed events={len(raw_differences)}", flush=True)
         if ready and report["capture_complete"]:
-            if args.confirm_test:
-                for trip in report["trips"]:
-                    path = "trips/" + trip["trip_id"]
-                    initial = call(path)
-                    originals = initial.get("original_segments") or initial["segments"]
-                    assert [(s["mode"], s["distance_m"]) for s in originals] == [("walk", 500), ("bus", 6200), ("walk", 300)], "Configure the confirmation fixture processor for this opt-in test"
-                    entries = [{"segment_id": s["segment_id"], "confirmed_mode": s["mode"]} for s in originals]
-                    body = {"request_id": "confirmation-e2e-original", "expected_revision": 0, "segments": entries}
-                    original_result = call(path + "/confirm", "POST", body)
-                    assert original_result["carbon"]["kg_co2e"] == .778224
-                    call(path + "/confirm", "POST", body, user=other, expected=(403, 404))
-                    bad = {**body, "request_id": "invalid-mode", "segments": [{"segment_id": "invalid", "confirmed_mode": "plane"}]}
-                    call(path + "/confirm", "POST", bad, expected=(400,))
-                    entries[1]["confirmed_mode"] = "car"
-                    body = {"request_id": "confirmation-e2e-car", "expected_revision": 1, "segments": entries}
-                    edited = call(path + "/confirm", "POST", body)
-                    repeated = call(path + "/confirm", "POST", body)
-                    assert edited["revision"] == repeated["revision"] == 2
-                    latest = call(path)
-                    stored = container.read_item(trip["trip_id"], partition_key=trip["user_id"])
-                    summary = latest["confirmed_trip"]
-                    assert summary == stored["confirmed_trip"] == edited["confirmed_trip"]
-                    assert summary["total_distance_m"] == 7000 and summary["walk_distance_m"] == 800
-                    assert summary["car_distance_m"] == 6200 and summary["bus_distance_m"] == 0
-                    assert summary["total_carbon_kg"] == 1.028642
-                    assert stored["original_segments"][1]["mode"] == "bus"
-                    assert stored["segments"][1]["model_prediction"] == "bus"
-                    assert stored["confirmed_segments"][1]["mode"] == "car"
-                    assert stored["confirmed_segments"][1]["carbon_kg"] == 1.028642
-                    assert len(stored["confirmation_history"]) == 2
-                    trip["confirmation"] = summary
-                    print("CONFIRM PASS original=bus confirmed=car revision=2: " + trip["trip_id"], flush=True)
-                report["checks"]["confirmation_carbon_and_cosmos"] = True
-                report_file.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
             if raw_differences:
                 print("Capture contains all IDs, but Raw field values differ; see raw_differences in " + str(report_file), flush=True)
-                raise AssertionError("Raw original comparison failed; independent confirmation results are saved in the report")
+                raise AssertionError("Raw original comparison failed; details are saved in raw_differences")
             print("PASS: HTTP -> Cosmos lifecycle and GPS -> Event Hubs Capture -> Raw, all original fields preserved.", flush=True)
             print(report_file)
             return
