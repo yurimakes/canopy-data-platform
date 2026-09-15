@@ -95,8 +95,8 @@ def main():
             # Desktop clocks can lag Azure on very short synthetic Trips. Let the
             # API timestamp this test stop; phone-provided end times are tested separately.
             stop = {"expected_last_sequence": 2}
-            result = call(f"trips/{trip['trip_id']}/stop", "POST", stop, expected=(202,))
-            assert result["status"] == "processing"
+            result = call(f"trips/{trip['trip_id']}/stop", "POST", stop, expected=(200, 202))
+            assert result["status"] in ("processing", "ready")
             call(f"trips/{trip['trip_id']}/stop", "POST", stop, expected=(200, 202))
             record["stopped_at"] = stamp()
             save()

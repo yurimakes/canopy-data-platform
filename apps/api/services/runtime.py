@@ -35,7 +35,8 @@ def service():
     if not campaign_id.strip():
         raise RuntimeError("TRIP_CAMPAIGN_ID is required")
     return TripService(store, processor, campaign_id=campaign_id, grace_seconds=int(os.getenv("TRIP_PROCESS_DELAY_SECONDS", "5")),
-                       lease_seconds=int(os.getenv("TRIP_PROCESS_LEASE_SECONDS", "900")))
+                       lease_seconds=int(os.getenv("TRIP_PROCESS_LEASE_SECONDS", "900")),
+                       process_on_stop=os.getenv("TRIP_PROCESS_ON_STOP", "true").lower() == "true")
 
 
 @lru_cache

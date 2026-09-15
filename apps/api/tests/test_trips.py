@@ -197,6 +197,34 @@ class TripTests(unittest.TestCase):
                 "segments": [{"segment_id": s["segment_id"], "confirmed_mode": s["mode"]} for s in trip["segments"]]}
         return trip, body
 
+    def test_stop_immediately_processes_without_waiting_for_timer(self):
+        from unittest.mock import Mock
+        processor = Mock(wraps=self.processor)
+        self.api = TripService(self.store, processor, lambda: self.now, grace_seconds=300, process_on_stop=True)
+        _, trip = self.start()
+        status, result = self.stop(trip)
+        self.assertEqual((status, result["status"]), (200, "ready"))
+        self.assertEqual(processor.process_trip.call_count, 1)
+        self.stop(trip)
+        self.api.process_pending()
+        self.assertEqual(processor.process_trip.call_count, 1)
+
+    def test_immediate_stop_does_not_take_over_an_active_worker(self):
+        from unittest.mock import Mock
+        processor = Mock(wraps=self.processor)
+        _, trip = self.start()
+        self.stop(trip)
+        saved = self.api.get(trip["trip_id"], "alice")
+        saved["lease_until"] = (self.now + timedelta(seconds=60)).isoformat()
+        self.store.replace(saved)
+        self.api = TripService(self.store, processor, lambda: self.now, process_on_stop=True)
+        result = self.api.stop(trip["trip_id"], "alice", {})
+        self.assertEqual(result["status"], "processing")
+        processor.process_trip.assert_not_called()
+        self.now += timedelta(seconds=61)
+        self.assertEqual(self.api.stop(trip["trip_id"], "alice", {})["status"], "ready")
+        self.assertEqual(processor.process_trip.call_count, 1)
+
     def test_confirmation_preserves_prediction_recalculates_and_survives_restart(self):
         trip, body = self.fixture()
         body["segments"][1]["confirmed_mode"] = "car"

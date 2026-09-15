@@ -43,10 +43,19 @@ class TripService:
         from .trip_confirmation import confirm
         return confirm(self, trip_id, user_id, body)
 
-    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test"):
+    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test", process_on_stop=False):
         self.store, self.processor, self.clock = store, processor, clock
         self.campaign_id = campaign_id
         self.grace_seconds, self.lease_seconds = grace_seconds, lease_seconds
+        self.process_on_stop = process_on_stop
+
+    def after_stop(self, item):
+        if self.process_on_stop and item["status"] == "processing":
+            # Start only this Trip, using the same durable claim as the recovery timer.
+            if item.get("lease_until", "") <= iso(self.clock()):
+                self._process([item])
+            return self.get(item["trip_id"], item["user_id"])
+        return item
 
     def get(self, trip_id: str, user_id: str) -> dict:
         item = self.store.read(trip_id, user_id)
@@ -87,7 +96,7 @@ class TripService:
             item = self.get(trip_id, user_id)
             if item["status"] != "collecting":
                 if item["status"] != "failed" or not retry_id or item.get("last_retry_id") == retry_id:
-                    return item
+                    return self.after_stop(item)
             now = self.clock()
             if item["status"] == "collecting":
                 expected = body.get("expected_last_sequence")
@@ -108,14 +117,17 @@ class TripService:
             try:
                 saved = self.store.replace(item)
                 LOG.info("trip_processing trip_id=%s generation=%s", trip_id, saved["processing_generation"])
-                return saved
+                return self.after_stop(saved)
             except Conflict:
                 continue
         raise ApiError(409, "concurrent_update", "retry the same stop request")
 
     def process_pending(self, limit=20) -> int:
+        return self._process(self.store.pending(iso(self.clock()), limit))
+
+    def _process(self, items) -> int:
         processed = 0
-        for item in self.store.pending(iso(self.clock()), limit):
+        for item in items:
             item.update(lease_until=iso(self.clock() + timedelta(seconds=self.lease_seconds)), worker_id=str(uuid4()))
             try:
                 claimed = self.store.replace(item)
