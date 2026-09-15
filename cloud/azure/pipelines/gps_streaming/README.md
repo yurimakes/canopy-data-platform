@@ -56,3 +56,20 @@ Workspace-specific values are deliberately required at deployment time:
 `model_uri` and `checkpoint_location`. The default logical tables are
 `canopy.silver.gps_features`, `canopy.silver.mode_segments`, and
 `canopy.gold.mode_segment_predictions`.
+
+## GPS preprocessing
+
+`gps_preprocessing.py` defines the upstream point contract:
+
+- parses the intended `canopy.gps.collector.v0.1` payload;
+- preserves the producer's `speed` value unchanged until its unit is confirmed;
+- derives km/h with Haversine distance (`R = 6,371,000 m`) and the actual
+  positive timestamp interval, so spacing need not be exactly one second;
+- retains `dt_s` and `distance_m` for QC and future first-layer features;
+- rejects, rather than clips, non-finite, non-positive-time, or above-200-km/h
+  transitions; and
+- resets partial mock-segment state after an invalid transition so a model
+  window never bridges rejected data.
+
+The first observation in a trip has no derived transition. Consequently, 201
+GPS observations are required to produce 200 derived speed points.

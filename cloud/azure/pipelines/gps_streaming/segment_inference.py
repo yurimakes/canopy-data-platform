@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import math
 from typing import Any, Protocol, Sequence
 
@@ -22,8 +23,8 @@ class SegmentInferenceResult:
     trip_id: str
     user_id: str
     segment_id: str
-    start_time: Any
-    end_time: Any
+    start_time: datetime
+    end_time: datetime
     weak_mode: str
     weak_confidence: float
     detector_version: str
