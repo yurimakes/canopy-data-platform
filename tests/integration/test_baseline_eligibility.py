@@ -1,8 +1,9 @@
 import copy
-import importlib.util
 from pathlib import Path
 import sys
 import unittest
+import os
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME = ROOT / "cloud/azure/pipelines/databricks"
@@ -111,6 +112,71 @@ class PersonalGateTests(unittest.TestCase):
         self.pdf = __import__("pandas").concat([self.pdf, self.pdf])
         with self.assertRaisesRegex(ValueError, "Duplicate Weekly"):
             self.compute()
+
+
+@unittest.skipUnless(os.environ.get("CANOPY_TEST_SPARK") == "1", "Set CANOPY_TEST_SPARK=1 with Java 17/21 for real Spark integration")
+class SparkGateTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from pyspark.sql import SparkSession
+        cls.spark = (SparkSession.builder.master("local[1]").appName("canopy-eligibility-tests")
+                     .config("spark.ui.enabled", "false").config("spark.sql.shuffle.partitions", "1")
+                     .config("spark.sql.session.timeZone", "UTC").getOrCreate())
+        cls.spark.sparkContext.setLogLevel("ERROR")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.spark.stop()
+
+    def personal(self, ready_count, total=None):
+        from pyspark.sql import functions as F
+        return self.spark.range(total or ready_count).select(
+            F.col("id").cast("string").alias("user_id"), F.lit("c").alias("campaign_id"),
+            F.lit("2026-W37").alias("week"),
+            F.when(F.col("id") < ready_count, "ready").otherwise("collecting").alias("status"),
+            (F.col("id") + 100).cast("double").alias("baseline_g_co2e_per_km"),
+            F.lit("personal_cumulative").alias("method"),
+            F.lit("eligibility-v1").alias("eligibility_policy_version"))
+
+    def test_F_G_H_gate_counts_users_and_skips_original_formula(self):
+        import build_global_baseline as global_module
+        for case, ready, total in [("F", 5, 5), ("G", 6, 7), ("H", 4, 10)]:
+            with self.subTest(case=case), patch.object(global_module, "_compute_global_baseline",
+                                                       wraps=global_module._compute_global_baseline) as formula:
+                row = global_module.compute_global_baseline(self.personal(ready, total), "c", "2026-W37", "v3").first()
+                self.assertEqual(row.eligible_participant_count, ready)
+                self.assertEqual(row.status, "ready" if case == "G" else "collecting")
+                self.assertEqual(row.value, 102.5 if case == "G" else None)
+                self.assertEqual(formula.call_count, 1 if case == "G" else 0)
+
+    def test_duplicate_user_and_other_campaign_cannot_make_six(self):
+        from build_global_baseline import compute_global_baseline
+        from pyspark.sql import functions as F
+        df = self.personal(5)
+        with self.assertRaisesRegex(ValueError, "Duplicate Personal"):
+            compute_global_baseline(df.unionByName(df.limit(1)), "c", "2026-W37", "v3")
+        other = self.personal(6).withColumn("campaign_id", F.lit("other"))
+        self.assertEqual(compute_global_baseline(df.unionByName(other), "c", "2026-W37", "v3").first().status, "collecting")
+
+    def test_legacy_snapshot_needs_reevaluation(self):
+        from build_global_baseline import compute_global_baseline
+        result = compute_global_baseline(self.personal(10).drop("status", "eligibility_policy_version"), "c", "2026-W37", "v3").first()
+        self.assertEqual(result.status, "collecting")
+        self.assertIsNone(result.value)
+
+    def test_personal_real_spark_schema_and_gate(self):
+        from build_personal_baseline import build_personal_baseline
+        from pyspark.sql import functions as F
+        df = self.spark.range(2).select(
+            F.lit("u").alias("user_id"), F.lit("c").alias("campaign_id"),
+            F.when(F.col("id") == 0, "2026-W36").otherwise("2026-W37").alias("week"),
+            F.lit(6).alias("trip_count"), F.lit(10000.0).alias("total_distance_m"),
+            F.lit(1.2).alias("total_kg_co2e"))
+        identities = {"users": [{"user_id": "u", "created_at": "2026-08-31T00:00:00Z"}]}
+        rows = build_personal_baseline(df, "v3", identities=identities, commute_scope_verified=True).orderBy("week").collect()
+        self.assertEqual([r.status for r in rows], ["collecting", "ready"])
+        self.assertIsNone(rows[0].value)
+        self.assertEqual(rows[1].value, 120)
 
 
 if __name__ == "__main__":
