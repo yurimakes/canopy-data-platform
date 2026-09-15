@@ -191,7 +191,11 @@ def infer_segments_microbatch(
     result_rows = []
     model: Any | None = None
     processed_at = datetime.now(timezone.utc)
-    for row in history.toLocalIterator():
+    # Serverless Databricks may use file-based collect, where toLocalIterator()
+    # is unsupported. This micro-batch is intentionally bounded to newly closed
+    # segments, so collecting the aggregated history to the driver is acceptable
+    # for the MVP inference path.
+    for row in history.collect():
         segment = SegmentEvent(
             trip_id=row.trip_id,
             user_id=row.user_id,

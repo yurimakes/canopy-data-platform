@@ -16,6 +16,7 @@ if __package__:
         start_segment_inference_stream,
     )
     from .deployment_config import CanopyTableConfig
+    from .event_hubs_auth import connection_string, jaas_config
     from .spark_ingestion import (
         SparkIngestionConfig,
         ensure_upstream_tables,
@@ -33,6 +34,7 @@ else:  # pragma: no cover - exercised by Databricks spark_python_task
         start_segment_inference_stream,
     )
     from gps_streaming.deployment_config import CanopyTableConfig
+    from gps_streaming.event_hubs_auth import connection_string, jaas_config
     from gps_streaming.spark_ingestion import (
         SparkIngestionConfig,
         ensure_upstream_tables,
@@ -134,16 +136,12 @@ def event_hubs_stream(spark, args):
         scope=args.event_hubs_secret_scope,
         key=args.event_hubs_secret_key,
     )
-    connection_string = (
-        f"Endpoint=sb://{args.event_hubs_namespace}.servicebus.windows.net/;"
-        f"SharedAccessKeyName={args.event_hubs_sas_policy_name};"
-        f"SharedAccessKey={policy_key}"
-    )
-    escaped = connection_string.replace("\\", "\\\\").replace('"', '\\"')
-    jaas = (
-        "kafkashaded.org.apache.kafka.common.security.plain.PlainLoginModule required "
-        'username="$ConnectionString" '
-        f'password="{escaped}";'
+    jaas = jaas_config(
+        connection_string(
+            args.event_hubs_namespace,
+            args.event_hubs_sas_policy_name,
+            policy_key,
+        )
     )
     return (
         spark.readStream.format("kafka")
