@@ -1,0 +1,74 @@
+{
+  "name": "canopy-weekly-summary",
+  "tasks": [
+    {
+      "task_key": "sync_confirmed_trips",
+      "spark_python_task": {
+        "python_file": "dbfs:/canopy/jobs/sync_confirmed_trips.py",
+        "parameters": []
+      },
+      "environment_key": "canopy_env"
+    },
+    {
+      "task_key": "build_weekly_summary",
+      "depends_on": [
+        { "task_key": "sync_confirmed_trips" }
+      ],
+      "spark_python_task": {
+        "python_file": "dbfs:/canopy/jobs/build_weekly_summary.py",
+        "parameters": [
+          "{{campaign_id}}",
+          "{{week_start}}",
+          "{{week_end}}"
+        ]
+      },
+      "environment_key": "canopy_env"
+    },
+    {
+      "task_key": "build_personal_baseline",
+      "depends_on": [
+        { "task_key": "build_weekly_summary" }
+      ],
+      "spark_python_task": {
+        "python_file": "dbfs:/canopy/jobs/build_personal_baseline.py",
+        "parameters": [
+          "{{campaign_id}}"
+        ]
+      },
+      "environment_key": "canopy_env"
+    },
+    {
+      "task_key": "build_global_baseline",
+      "depends_on": [
+        { "task_key": "build_weekly_summary" }
+      ],
+      "spark_python_task": {
+        "python_file": "dbfs:/canopy/jobs/build_global_baseline.py",
+        "parameters": [
+          "{{campaign_id}}",
+          "{{evaluation_week}}"
+        ]
+      },
+      "environment_key": "canopy_env"
+    }
+  ],
+  "environments": [
+    {
+      "environment_key": "canopy_env",
+      "spec": {
+        "client": "1",
+        "dependencies": [
+          "azure-cosmos",
+          "pyyaml"
+        ]
+      }
+    }
+  ],
+  "parameters": [
+    { "name": "campaign_id", "default": "" },
+    { "name": "week_start", "default": "" },
+    { "name": "week_end", "default": "" },
+    { "name": "evaluation_week", "default": "" }
+  ],
+  "max_concurrent_runs": 1
+}
