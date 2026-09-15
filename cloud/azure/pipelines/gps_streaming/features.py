@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections import defaultdict, deque
-from datetime import datetime, timedelta
 import math
-from typing import Any, Mapping
+from collections import defaultdict, deque
+from collections.abc import Mapping
+from datetime import datetime, timedelta
+from typing import Any
 
 
 class RollingSpeedMin:

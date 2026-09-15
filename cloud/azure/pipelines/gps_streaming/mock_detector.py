@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 import hashlib
 import random
-from typing import Any, Mapping
-
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
 
 DEFAULT_MODES = ("bike", "bus", "car", "train", "walk")
 
@@ -130,7 +130,9 @@ class MockFirstLayerDetector:
             "segment_number": state.segment_number,
             "target_points": state.target_points,
             "point_count": state.point_count,
-            "start_time": None if state.start_time is None else state.start_time.isoformat(),
+            "start_time": None
+            if state.start_time is None
+            else state.start_time.isoformat(),
         }
 
     def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any] | None) -> None:
@@ -139,7 +141,11 @@ class MockFirstLayerDetector:
             return
         target_points = int(snapshot["target_points"])
         point_count = int(snapshot["point_count"])
-        if not self.config.min_speed_points <= target_points <= self.config.max_speed_points:
+        if (
+            not self.config.min_speed_points
+            <= target_points
+            <= self.config.max_speed_points
+        ):
             raise ValueError(
                 "persisted mock detector target is incompatible with the configured range"
             )
@@ -153,11 +159,13 @@ class MockFirstLayerDetector:
             segment_number=int(snapshot["segment_number"]),
             target_points=target_points,
             point_count=point_count,
-            start_time=None if start_time is None else datetime.fromisoformat(str(start_time)),
+            start_time=None
+            if start_time is None
+            else datetime.fromisoformat(str(start_time)),
         )
 
     def _trip_seed(self, trip_id: str) -> int:
-        material = f"{self.config.seed}:{trip_id}".encode("utf-8")
+        material = f"{self.config.seed}:{trip_id}".encode()
         return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
 
 

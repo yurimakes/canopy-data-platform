@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta, timezone
 import json
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from cloud.azure.pipelines.gps_streaming.features import RollingSpeedMin
 from cloud.azure.pipelines.gps_streaming.mock_detector import (
@@ -9,7 +9,6 @@ from cloud.azure.pipelines.gps_streaming.mock_detector import (
     MockFirstLayerDetector,
 )
 from cloud.azure.pipelines.gps_streaming.pipeline import MockFirstLayerPipeline
-
 
 UTC = timezone.utc
 
@@ -20,8 +19,12 @@ class RollingSpeedMinTest(unittest.TestCase):
         start = datetime(2026, 9, 15, tzinfo=UTC)
 
         self.assertEqual(feature.update("trip", start, 1.0), 1.0)
-        self.assertEqual(feature.update("trip", start + timedelta(seconds=59), 5.0), 1.0)
-        self.assertEqual(feature.update("trip", start + timedelta(seconds=60), 4.0), 4.0)
+        self.assertEqual(
+            feature.update("trip", start + timedelta(seconds=59), 5.0), 1.0
+        )
+        self.assertEqual(
+            feature.update("trip", start + timedelta(seconds=60), 4.0), 4.0
+        )
 
     def test_rejects_out_of_order_events(self) -> None:
         feature = RollingSpeedMin()
@@ -58,9 +61,7 @@ class MockDetectorTest(unittest.TestCase):
 
         for trip_number in range(500):
             trip_id = f"trip-{trip_number}"
-            detector.process(
-                DetectorPoint(trip_id, "user-1", start, speed_min_60s=1.0)
-            )
+            detector.process(DetectorPoint(trip_id, "user-1", start, speed_min_60s=1.0))
             snapshot = detector.snapshot_trip(trip_id)
             self.assertIsNotNone(snapshot)
             self.assertGreaterEqual(snapshot["target_points"], 250)

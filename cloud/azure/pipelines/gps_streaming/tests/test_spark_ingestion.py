@@ -1,10 +1,10 @@
 import unittest
 
+from cloud.azure.pipelines.gps_streaming.deployment_config import CanopyTableConfig
 from cloud.azure.pipelines.gps_streaming.spark_ingestion import (
     SparkIngestionConfig,
     table_ddl,
 )
-from cloud.azure.pipelines.gps_streaming.deployment_config import CanopyTableConfig
 
 
 def config(**overrides) -> SparkIngestionConfig:

@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-import json
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any
 
 from .deployment_config import CanopyTableConfig
 from .gps_preprocessing import GpsFirstLayerRuntime, GpsObservation, GpsRuntimeOutput
-from .mock_detector import MockDetectorConfig
+from .mock_detector import MockDetectorConfig, MockFirstLayerDetector
 from .pipeline import MockFirstLayerPipeline
-from .mock_detector import MockFirstLayerDetector
-
 
 try:  # Keep the neutral package and its unit tests importable without PySpark.
     from pyspark.sql.streaming import StatefulProcessor as _StatefulProcessor
 except ImportError:  # pragma: no cover - exercised by the local non-Spark suite
+
     class _StatefulProcessor:  # type: ignore[no-redef]
         pass
 
@@ -157,7 +157,9 @@ class CanopyGpsStatefulProcessor(_StatefulProcessor):
                 yield self._make_row(segment_record(output, processed_at))
 
         if ordered_rows:
-            self._trip_state.update((encode_trip_state(runtime.snapshot_trip(trip_id)),))
+            self._trip_state.update(
+                (encode_trip_state(runtime.snapshot_trip(trip_id)),)
+            )
 
     def close(self) -> None:
         pass
@@ -187,8 +189,11 @@ def decode_trip_state(value: str) -> Mapping[str, Any]:
         raise ValueError("unsupported transformWithState envelope version")
     runtime = envelope.get("runtime")
     if not isinstance(runtime, dict):
-        raise ValueError("transformWithState runtime state must be an object")
+        raise ValueError(  # noqa: TRY004
+            "transformWithState runtime state must be an object"
+        )
     return runtime
+
 
 
 def observation_from_row(row: Any) -> GpsObservation:
@@ -234,7 +239,9 @@ def feature_record(output: GpsRuntimeOutput, processed_at: datetime) -> dict[str
         derived_speed_kmh=point.derived_speed_kmh,
         transition_valid=point.transition_valid,
         invalid_reason=point.invalid_reason,
-        speed_min_60s=None if output.enriched is None else output.enriched.speed_min_60s,
+        speed_min_60s=None
+        if output.enriched is None
+        else output.enriched.speed_min_60s,
     )
     return values
 
@@ -258,7 +265,9 @@ def segment_record(output: GpsRuntimeOutput, processed_at: datetime) -> dict[str
     return values
 
 
-def stateful_rows(observations: Any, processor: CanopyGpsStatefulProcessor | None = None) -> Any:
+def stateful_rows(
+    observations: Any, processor: CanopyGpsStatefulProcessor | None = None
+) -> Any:
     """Attach the DBR 17.3 Python Row transform to a streaming DataFrame."""
     return observations.groupBy("trip_id").transformWithState(
         statefulProcessor=processor or CanopyGpsStatefulProcessor(),
@@ -285,7 +294,9 @@ def start_stateful_stream(
     )
 
 
-def build_stateful_batch_handler(config: TransformWithStateConfig) -> Callable[[Any, int], None]:
+def build_stateful_batch_handler(
+    config: TransformWithStateConfig,
+) -> Callable[[Any, int], None]:
     """Build a retry-safe router from tagged rows to feature and segment tables."""
 
     def handler(batch: Any, batch_id: int) -> None:
@@ -293,7 +304,9 @@ def build_stateful_batch_handler(config: TransformWithStateConfig) -> Callable[[
         from delta.tables import DeltaTable
         from pyspark.sql import functions as F
 
-        features = batch.where(F.col("record_type") == "feature").select(*FEATURE_COLUMNS)
+        features = batch.where(F.col("record_type") == "feature").select(
+            *FEATURE_COLUMNS
+        )
         if not features.isEmpty():
             (
                 DeltaTable.forName(batch.sparkSession, config.tables.features_table)
@@ -312,7 +325,9 @@ def build_stateful_batch_handler(config: TransformWithStateConfig) -> Callable[[
             (
                 DeltaTable.forName(batch.sparkSession, config.tables.segments_table)
                 .alias("target")
-                .merge(segments.alias("source"), "target.segment_id = source.segment_id")
+                .merge(
+                    segments.alias("source"), "target.segment_id = source.segment_id"
+                )
                 .whenNotMatchedInsertAll()
                 .execute()
             )
@@ -320,7 +335,9 @@ def build_stateful_batch_handler(config: TransformWithStateConfig) -> Callable[[
     return handler
 
 
-def _empty_record(record_type: str, trip_id: str, processed_at: datetime) -> dict[str, Any]:
+def _empty_record(
+    record_type: str, trip_id: str, processed_at: datetime
+) -> dict[str, Any]:
     fields = [
         line.strip().split()[0]
         for line in STATEFUL_OUTPUT_SCHEMA.splitlines()

@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import unittest
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -9,7 +9,6 @@ from cloud.azure.pipelines.gps_streaming.windowing import (
     build_speed_windows,
     representative_start_indices,
 )
-
 
 UTC = timezone.utc
 
@@ -58,7 +57,9 @@ class FakePyfuncModel:
 class WindowingTest(unittest.TestCase):
     def test_even_starts_include_both_segment_ends(self) -> None:
         self.assertEqual(representative_start_indices(400, 5), (0, 50, 100, 150, 200))
-        self.assertEqual(representative_start_indices(662, 7), (0, 77, 154, 231, 308, 385, 462))
+        self.assertEqual(
+            representative_start_indices(662, 7), (0, 77, 154, 231, 308, 385, 462)
+        )
 
     def test_mock_sized_segment_uses_expected_policy(self) -> None:
         self.assertEqual(len(build_speed_windows([10.0] * 200)), 1)
@@ -74,7 +75,9 @@ class SegmentInferenceTest(unittest.TestCase):
 
         self.assertEqual(list(model.received.columns), ["speed_sequence"])
         self.assertEqual(model.received.shape, (3, 1))
-        self.assertTrue(all(len(row) == 200 for row in model.received["speed_sequence"]))
+        self.assertTrue(
+            all(len(row) == 200 for row in model.received["speed_sequence"])
+        )
         self.assertEqual(result.status, "scored")
         self.assertEqual(result.strong_mode, "bus")
         self.assertEqual(result.window_count, 3)

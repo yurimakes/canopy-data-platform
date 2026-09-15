@@ -1,13 +1,12 @@
-from datetime import datetime, timezone
 import unittest
+from datetime import datetime, timezone
 
 from cloud.azure.pipelines.gps_streaming.databricks_adapter import (
     DatabricksInferenceConfig,
     prediction_row,
 )
-from cloud.azure.pipelines.gps_streaming.segment_inference import SegmentInferenceResult
 from cloud.azure.pipelines.gps_streaming.deployment_config import CanopyTableConfig
-
+from cloud.azure.pipelines.gps_streaming.segment_inference import SegmentInferenceResult
 
 UTC = timezone.utc
 
@@ -18,7 +17,9 @@ class DatabricksInferenceConfigTest(unittest.TestCase):
             model_uri="models:/canopy_speedtransformer@champion",
             checkpoint_location="abfss://checkpoints/segment-inference",
         )
-        self.assertEqual(config.gps_features_table, "dbw_canopy_dev.silver.gps_features")
+        self.assertEqual(
+            config.gps_features_table, "dbw_canopy_dev.silver.gps_features"
+        )
         self.assertEqual(
             config.predictions_table,
             "dbw_canopy_dev.gold.mode_segment_predictions",

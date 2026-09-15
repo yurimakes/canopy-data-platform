@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
 import unittest
+from datetime import datetime, timedelta, timezone
 
 from cloud.azure.pipelines.gps_streaming.gps_preprocessing import (
     GpsFirstLayerRuntime,
@@ -11,7 +11,6 @@ from cloud.azure.pipelines.gps_streaming.mock_detector import (
     MockFirstLayerDetector,
 )
 from cloud.azure.pipelines.gps_streaming.pipeline import MockFirstLayerPipeline
-
 
 UTC = timezone.utc
 START = datetime(2026, 9, 15, tzinfo=UTC)

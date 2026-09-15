@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
-
+from pathlib import Path
 
 # The bundle sync root is ``cloud/azure/pipelines`` so direct execution sees
 # this directory as the ``gps_streaming`` package. Normal repository imports
@@ -112,12 +111,8 @@ def main(argv: list[str] | None = None) -> None:
         start_bronze_stream(
             kafka_events, ingestion, trigger_interval=args.trigger_interval
         ),
-        *start_parsed_streams(
-            spark, ingestion, trigger_interval=args.trigger_interval
-        ),
-        start_stateful_stream(
-            spark, stateful, trigger_interval=args.trigger_interval
-        ),
+        *start_parsed_streams(spark, ingestion, trigger_interval=args.trigger_interval),
+        start_stateful_stream(spark, stateful, trigger_interval=args.trigger_interval),
         start_segment_inference_stream(
             spark, inference, trigger_interval=args.trigger_interval
         ),

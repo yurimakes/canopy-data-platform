@@ -6,9 +6,10 @@ domain package and its unit tests remain usable outside Databricks.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from .deployment_config import CanopyTableConfig
 from .mock_detector import SegmentEvent
@@ -204,9 +205,12 @@ def infer_segments_microbatch(
             detector_version=row.detector_version,
         )
         speeds = [point.derived_speed_kmh for point in row.points]
-        if len(speeds) == segment.speed_point_count and len(speeds) >= 200:
-            if model is None:
-                model = get_model()
+        if (
+            len(speeds) == segment.speed_point_count
+            and len(speeds) >= 200
+            and model is None
+        ):
+            model = get_model()
         result = infer_closed_segment(segment, speeds, model)
         result_rows.append(
             prediction_row(

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-import math
-from typing import Any, Mapping
+from typing import Any
 
 from .mock_detector import SegmentEvent
 from .pipeline import EnrichedSpeedPoint, MockFirstLayerPipeline
-
 
 EARTH_RADIUS_M = 6_371_000.0
 MAX_SPEED_KMH = 200.0
@@ -34,7 +34,7 @@ class GpsObservation:
     vertical_accuracy: float | None
 
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any]) -> "GpsObservation":
+    def from_payload(cls, payload: Mapping[str, Any]) -> GpsObservation:
         """Parse the intended ``canopy.gps.collector.v0.1`` event contract."""
         required = (
             "schema_version",
@@ -52,7 +52,9 @@ class GpsObservation:
         if missing:
             raise ValueError(f"missing GPS fields: {missing}")
         if payload["schema_version"] != SUPPORTED_SCHEMA_VERSION:
-            raise ValueError(f"unsupported schema_version: {payload['schema_version']!r}")
+            raise ValueError(
+                f"unsupported schema_version: {payload['schema_version']!r}"
+            )
 
         event_time = _parse_timestamp(payload["event_time"], "event_time")
         received_at = _parse_timestamp(payload["received_at"], "received_at")
@@ -106,7 +108,7 @@ class GpsObservation:
         }
 
     @classmethod
-    def from_state(cls, state: Mapping[str, Any]) -> "GpsObservation":
+    def from_state(cls, state: Mapping[str, Any]) -> GpsObservation:
         return cls(
             schema_version=str(state["schema_version"]),
             event_id=str(state["event_id"]),
@@ -170,18 +172,30 @@ class GpsTransitionProcessor:
         if not math.isfinite(dt_s) or dt_s <= 0.0:
             # A late or duplicate event must not move the per-trip cursor
             # backwards and corrupt every following transition.
-            return _invalid_transition(observation, previous.event_time, dt_s, "non_positive_dt")
+            return _invalid_transition(
+                observation, previous.event_time, dt_s, "non_positive_dt"
+            )
 
         self._previous[observation.trip_id] = observation
-        distance_m = haversine_m(previous.lat, previous.lon, observation.lat, observation.lon)
+        distance_m = haversine_m(
+            previous.lat, previous.lon, observation.lat, observation.lon
+        )
         speed_kmh = distance_m / dt_s * 3.6
         if not math.isfinite(speed_kmh):
             return _invalid_transition(
-                observation, previous.event_time, dt_s, "non_finite_derived_speed", distance_m
+                observation,
+                previous.event_time,
+                dt_s,
+                "non_finite_derived_speed",
+                distance_m,
             )
         if speed_kmh > MAX_SPEED_KMH:
             return _invalid_transition(
-                observation, previous.event_time, dt_s, "speed_above_200_kmh", distance_m
+                observation,
+                previous.event_time,
+                dt_s,
+                "speed_above_200_kmh",
+                distance_m,
             )
 
         return DerivedGpsPoint(
@@ -303,7 +317,7 @@ def _parse_timestamp(value: Any, field: str) -> datetime:
         except ValueError as exc:
             raise ValueError(f"{field} must be ISO-8601") from exc
     else:
-        raise ValueError(f"{field} must be datetime or ISO-8601 string")
+        raise TypeError(f"{field} must be datetime or ISO-8601 string")
     if result.tzinfo is None:
         raise ValueError(f"{field} must include a timezone")
     return result

@@ -1,6 +1,6 @@
+import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-import unittest
 
 from cloud.azure.pipelines.gps_streaming.mock_detector import MockDetectorConfig
 from cloud.azure.pipelines.gps_streaming.transform_with_state import (
@@ -9,7 +9,6 @@ from cloud.azure.pipelines.gps_streaming.transform_with_state import (
     decode_trip_state,
     encode_trip_state,
 )
-
 
 UTC = timezone.utc
 START = datetime(2026, 9, 15, tzinfo=UTC)

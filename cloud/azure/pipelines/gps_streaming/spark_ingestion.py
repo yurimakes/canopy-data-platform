@@ -210,14 +210,20 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
     missing_required = F.array_join(
         F.array_compact(
             F.array(
-                *(F.when(F.col(f"payload.{name}").isNull(), F.lit(name)) for name in required)
+                *(
+                    F.when(F.col(f"payload.{name}").isNull(), F.lit(name))
+                    for name in required
+                )
             )
         ),
         ",",
     )
     reason = (
         F.when(F.col("payload._corrupt_record").isNotNull(), F.lit("malformed_json"))
-        .when(F.length(missing_required) > 0, F.concat(F.lit("missing_required:"), missing_required))
+        .when(
+            F.length(missing_required) > 0,
+            F.concat(F.lit("missing_required:"), missing_required),
+        )
         .when(
             F.col("payload.schema_version") != F.lit("canopy.gps.collector.v0.1"),
             F.lit("unsupported_schema_version"),
@@ -233,27 +239,24 @@ def valid_observation_rows(parsed_events: Any) -> Any:
     """Project validated records and keep the raw speed unit intentionally unnamed."""
     from pyspark.sql import functions as F
 
-    return (
-        parsed_events.where(F.col("rejection_reason").isNull())
-        .select(
-            "payload.schema_version",
-            "payload.event_id",
-            "payload.user_id",
-            "payload.device_id",
-            "payload.trip_id",
-            "payload.sequence",
-            "payload.event_time",
-            "payload.received_at",
-            "payload.lat",
-            "payload.lon",
-            "payload.accuracy",
-            F.col("payload.speed").alias("raw_speed"),
-            "payload.altitude_m",
-            "payload.vertical_accuracy",
-            "event_hub_enqueued_at",
-            F.col("ingested_at").alias("bronze_ingested_at"),
-            F.current_timestamp().alias("parsed_at"),
-        )
+    return parsed_events.where(F.col("rejection_reason").isNull()).select(
+        "payload.schema_version",
+        "payload.event_id",
+        "payload.user_id",
+        "payload.device_id",
+        "payload.trip_id",
+        "payload.sequence",
+        "payload.event_time",
+        "payload.received_at",
+        "payload.lat",
+        "payload.lon",
+        "payload.accuracy",
+        F.col("payload.speed").alias("raw_speed"),
+        "payload.altitude_m",
+        "payload.vertical_accuracy",
+        "event_hub_enqueued_at",
+        F.col("ingested_at").alias("bronze_ingested_at"),
+        F.current_timestamp().alias("parsed_at"),
     )
 
 

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-import math
-from typing import Any, Protocol, Sequence
+from typing import Any, Protocol
 
 from .mock_detector import SegmentEvent
 from .windowing import build_speed_windows
-
 
 DEFAULT_CLASSES = ("bike", "bus", "car", "train", "walk")
 
@@ -50,7 +50,9 @@ def infer_closed_segment(
     GPS point. Invalid values and malformed model output remain hard failures.
     """
     if len(speeds_kmh) > segment.speed_point_count:
-        raise ValueError("persisted history exceeds detector-declared speed_point_count")
+        raise ValueError(
+            "persisted history exceeds detector-declared speed_point_count"
+        )
 
     history_complete = len(speeds_kmh) == segment.speed_point_count
     windows = build_speed_windows(speeds_kmh)
@@ -114,7 +116,9 @@ def _probability_rows(
     required = {"predicted_class", "confidence", "probabilities"}
     columns = set(getattr(predictions, "columns", ()))
     if not required.issubset(columns):
-        raise ValueError(f"model output is missing columns: {sorted(required - columns)}")
+        raise ValueError(
+            f"model output is missing columns: {sorted(required - columns)}"
+        )
     if len(predictions) != expected_rows:
         raise ValueError("model output row count does not match input window count")
 

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
-from typing import Iterable
-
+from collections.abc import Iterable
+from dataclasses import dataclass
 
 SEQUENCE_LENGTH = 200
 
@@ -48,10 +47,7 @@ def representative_start_indices(length: int, count: int) -> tuple[int, ...]:
 
     # More requested windows than distinct starts should not create duplicates.
     count = min(count, last_start + 1)
-    starts = {
-        round(index * last_start / (count - 1))
-        for index in range(count)
-    }
+    starts = {round(index * last_start / (count - 1)) for index in range(count)}
     return tuple(sorted(starts))
 
 
@@ -66,7 +62,9 @@ def build_speed_windows(
         if not math.isfinite(value) or not 0.0 <= value <= 200.0:
             raise ValueError("all speeds must be finite and within [0, 200] km/h")
 
-    requested = target_window_count(len(speeds)) if window_count is None else window_count
+    requested = (
+        target_window_count(len(speeds)) if window_count is None else window_count
+    )
     starts = representative_start_indices(len(speeds), requested)
     return tuple(
         SpeedWindow(

@@ -7,11 +7,11 @@ logic remain in their existing modules.
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from pyspark import pipelines as dp
-
+from pyspark.sql import SparkSession
 
 # The bundle sync root is ``cloud/azure/pipelines``. Ensure that importing the
 # ``gps_streaming`` package works when this source file is evaluated by Lakeflow.
@@ -19,26 +19,33 @@ _PACKAGE_PARENT = Path(__file__).resolve().parent.parent
 if str(_PACKAGE_PARENT) not in sys.path:
     sys.path.insert(0, str(_PACKAGE_PARENT))
 
-from gps_streaming.databricks_adapter import (  # noqa: E402
+from gps_streaming.databricks_adapter import (
     DatabricksInferenceConfig,
     build_foreach_batch_handler,
 )
-from gps_streaming.deployment_config import CanopyTableConfig  # noqa: E402
-from gps_streaming.spark_ingestion import (  # noqa: E402
+from gps_streaming.deployment_config import CanopyTableConfig
+from gps_streaming.spark_ingestion import (
     bronze_rows,
     parse_bronze_rows,
     quarantine_rows,
     valid_observation_rows,
 )
-from gps_streaming.transform_with_state import (  # noqa: E402
+from gps_streaming.transform_with_state import (
     TransformWithStateConfig,
     build_stateful_batch_handler,
     stateful_rows,
 )
 
 
+def _spark() -> SparkSession:
+    session = SparkSession.getActiveSession()
+    if session is None:
+        raise RuntimeError("Lakeflow pipeline requires an active SparkSession")
+    return session
+
+
 def _conf(name: str) -> str:
-    value = spark.conf.get(f"canopy.{name}")
+    value = _spark().conf.get(f"canopy.{name}")
     if not value or not value.strip():
         raise ValueError(f"missing Lakeflow pipeline configuration: canopy.{name}")
     return value.strip()
@@ -92,7 +99,8 @@ def _event_hubs_stream():
         f'password="{escaped}";'
     )
     return (
-        spark.readStream.format("kafka")
+        _spark()
+        .readStream.format("kafka")
         .option("kafka.bootstrap.servers", _conf("event_hubs.bootstrap_servers"))
         .option("subscribe", _conf("event_hubs.topic"))
         .option("kafka.security.protocol", "SASL_SSL")
@@ -118,7 +126,7 @@ def gps_events():
     comment="Validated and event_id-deduplicated Canopy GPS observations.",
 )
 def gps_observations():
-    parsed = parse_bronze_rows(spark.readStream.table(TABLES.bronze_table))
+    parsed = parse_bronze_rows(_spark().readStream.table(TABLES.bronze_table))
     return (
         valid_observation_rows(parsed)
         .withWatermark("event_time", "10 minutes")
@@ -131,7 +139,7 @@ def gps_observations():
     comment="Malformed or unsupported Canopy GPS payloads.",
 )
 def gps_quarantine():
-    parsed = parse_bronze_rows(spark.readStream.table(TABLES.bronze_table))
+    parsed = parse_bronze_rows(_spark().readStream.table(TABLES.bronze_table))
     return quarantine_rows(parsed)
 
 
@@ -146,7 +154,7 @@ def canopy_gps_stateful_sink(batch_df, batch_id):
     target="canopy_gps_stateful_sink",
 )
 def canopy_gps_stateful_flow():
-    observations = spark.readStream.table(TABLES.observations_table)
+    observations = _spark().readStream.table(TABLES.observations_table)
     return stateful_rows(observations)
 
 
@@ -167,7 +175,4 @@ def canopy_speedtransformer_sink(batch_df, batch_id):
     target="canopy_speedtransformer_sink",
 )
 def canopy_speedtransformer_flow():
-    return (
-        spark.readStream.table(TABLES.segments_table)
-        .where("status = 'closed'")
-    )
+    return _spark().readStream.table(TABLES.segments_table).where("status = 'closed'")
