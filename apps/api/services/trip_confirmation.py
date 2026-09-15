@@ -1,39 +1,13 @@
 """Atomic confirmation of FinalSegments; independent of the inference provider."""
 from copy import deepcopy
 from decimal import Decimal
-from functools import lru_cache
 import hashlib
-import importlib.util
 import json
-from pathlib import Path
-import sys
 
 from .cosmos_service import Conflict
+from .trip_carbon import carbon_for
 from .trip_processor import MODES, validate_result
 from .trip_service import ApiError, iso, required
-
-
-@lru_cache
-def calculator():
-    # Deployment packages the team's module at root; local runs reference its source.
-    path = Path(__file__).resolve().parents[1] / "carbon_calculator.py"
-    if not path.exists():
-        path = Path(__file__).resolve().parents[3] / "cloud/azure/functions/func_canopy_dev/carbon_calculator.py"
-    spec = importlib.util.spec_from_file_location("canopy_team_carbon", path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module, module.load_policy(path.with_name("carbon_policy.yaml"))
-
-
-def carbon_for(segments, mode_field):
-    module, policy = calculator()
-    # The legacy calculator accepts predicted_mode. Map an ephemeral input only;
-    # never modify the saved model prediction or the team's predicted-only endpoint.
-    inputs = [{"segment_id": s["segment_id"], "predicted_mode": s[mode_field],
-               "distance_m": s["distance_m"]} for s in segments]
-    result = module.calculate_trip_carbon(inputs, policy)
-    return result
 
 
 def validate_confirmation(trip, original_segments):

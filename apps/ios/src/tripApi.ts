@@ -10,7 +10,8 @@ export type ConfirmedTrip = {
   started_at:string;ended_at:string;confirmed_at:string;revision:number;confirmation_status:'confirmed';
   total_distance_m:number;total_carbon_kg:number;walk_distance_m:number;bike_distance_m:number;
   car_distance_m:number;bus_distance_m:number;rail_distance_m:number;
-  carbon_unit:'kgCO2e';carbon_policy_version:string;factor_version:string;mode_source:'confirmed_mode';
+  carbon_unit:'kgCO2e';carbon_policy_version:string;factor_version:string;mode_source:'confirmed_mode'|'model_prediction';
+  confirmation_source?:'system'|'user';
   is_mock:boolean;model_version:string;
 };
 export type Confirmation = {segment_id:string;confirmed_mode:TransportMode};

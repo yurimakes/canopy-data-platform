@@ -7,6 +7,7 @@
   "required": ["trip_id", "user_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at", "segments", "model_version", "failed_step", "error_message"],
   "properties": {
     "review_required": {"type": "boolean", "default": false},
+    "confirmation_source": {"enum": [null, "system", "user"]},
     "feedback_status": {"enum": [null, "pending", "no_issue", "submitted"]},
     "has_issue": {"type": ["boolean", "null"]},
     "feedback_id": {"type": ["string", "null"]},

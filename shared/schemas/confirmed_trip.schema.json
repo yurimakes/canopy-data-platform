@@ -25,7 +25,8 @@
     "carbon_unit": {"const": "kgCO2e"},
     "carbon_policy_version": {"type": "string"},
     "factor_version": {"type": "string"},
-    "mode_source": {"const": "confirmed_mode"},
+    "mode_source": {"enum": ["confirmed_mode", "model_prediction"]},
+    "confirmation_source": {"enum": ["system", "user"]},
     "is_mock": {"type": "boolean"},
     "model_version": {"type": "string"}
   }

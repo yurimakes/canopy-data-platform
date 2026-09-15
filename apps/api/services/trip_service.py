@@ -35,6 +35,7 @@ def public(item: dict) -> dict:
     fields = ("trip_id", "user_id", "device_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at",
               "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon",
               "original_segments", "confirmed_segments", "revision", "confirmed_at", "confirmed_trip",
+              "confirmation_source",
               "feedback_status", "has_issue", "feedback_id", "feedback_updated_at")
     return {**{key: item.get(key) for key in fields}, "review_required": item.get("review_required", False)}
 
@@ -147,6 +148,11 @@ class TripService:
                             for segment in result["segments"]]
                 claimed.update(segments=segments, model_version=result["model_version"],
                                is_mock=result["model_version"] == "mock_v1", status="ready")
+                from .trip_carbon import finalize_result
+                try:
+                    finalize_result(claimed, segments, iso(self.clock()))
+                except Exception as exc:
+                    raise ProcessingError("carbon", "Final segment carbon calculation failed") from exc
             except Exception as exc:
                 step = exc.step if isinstance(exc, ProcessingError) else "process_trip"
                 # Do not send exception text containing infrastructure URLs/secrets to phones.

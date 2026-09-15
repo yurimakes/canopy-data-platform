@@ -193,6 +193,12 @@ class TripTests(unittest.TestCase):
         self.stop(trip)
         self.api.process_pending()
         trip = self.api.get(trip["trip_id"], "alice")
+        # Legacy pre-feedback record: keep testing correction data compatibility.
+        for key in ('carbon','confirmed_trip','revision','confirmed_at','confirmation_source'):
+            trip.pop(key, None)
+        trip['carbon'] = None
+        trip['confirmation_status'] = 'pending'
+        trip = self.store.replace(trip)
         body = {"request_id": "confirm-1", "expected_revision": 0,
                 "segments": [{"segment_id": s["segment_id"], "confirmed_mode": s["mode"]} for s in trip["segments"]]}
         return trip, body

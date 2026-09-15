@@ -63,6 +63,16 @@ class FeedbackTests(unittest.TestCase):
         self.assertNotIn('feedback_submission', result)
         self.assertNotIn('feedback_text', result)
 
+    def test_result_has_carbon_before_any_feedback(self):
+        self.assertEqual(self.original['confirmed_trip']['total_carbon_kg'], .778224)
+        self.assertEqual(self.original['confirmed_trip']['bus_distance_m'], 6200)
+        self.assertEqual(self.original['confirmed_trip']['mode_source'], 'model_prediction')
+        self.assertEqual(self.original['confirmation_source'], 'system')
+        self.assertTrue(all(s['confirmed_mode'] is None for s in self.original['segments']))
+        with patch('services.trip_carbon.carbon_for', side_effect=AssertionError('must not recalculate')):
+            self.submit(True, 'car')
+        self.assert_result_unchanged()
+
     def test_issue_text_and_empty_are_accepted_without_modifying_result(self):
         text = '버스로 나왔는데 실제로는 자동차였습니다.'
         result = self.submit(True, text)
