@@ -3,61 +3,10 @@ resources:
     gps_streaming:
       name: canopy-gps-streaming-${bundle.target}
       max_concurrent_runs: 1
-      queue:
-        enabled: true
-      job_clusters:
-        - job_cluster_key: gps_streaming
-          new_cluster:
-            policy_id: ${var.job_policy_id}
-            spark_version: ${var.spark_version}
-            node_type_id: ${var.node_type_id}
-            num_workers: 4
-            data_security_mode: USER_ISOLATION
-            runtime_engine: STANDARD
-            azure_attributes:
-              availability: ON_DEMAND_AZURE
-            spark_conf:
-              spark.sql.session.timeZone: UTC
-              spark.sql.streaming.stateStore.providerClass: org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider
-              spark.sql.streaming.stateStore.encodingFormat: avro
+      performance_target: STANDARD
+      continuous:
+        pause_status: PAUSED
       tasks:
-        - task_key: gps_streaming
-          job_cluster_key: gps_streaming
-          timeout_seconds: 0
-          spark_python_task:
-            python_file: ${workspace.file_path}/gps_streaming/job.py
-            parameters:
-              - --catalog
-              - ${var.catalog}
-              - --bronze-schema
-              - ${var.bronze_schema}
-              - --silver-schema
-              - ${var.silver_schema}
-              - --gold-schema
-              - ${var.gold_schema}
-              - --bronze-events-table
-              - ${var.bronze_events_table}
-              - --observations-table
-              - ${var.observations_table}
-              - --quarantine-table
-              - ${var.quarantine_table}
-              - --features-table
-              - ${var.features_table}
-              - --segments-table
-              - ${var.segments_table}
-              - --predictions-table
-              - ${var.predictions_table}
-              - --checkpoint-root
-              - ${var.checkpoint_root}
-              - --event-hubs-bootstrap-servers
-              - ${var.event_hubs_bootstrap_servers}
-              - --event-hubs-topic
-              - ${var.event_hubs_topic}
-              - --event-hubs-consumer-group
-              - ${var.event_hubs_consumer_group}
-              - --event-hubs-secret-scope
-              - ${var.event_hubs_secret_scope}
-              - --event-hubs-secret-key
-              - ${var.event_hubs_secret_key}
-              - --model-uri
-              - ${var.model_uri}
+        - task_key: gps_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gps_streaming_pipeline.id}
