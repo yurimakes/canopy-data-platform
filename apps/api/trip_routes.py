@@ -32,7 +32,8 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
         if stop == "/feedback" and method == "POST":
             return 200, public((feedback_api or feedback_service()).submit(trip_id, user_id, body))
         if stop == "/confirm" and method == "POST":
-            return 200, public(api.confirm(trip_id, user_id, body))
+            api.get(trip_id, user_id)  # Preserve ownership checks for old app versions.
+            raise ApiError(410, "correction_retired", "Direct correction is retired; submit Trip feedback instead")
         if stop == "/stop" and method == "POST":
             trip = api.stop(trip_id, user_id, body)
             return (202 if trip["status"] == "processing" else 200), public(trip)

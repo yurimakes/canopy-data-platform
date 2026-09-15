@@ -32,6 +32,8 @@ def main():
     parser.add_argument("--confirm-test", action="store_true", help="Confirm/correct synthetic Trips; requires ConfirmationFixtureProcessor")
     parser.add_argument("--wait-seconds", type=int, default=660)
     args = parser.parse_args()
+    if args.confirm_test:
+        parser.error("Direct correction is retired. Use tools/azure/check_trip_feedback.py for feedback E2E.")
     cfg = json.loads((DATA / "azure-test-access.json").read_text(encoding="utf-8"))
     report_file = DATA / "azure-trip-e2e.json"
     tokens = cfg["tokens"]

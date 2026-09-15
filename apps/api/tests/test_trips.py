@@ -50,6 +50,27 @@ class TripTests(unittest.TestCase):
         headers = {"authorization": "Bearer " + token} if token else {}
         return dispatch(method, "/api" + path, headers, json.dumps(body or {}).encode(), self.api)
 
+    def legacy_correction(self, method, path, body, token=TOKEN):
+        # Internal historical-data compatibility; not a public route.
+        from services.trip_service import public
+        try:
+            user = authenticate({'authorization': 'Bearer '+token} if token else {})
+            return 200, public(self.api.confirm(path.split('/')[2], user, body))
+        except ApiError as exc:
+            return exc.status, {'status': exc.code}
+        except RuntimeError:
+            return 503, {}
+
+    def test_user_correction_route_is_retired_without_changing_past_data(self):
+        trip, body = self.fixture()
+        self.legacy_correction('POST', f"/trips/{trip['trip_id']}/confirm", body)
+        before = self.api.get(trip['trip_id'], 'alice')
+        status, response = self.request('POST', f"/trips/{trip['trip_id']}/confirm", body)
+        self.assertEqual(status, 410)
+        self.assertEqual(response['status'], 'correction_retired')
+        self.assertEqual(self.api.get(trip['trip_id'], 'alice'), before)
+        self.assertEqual(self.request('POST', f"/trips/{trip['trip_id']}/confirm", body, token='')[0], 401)
+
     def start(self, request_id="start-001"):
         return self.request("POST", "/trips/start", {"request_id": request_id, "device_id": "phone-001"})
 
@@ -234,7 +255,7 @@ class TripTests(unittest.TestCase):
     def test_confirmation_preserves_prediction_recalculates_and_survives_restart(self):
         trip, body = self.fixture()
         body["segments"][1]["confirmed_mode"] = "car"
-        status, result = self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)
+        status, result = self.legacy_correction("POST", f"/trips/{trip['trip_id']}/confirm", body)
         self.assertEqual(status, 200)
         self.assertEqual(result["original_segments"][1]["mode"], "bus")
         self.assertEqual(result["confirmed_segments"][1]["mode"], "car")
@@ -249,7 +270,7 @@ class TripTests(unittest.TestCase):
         self.assertEqual(restarted.get(trip["trip_id"], "alice")["confirmed_trip"], summary)
         body.update(request_id="confirm-2", expected_revision=1)
         body["segments"][1]["confirmed_mode"] = "rail"
-        _, updated = self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)
+        _, updated = self.legacy_correction("POST", f"/trips/{trip['trip_id']}/confirm", body)
         self.assertEqual(updated["revision"], 2)
         self.assertEqual(updated["confirmed_trip"]["total_carbon_kg"], .096038)
         self.assertEqual(updated["original_segments"], result["original_segments"])
@@ -259,33 +280,33 @@ class TripTests(unittest.TestCase):
         trip, body = self.fixture()
         path = f"/trips/{trip['trip_id']}/confirm"
         with ThreadPoolExecutor(max_workers=6) as pool:
-            results = list(pool.map(lambda _: self.request("POST", path, body), range(6)))
+            results = list(pool.map(lambda _: self.legacy_correction("POST", path, body), range(6)))
         self.assertTrue(all(status == 200 and result["revision"] == 1 for status, result in results))
-        self.assertEqual(self.request("POST", path, {**body, "request_id": "stale"})[0], 409)
-        self.assertEqual(self.request("POST", path, {**body, "expected_revision": 1})[0], 409)
+        self.assertEqual(self.legacy_correction("POST", path, {**body, "request_id": "stale"})[0], 409)
+        self.assertEqual(self.legacy_correction("POST", path, {**body, "expected_revision": 1})[0], 409)
         second = {**body, "request_id": "next", "expected_revision": 1}
-        self.assertEqual(self.request("POST", path, second)[1]["revision"], 2)
-        self.assertEqual(self.request("POST", path, body)[1]["revision"], 2)
+        self.assertEqual(self.legacy_correction("POST", path, second)[1]["revision"], 2)
+        self.assertEqual(self.legacy_correction("POST", path, body)[1]["revision"], 2)
 
     def test_confirmation_rejects_wrong_owner_mode_ids_and_client_distance(self):
         from copy import deepcopy
         trip, body = self.fixture()
         path = f"/trips/{trip['trip_id']}/confirm"
-        self.assertEqual(self.request("POST", path, body, token="")[0], 401)
+        self.assertEqual(self.legacy_correction("POST", path, body, token="")[0], 401)
         with self.assertRaises(ApiError): self.api.confirm(trip["trip_id"], "bob", body)
         for change in ({"confirmed_mode": "plane"}, {"distance_m": 0}, {"segment_id": "unknown"}, {"confirmed_mode": []}):
             invalid = deepcopy(body)
             invalid["segments"][0].update(change)
-            self.assertEqual(self.request("POST", path, invalid)[0], 400)
+            self.assertEqual(self.legacy_correction("POST", path, invalid)[0], 400)
         invalid = deepcopy(body)
         invalid["segments"] = invalid["segments"][:1]
-        self.assertEqual(self.request("POST", path, invalid)[0], 400)
+        self.assertEqual(self.legacy_correction("POST", path, invalid)[0], 400)
         self.assertEqual(self.api.get(trip["trip_id"], "alice")["confirmation_status"], "pending")
 
     def test_carbon_failure_does_not_partially_confirm(self):
         trip, body = self.fixture()
         with patch("services.trip_confirmation.carbon_for", side_effect=RuntimeError("unavailable")):
-            self.assertEqual(self.request("POST", f"/trips/{trip['trip_id']}/confirm", body)[0], 503)
+            self.assertEqual(self.legacy_correction("POST", f"/trips/{trip['trip_id']}/confirm", body)[0], 503)
         saved = self.api.get(trip["trip_id"], "alice")
         self.assertEqual(saved["confirmation_status"], "pending")
         self.assertNotIn("confirmed_trip", saved)
