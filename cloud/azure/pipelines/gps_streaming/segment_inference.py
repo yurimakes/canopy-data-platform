@@ -20,9 +20,13 @@ class PyfuncModel(Protocol):
 @dataclass(frozen=True)
 class SegmentInferenceResult:
     trip_id: str
+    user_id: str
     segment_id: str
+    start_time: Any
+    end_time: Any
     weak_mode: str
     weak_confidence: float
+    detector_version: str
     status: str
     strong_mode: str | None
     strong_confidence: float | None
@@ -44,18 +48,26 @@ def infer_closed_segment(
     it can occur when the segment record becomes visible before its final Silver
     GPS point. Invalid values and malformed model output remain hard failures.
     """
+    if len(speeds_kmh) > segment.speed_point_count:
+        raise ValueError("persisted history exceeds detector-declared speed_point_count")
+
+    history_complete = len(speeds_kmh) == segment.speed_point_count
     windows = build_speed_windows(speeds_kmh)
-    if not windows:
+    if not history_complete or not windows:
         return SegmentInferenceResult(
             trip_id=segment.trip_id,
+            user_id=segment.user_id,
             segment_id=segment.segment_id,
+            start_time=segment.start_time,
+            end_time=segment.end_time,
             weak_mode=segment.weak_mode,
             weak_confidence=segment.weak_confidence,
+            detector_version=segment.detector_version,
             status="insufficient_history",
             strong_mode=None,
             strong_confidence=None,
             probabilities=None,
-            window_count=0,
+            window_count=len(windows),
             speed_point_count=len(speeds_kmh),
         )
 
@@ -76,9 +88,13 @@ def infer_closed_segment(
 
     return SegmentInferenceResult(
         trip_id=segment.trip_id,
+        user_id=segment.user_id,
         segment_id=segment.segment_id,
+        start_time=segment.start_time,
+        end_time=segment.end_time,
         weak_mode=segment.weak_mode,
         weak_confidence=segment.weak_confidence,
+        detector_version=segment.detector_version,
         status="scored",
         strong_mode=classes[best_index],
         strong_confidence=aggregate[best_index],

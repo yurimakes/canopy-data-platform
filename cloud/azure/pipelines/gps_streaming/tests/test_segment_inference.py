@@ -90,6 +90,18 @@ class SegmentInferenceTest(unittest.TestCase):
         self.assertEqual(result.window_count, 0)
         self.assertIsNone(model.received)
 
+    def test_partial_visibility_does_not_score_eligible_prefix(self) -> None:
+        model = FakePyfuncModel()
+        result = infer_closed_segment(_segment(250), [10.0] * 200, model)
+
+        self.assertEqual(result.status, "insufficient_history")
+        self.assertEqual(result.window_count, 1)
+        self.assertIsNone(model.received)
+
+    def test_surplus_history_is_a_contract_violation(self) -> None:
+        with self.assertRaisesRegex(ValueError, "exceeds"):
+            infer_closed_segment(_segment(200), [10.0] * 201, FakePyfuncModel())
+
 
 if __name__ == "__main__":
     unittest.main()

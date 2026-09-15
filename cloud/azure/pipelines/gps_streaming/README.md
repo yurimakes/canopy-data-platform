@@ -35,6 +35,24 @@ pyfunc model:
   column; every row contains exactly 200 raw km/h values.
 - Window probability vectors are averaged, then `argmax` produces the strong
   segment mode. The random weak mode remains output metadata only.
-- A segment with fewer than 200 persisted speed points returns
-  `insufficient_history` without invoking MLflow. A Databricks adapter should
-  treat this as retryable because Delta visibility may lag segment closure.
+- A segment whose persisted history has not yet reached its detector-declared
+  `speed_point_count` returns `insufficient_history` without invoking MLflow,
+  even if 200 rows are already visible. The Databricks adapter treats this as
+  retryable because Delta visibility may lag segment closure.
+
+## Databricks adapter
+
+`databricks_adapter.py` supplies the thin workspace layer:
+
+- reads only `closed` segment micro-batches;
+- skips segments that already have a `scored` prediction;
+- range-joins each remaining segment to ordered Silver speed history;
+- loads the MLflow pyfunc lazily and reuses it on the stream driver;
+- records `insufficient_history` while leaving that segment retryable; and
+- uses Delta `MERGE` on `segment_id` so checkpoint or micro-batch retries are
+  idempotent.
+
+Workspace-specific values are deliberately required at deployment time:
+`model_uri` and `checkpoint_location`. The default logical tables are
+`canopy.silver.gps_features`, `canopy.silver.mode_segments`, and
+`canopy.gold.mode_segment_predictions`.
