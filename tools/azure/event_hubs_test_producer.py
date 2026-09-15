@@ -78,10 +78,19 @@ def publish(connection_string: str, event_hub: str, events: list[dict[str, objec
             "azure-eventhub is required; install it with: pip install azure-eventhub"
         ) from exc
 
-    producer = EventHubProducerClient.from_connection_string(
-        conn_str=connection_string,
-        eventhub_name=event_hub,
-    )
+    # Event-hub-scoped SAS connection strings include EntityPath and are the
+    # preferred least-privilege credential for this test. Namespace-scoped
+    # strings require an explicit eventhub_name.
+    if "EntityPath=" in connection_string:
+        producer = EventHubProducerClient.from_connection_string(
+            conn_str=connection_string,
+        )
+    else:
+        producer = EventHubProducerClient.from_connection_string(
+            conn_str=connection_string,
+            eventhub_name=event_hub,
+        )
+
     with producer:
         batch = producer.create_batch()
         for payload in events:
