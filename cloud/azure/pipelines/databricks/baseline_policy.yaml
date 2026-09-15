@@ -1,0 +1,32 @@
+policy_version: "baseline-policy-v3"
+
+trip_eligibility:
+  confirmation_required: true
+  confirmation_status: confirmed
+  use_latest_confirmation_only: true
+  source_dataset: "data/gold/weekly_summary_user"
+
+accumulation:
+  scope: campaign_to_date
+  cadence: weekly
+
+emission_unit: g
+
+ratio_basis: distance
+
+insufficient_data_value: null
+
+personal_baseline:
+  scope: own_trips_only
+  formula: "cumulative(g_co2e up to previous week) / cumulative(distance_km up to previous week)"
+  insufficient_when: no_prior_week_in_campaign
+  fallback: population_baseline
+
+global_baseline:
+  scope: personal_baseline_average
+  valid_participant_definition: "personal_baseline is not null in the evaluation week"
+  formula: "sum(valid participants personal_baseline) / count(valid participants)"
+
+mode_breakdown:
+  storage: separate_from_baseline
+  dataset: "data/gold/weekly_summary_user"
