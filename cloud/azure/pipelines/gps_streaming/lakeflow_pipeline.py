@@ -7,18 +7,13 @@ logic remain in their existing modules.
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from pyspark import pipelines as dp
 from pyspark.sql import SparkSession
 
-# The bundle sync root is ``cloud/azure/pipelines``. Ensure that importing the
-# ``gps_streaming`` package works when this source file is evaluated by Lakeflow.
-_PACKAGE_PARENT = Path(__file__).resolve().parent.parent
-if str(_PACKAGE_PARENT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_PARENT))
-
+# Lakeflow automatically adds the pipeline root folder to ``sys.path``. The
+# bundle sync root contains the ``gps_streaming`` package directly, so no
+# ``__file__``-based path manipulation is required (and ``__file__`` is not
+# defined when Lakeflow evaluates Python source files).
 from gps_streaming.databricks_adapter import (
     DatabricksInferenceConfig,
     build_foreach_batch_handler,
