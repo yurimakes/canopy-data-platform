@@ -2,7 +2,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from pyspark.sql import DataFrame, SparkSession, Window
+from pyspark.sql import SparkSession, Window
 from pyspark.sql import functions as F
 
 CONFIRMED_TRIPS_PATH = os.environ.get(
@@ -18,6 +18,8 @@ GOLD_WEEKLY_CAMPAIGN_PATH = os.environ.get(
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/weekly_summary_campaign/",
 )
 
+MODES = ["walk", "bike", "car", "bus", "rail"]
+
 
 def compute_last_iso_week(reference_date=None):
     ref = reference_date or datetime.now(timezone.utc).date()
@@ -30,110 +32,147 @@ def compute_last_iso_week(reference_date=None):
 
 
 def read_confirmed_trips(spark, campaign_id, week_start, week_end):
+    """Read finalized automatic Trip results; user feedback is not an auto-override gate."""
     df = spark.read.format("delta").load(CONFIRMED_TRIPS_PATH)
-    df = df.filter(
+    return df.filter(
         (F.col("campaign_id") == campaign_id)
-        & (F.col("confirmation_status") == "confirmed")
+        & (F.col("status") == "ready")
         & (F.col("ended_at") >= week_start)
         & (F.col("ended_at") < week_end)
     )
-    return df
 
 
 def dedupe_latest_confirmation(df):
+    # Keep the latest persisted version of each Trip. The historical function name is
+    # retained for compatibility; this is no longer a user-confirmation selection rule.
     w = Window.partitionBy("trip_id").orderBy(F.col("updated_at").desc())
     ranked = df.withColumn("_rn", F.row_number().over(w))
     return ranked.filter(F.col("_rn") == 1).drop("_rn")
 
 
 def assign_week(df):
-    df = df.withColumn("trip_date", F.to_date("ended_at"))
-    df = df.withColumn("iso_year", F.year(F.col("trip_date")))
-    df = df.withColumn("iso_week", F.weekofyear(F.col("trip_date")))
-    df = df.withColumn(
-        "week",
-        F.concat(F.col("iso_year").cast("string"), F.lit("-W"), F.lpad(F.col("iso_week").cast("string"), 2, "0")),
+    trip_date = F.to_date("ended_at")
+    iso_day = F.pmod(F.dayofweek(trip_date) + F.lit(5), F.lit(7)) + F.lit(1)
+    iso_thursday = F.date_add(trip_date, F.lit(4) - iso_day)
+    return (
+        df.withColumn("trip_date", trip_date)
+        .withColumn("iso_year", F.year(iso_thursday))
+        .withColumn("iso_week", F.weekofyear(trip_date))
+        .withColumn(
+            "week",
+            F.concat(
+                F.col("iso_year").cast("string"),
+                F.lit("-W"),
+                F.lpad(F.col("iso_week").cast("string"), 2, "0"),
+            ),
+        )
     )
-    return df
 
 
-EMISSION_FACTORS_KG_PER_KM = {
-    "walk": 0.0,
-    "bike": 0.0,
-    "car": 0.16591,
-    "bus": 0.12552,
-    "rail": 0.01549,
-}
+def validate_carbon_contract(df):
+    missing = df.filter(
+        F.col("carbon.kg_co2e").isNull()
+        | F.col("carbon.policy_version").isNull()
+        | F.col("carbon.factor_version").isNull()
+        | (F.col("carbon.unit") != F.lit("kgCO2e"))
+    )
+    if missing.limit(1).count():
+        raise RuntimeError("ready Trip is missing canonical carbon/version/unit fields")
+
+    versions = (
+        df.select(
+            F.col("carbon.policy_version").alias("policy_version"),
+            F.col("carbon.factor_version").alias("factor_version"),
+        )
+        .distinct()
+        .limit(2)
+        .collect()
+    )
+    if len(versions) > 1:
+        raise RuntimeError("mixed carbon policy/factor versions in one weekly aggregation")
 
 
 def explode_segments(df):
     exploded = df.select(
-        "trip_id", "user_id", "campaign_id", "week",
+        "trip_id",
+        "user_id",
+        "campaign_id",
+        "week",
+        F.col("carbon.policy_version").alias("carbon_policy_version"),
+        F.col("carbon.factor_version").alias("factor_version"),
         F.explode("segments").alias("segment"),
     )
-    exploded = exploded.withColumn("effective_mode", F.col("segment.model_prediction"))
-    exploded = exploded.withColumn("distance_m", F.col("segment.distance_m"))
-
-    factor_map = F.create_map(*[x for kv in EMISSION_FACTORS_KG_PER_KM.items() for x in (F.lit(kv[0]), F.lit(kv[1]))])
-    exploded = exploded.withColumn(
-        "segment_kg_co2e",
-        (F.col("distance_m") / 1000.0) * factor_map[F.col("effective_mode")],
+    return (
+        exploded.withColumn("effective_mode", F.col("segment.model_prediction"))
+        .withColumn("distance_m", F.col("segment.distance_m").cast("double"))
+        .withColumn("segment_kg_co2e", F.col("segment.carbon_kg").cast("double"))
     )
-    return exploded
 
 
 def compute_mode_metrics(exploded_df):
-    per_mode = exploded_df.groupBy("user_id", "campaign_id", "week", "effective_mode").agg(
-        F.count("*").alias("segment_count"),
+    if exploded_df.filter(F.col("segment_kg_co2e").isNull()).limit(1).count():
+        raise RuntimeError("segment carbon_kg is required; weekly Gold must not recalculate emission factors")
+
+    per_mode = exploded_df.groupBy(
+        "user_id", "campaign_id", "week", "effective_mode"
+    ).agg(
+        F.countDistinct("trip_id").alias("mode_trip_count"),
         F.sum("distance_m").alias("distance_m"),
         F.sum("segment_kg_co2e").alias("kg_co2e"),
     )
 
-    totals = per_mode.groupBy("user_id", "campaign_id", "week").agg(
-        F.sum("segment_count").alias("total_segment_count"),
+    totals = exploded_df.groupBy("user_id", "campaign_id", "week").agg(
+        F.countDistinct("trip_id").alias("total_trip_count"),
         F.sum("distance_m").alias("total_distance_m"),
-        F.sum("kg_co2e").alias("total_kg_co2e"),
+        F.sum("segment_kg_co2e").alias("total_segment_kg_co2e"),
     )
 
     joined = per_mode.join(totals, ["user_id", "campaign_id", "week"])
 
     return (
-        joined
-        .withColumn("mode_trip_ratio", F.col("segment_count") / F.col("total_segment_count"))
-        .withColumn("mode_distance_ratio", F.col("distance_m") / F.col("total_distance_m"))
+        joined.withColumn(
+            "mode_trip_ratio", F.col("mode_trip_count") / F.col("total_trip_count")
+        )
+        .withColumn(
+            "mode_distance_ratio", F.col("distance_m") / F.col("total_distance_m")
+        )
         .withColumn(
             "mode_carbon_ratio",
-            F.when(F.col("total_kg_co2e") > 0, F.col("kg_co2e") / F.col("total_kg_co2e")).otherwise(F.lit(0.0)),
+            F.when(
+                F.col("total_segment_kg_co2e") > 0,
+                F.col("kg_co2e") / F.col("total_segment_kg_co2e"),
+            ).otherwise(F.lit(0.0)),
         )
     )
 
 
 def _pivot_ratio(mode_metrics_df, ratio_col, prefix):
-    modes = ["walk", "bike", "car", "bus", "rail"]
     pivoted = (
         mode_metrics_df.groupBy("user_id", "campaign_id", "week")
-        .pivot("effective_mode", modes)
+        .pivot("effective_mode", MODES)
         .agg(F.first(ratio_col))
     )
-    for m in modes:
-        pivoted = pivoted.withColumnRenamed(m, f"{prefix}_{m}")
+    for mode in MODES:
+        name = f"{prefix}_{mode}"
+        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
     return pivoted
 
 
 def _pivot_mode_distance(mode_metrics_df):
-    modes = ["walk", "bike", "car", "bus", "rail"]
     pivoted = (
         mode_metrics_df.groupBy("user_id", "campaign_id", "week")
-        .pivot("effective_mode", modes)
+        .pivot("effective_mode", MODES)
         .agg(F.first("distance_m"))
     )
-    for m in modes:
-        pivoted = pivoted.withColumnRenamed(m, f"{m}_distance_m").fillna(0.0, subset=[f"{m}_distance_m"])
+    for mode in MODES:
+        name = f"{mode}_distance_m"
+        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
     return pivoted
 
 
-def build_personal_weekly(confirmed_df):
-    exploded = explode_segments(confirmed_df)
+def build_personal_weekly(ready_df):
+    validate_carbon_contract(ready_df)
+    exploded = explode_segments(ready_df)
     mode_metrics = compute_mode_metrics(exploded)
 
     mode_distance_pivot = _pivot_mode_distance(mode_metrics)
@@ -141,17 +180,18 @@ def build_personal_weekly(confirmed_df):
     distance_ratio_pivot = _pivot_ratio(mode_metrics, "mode_distance_ratio", "mode_distance_ratio")
     carbon_ratio_pivot = _pivot_ratio(mode_metrics, "mode_carbon_ratio", "mode_carbon_ratio")
 
-    trip_agg = confirmed_df.groupBy("user_id", "campaign_id", "week").agg(
+    trip_agg = ready_df.groupBy("user_id", "campaign_id", "week").agg(
         F.countDistinct("trip_id").alias("trip_count"),
         F.sum("carbon.kg_co2e").alias("total_kg_co2e"),
+        F.first("carbon.policy_version").alias("carbon_policy_version"),
+        F.first("carbon.factor_version").alias("factor_version"),
     )
     distance_agg = exploded.groupBy("user_id", "campaign_id", "week").agg(
         F.sum("distance_m").alias("total_distance_m")
     )
 
     return (
-        trip_agg
-        .join(distance_agg, ["user_id", "campaign_id", "week"])
+        trip_agg.join(distance_agg, ["user_id", "campaign_id", "week"])
         .join(mode_distance_pivot, ["user_id", "campaign_id", "week"])
         .join(trip_ratio_pivot, ["user_id", "campaign_id", "week"])
         .join(distance_ratio_pivot, ["user_id", "campaign_id", "week"])
@@ -160,7 +200,6 @@ def build_personal_weekly(confirmed_df):
 
 
 def build_campaign_weekly(personal_weekly_df):
-    modes = ["walk", "bike", "car", "bus", "rail"]
     ratio_prefixes = ["mode_trip_ratio", "mode_distance_ratio", "mode_carbon_ratio"]
 
     agg_exprs = [
@@ -168,12 +207,14 @@ def build_campaign_weekly(personal_weekly_df):
         F.sum("trip_count").alias("total_trip_count"),
         F.sum("total_distance_m").alias("total_distance_m"),
         F.sum("total_kg_co2e").alias("total_kg_co2e"),
+        F.first("carbon_policy_version").alias("carbon_policy_version"),
+        F.first("factor_version").alias("factor_version"),
     ]
-    for m in modes:
-        agg_exprs.append(F.sum(f"{m}_distance_m").alias(f"{m}_distance_m"))
+    for mode in MODES:
+        agg_exprs.append(F.sum(f"{mode}_distance_m").alias(f"{mode}_distance_m"))
     for prefix in ratio_prefixes:
-        for m in modes:
-            col = f"{prefix}_{m}"
+        for mode in MODES:
+            col = f"{prefix}_{mode}"
             agg_exprs.append(F.avg(col).alias(f"avg_{col}"))
 
     return personal_weekly_df.groupBy("campaign_id", "week").agg(*agg_exprs)
@@ -191,7 +232,9 @@ def write_gold(df, path):
 
 def verify_weekly(spark, path, campaign_id, week):
     df = spark.read.format("delta").load(path)
-    count = df.filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week)).count()
+    count = df.filter(
+        (F.col("campaign_id") == campaign_id) & (F.col("week") == week)
+    ).count()
     print(f"[verify] campaign_id={campaign_id} week={week} rows={count}")
     return count > 0
 
@@ -216,9 +259,14 @@ def run(campaign_id, week_start, week_end):
         ok_user = verify_weekly(spark, GOLD_WEEKLY_USER_PATH, campaign_id, week)
         ok_campaign = verify_weekly(spark, GOLD_WEEKLY_CAMPAIGN_PATH, campaign_id, week)
         if not (ok_user and ok_campaign):
-            raise RuntimeError(f"campaign_id={campaign_id} week={week}: gold verification failed")
+            raise RuntimeError(
+                f"campaign_id={campaign_id} week={week}: gold verification failed"
+            )
 
-    print(f"[done] campaign_id={campaign_id} week_start={week_start} week_end={week_end} weekly summary complete")
+    print(
+        f"[done] campaign_id={campaign_id} week_start={week_start} "
+        f"week_end={week_end} weekly summary complete"
+    )
 
 
 if __name__ == "__main__":
