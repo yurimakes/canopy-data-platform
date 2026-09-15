@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "model_id": "speedtransformer-aihub-speed-v1",
+  "source_repository": "aletheia-ops/speedtransformer-aihub",
+  "source_main_commit": "ce8148c96dcab66248a6367a5bb2033328e0e4b3",
+  "registry": {
+    "registry_uri": "databricks-uc",
+    "registered_model_name_env": "CANOPY_SPEEDTRANSFORMER_MODEL_NAME",
+    "model_uri_env": "CANOPY_SPEEDTRANSFORMER_MODEL_URI"
+  },
+  "input": {
+    "column": "speed_sequence",
+    "unit": "km/h",
+    "sequence_length": 200,
+    "minimum_speed_kmh": 0.0,
+    "maximum_speed_kmh": 200.0,
+    "finite_only": true
+  },
+  "output": {
+    "columns": [
+      "predicted_class",
+      "confidence",
+      "probabilities"
+    ],
+    "classes": [
+      "bike",
+      "bus",
+      "car",
+      "train",
+      "walk"
+    ]
+  },
+  "artifact_policy": {
+    "checkpoint_in_git": false,
+    "scaler_in_git": false,
+    "label_encoder_in_git": false,
+    "binary_source_of_truth": "MLflow / Unity Catalog"
+  },
+  "window_policy_status": "pending"
+}
