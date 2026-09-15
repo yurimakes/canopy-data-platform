@@ -113,6 +113,18 @@ class PersonalGateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Duplicate Weekly"):
             self.compute()
 
+    def test_invalid_strings_and_zero_carbon_in_actual_personal_gate(self):
+        for value in ("invalid", None, float("inf"), -1):
+            self.setUp()
+            self.pdf["total_kg_co2e"] = self.pdf["total_kg_co2e"].astype(object)
+            self.pdf.loc[0, "total_kg_co2e"] = value
+            self.assertEqual(self.compute().iloc[1]["status"], "collecting")
+        self.setUp()
+        self.pdf["total_kg_co2e"] = 0.0
+        row = self.compute().iloc[1]
+        self.assertEqual(row["status"], "ready")
+        self.assertEqual(row["value"], 0.0)
+
 
 @unittest.skipUnless(os.environ.get("CANOPY_TEST_SPARK") == "1", "Set CANOPY_TEST_SPARK=1 with Java 17/21 for real Spark integration")
 class SparkGateTests(unittest.TestCase):
@@ -163,6 +175,16 @@ class SparkGateTests(unittest.TestCase):
         result = compute_global_baseline(self.personal(10).drop("status", "eligibility_policy_version"), "c", "2026-W37", "v3").first()
         self.assertEqual(result.status, "collecting")
         self.assertIsNone(result.value)
+
+    def test_zero_carbon_is_ready_but_nan_is_excluded(self):
+        from build_global_baseline import compute_global_baseline
+        from pyspark.sql import functions as F
+        df = self.personal(6).withColumn("baseline_g_co2e_per_km", F.lit(0.0))
+        result = compute_global_baseline(df, "c", "2026-W37", "v3").first()
+        self.assertEqual((result.status, result.value), ("ready", 0.0))
+        df = df.withColumn("baseline_g_co2e_per_km", F.when(F.col("user_id") == "0", F.lit(float("nan"))).otherwise(F.col("baseline_g_co2e_per_km")))
+        result = compute_global_baseline(df, "c", "2026-W37", "v3").first()
+        self.assertEqual((result.status, result.eligible_participant_count, result.value), ("collecting", 5, None))
 
     def test_personal_real_spark_schema_and_gate(self):
         from build_personal_baseline import build_personal_baseline

@@ -99,15 +99,55 @@ def observation_context(user_id, campaign_id, evaluated_at, identities):
     return None, None, "joined_at_missing"
 
 
-def load_identities(path=None):
-    # An integration input, not a new user DB or a generated membership date.
+def load_identities(path=None, *, campaign_id=None, user_ids=(), client=None):
+    """Read existing dates; never create/update a user or membership here."""
     path = path or os.environ.get("CANOPY_BASELINE_IDENTITIES_PATH")
-    if not path:
+    if path:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or any(not isinstance(data.get(k, []), list) for k in ("users", "memberships")):
+            raise ValueError("Identity input must contain users/memberships record lists")
+        if any(not isinstance(row, dict) for k in ("users", "memberships") for row in data.get(k, [])):
+            raise ValueError("Identity entries must be records")
+        if campaign_id is not None:
+            wanted = set(user_ids)
+            return {"users": [r for r in data.get("users", []) if r.get("user_id", r.get("id")) in wanted],
+                    "memberships": [r for r in data.get("memberships", [])
+                                    if r.get("user_id") in wanted and r.get("campaign_id") == campaign_id]}
+        return data
+    endpoint = os.environ.get("CANOPY_COSMOS_ENDPOINT") or os.environ.get("COSMOS_ENDPOINT")
+    if client is None and not endpoint:
         return {"users": [], "memberships": []}
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(data, dict) or any(not isinstance(data.get(k, []), list) for k in ("users", "memberships")):
-        raise ValueError("Identity input must contain users/memberships record lists")
-    return data
+    database = os.environ.get("CANOPY_COSMOS_DATABASE")
+    if not database or not campaign_id:
+        raise ValueError("CANOPY_COSMOS_DATABASE and campaign_id required for identity lookup")
+    from azure.cosmos import CosmosClient, exceptions
+    from azure.identity import DefaultAzureCredential
+    owns_client = client is None
+    if owns_client:
+        credential = os.environ.get("CANOPY_COSMOS_KEY") or DefaultAzureCredential()
+        client = CosmosClient(endpoint, credential=credential)
+    try:
+        db = client.get_database_client(database)
+        members = db.get_container_client(os.environ.get("CANOPY_MEMBERSHIPS_CONTAINER", "campaign_memberships"))
+        users = db.get_container_client(os.environ.get("CANOPY_USERS_CONTAINER", "users"))
+        result = {"users": [], "memberships": []}
+        for uid in sorted(set(user_ids)):
+            # Both containers use /user_id; all reads target one partition.
+            for container, item_id, target, fields in (
+                (members, campaign_id, "memberships", ("user_id", "campaign_id", "joined_at", "campaign_joined_at")),
+                (users, uid, "users", ("id", "user_id", "created_at", "joined_at")),
+            ):
+                try:
+                    item = container.read_item(item=item_id, partition_key=uid)
+                except exceptions.CosmosResourceNotFoundError:
+                    continue
+                result[target].append({k: item[k] for k in fields if k in item})
+        return result
+    finally:
+        if owns_client:
+            client.close()
+            if not isinstance(credential, str):
+                credential.close()
 
 
 def week_evaluation_time(week):

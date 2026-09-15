@@ -48,8 +48,8 @@ def _compute_personal_baseline(pdf, policy_version, eligibility_policy=None, ide
     if pdf.duplicated(["user_id", "campaign_id", "week"]).any():
         raise ValueError("Duplicate Weekly Gold rows; expected one row per user/campaign/week")
     pdf = pdf.sort_values("week").reset_index(drop=True)
-    pdf["g_co2e"] = pdf["total_kg_co2e"] * 1000.0
-    pdf["distance_km"] = pdf["total_distance_m"] / 1000.0
+    pdf["g_co2e"] = pd.to_numeric(pdf["total_kg_co2e"], errors="coerce") * 1000.0
+    pdf["distance_km"] = pd.to_numeric(pdf["total_distance_m"], errors="coerce") / 1000.0
 
     cumulative_g_prior = pdf["g_co2e"].cumsum().shift(1)
     cumulative_km_prior = pdf["distance_km"].cumsum().shift(1)
@@ -63,6 +63,8 @@ def _compute_personal_baseline(pdf, policy_version, eligibility_policy=None, ide
         history = pdf.iloc[:i]
         def valid_total(column):
             values = history[column].tolist() if column in history else [None]
+            if column == "trip_count" and any(not finite_nonnegative(v) or int(v) != v for v in values):
+                return None
             return sum(values) if all(finite_nonnegative(v) for v in values) else None
 
         days, source, identity_error = observation_context(
@@ -85,6 +87,11 @@ def _compute_personal_baseline(pdf, policy_version, eligibility_policy=None, ide
         if can_compute:
             baseline = g_prior / km_prior
             method = "personal_cumulative"
+            if not finite_nonnegative(baseline):
+                can_compute = False
+                baseline = None
+                method = "population_fallback"
+                gate["reasons"].append("invalid_calculated_value")
         else:
             baseline = None
             method = "population_fallback"
@@ -116,7 +123,16 @@ def _compute_personal_baseline(pdf, policy_version, eligibility_policy=None, ide
 def build_personal_baseline(weekly_user_df, policy_version, eligibility_policy=None, identities=None,
                             commute_scope_verified=None):
     eligibility_policy = eligibility_policy or load_eligibility_policy()
-    identities = identities if identities is not None else load_identities()
+    if identities is None:
+        keys = weekly_user_df.select("user_id", "campaign_id").distinct().collect()
+        identities = {"users": [], "memberships": []}
+        for campaign_id in sorted({r.campaign_id for r in keys}):
+            context = load_identities(campaign_id=campaign_id,
+                                      user_ids=[r.user_id for r in keys if r.campaign_id == campaign_id])
+            identities["memberships"].extend(context["memberships"])
+            # The same user may participate in more than one campaign.
+            by_user = {r.get("user_id", r.get("id")): r for r in identities["users"] + context["users"]}
+            identities["users"] = list(by_user.values())
     if commute_scope_verified is None:
         commute_scope_verified = os.environ.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED") == "true"
     def _apply(pdf):
