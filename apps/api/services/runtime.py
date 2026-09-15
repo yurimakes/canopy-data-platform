@@ -16,6 +16,19 @@ def local_mode():
 
 
 @lru_cache
+def feedback_service():
+    # Lazy: feedback storage does not add initialization work to Trip stop.
+    from .trip_feedback import CosmosFeedbackStore, SQLiteFeedbackStore, TripFeedbackService
+    trips = service()
+    if isinstance(trips.store, SQLiteTripStore):
+        store = SQLiteFeedbackStore(trips.store.path + ".feedback")
+    else:
+        store = CosmosFeedbackStore(trips.store.client, os.environ["COSMOS_TRIPS_DATABASE"],
+                                    os.environ.get("COSMOS_FEEDBACK_CONTAINER", "trip_feedback"))
+    return TripFeedbackService(trips, store)
+
+
+@lru_cache
 def service():
     if os.getenv("TRIP_STORE") == "sqlite":
         if not local_mode():

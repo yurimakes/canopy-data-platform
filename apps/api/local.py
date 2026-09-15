@@ -9,7 +9,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from dotenv import load_dotenv
 from trip_routes import dispatch
-from services.runtime import service, local_mode
+from services.runtime import service, local_mode, feedback_service
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -55,6 +55,7 @@ def main():
         while not stopped.wait(1):
             try:
                 api.process_pending()
+                feedback_service().recover_pending()
             except Exception:
                 logging.exception("local_trip_worker_failed")
 

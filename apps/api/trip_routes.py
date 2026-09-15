@@ -3,13 +3,13 @@ import json
 import logging
 import re
 import azure.functions as func
-from services.runtime import authenticate, service
+from services.runtime import authenticate, service, feedback_service
 from services.trip_service import ApiError, public
 
 bp = func.Blueprint()
 
 
-def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate):
+def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, feedback_api=None):
     try:
         user_id = auth({key.lower(): value for key, value in headers.items()})
         limit = 262144 if path.endswith("/confirm") else 16384
@@ -25,10 +25,12 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate):
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
             return (201 if created else 200), public(trip)
-        match = re.fullmatch(r"/api/trips/([a-zA-Z0-9_-]{1,100})(/stop|/confirm)?", path)
+        match = re.fullmatch(r"/api/trips/([a-zA-Z0-9_-]{1,100})(/stop|/confirm|/feedback)?", path)
         if not match:
             raise ApiError(404, "not_found", "route not found")
         trip_id, stop = match.groups()
+        if stop == "/feedback" and method == "POST":
+            return 200, public((feedback_api or feedback_service()).submit(trip_id, user_id, body))
         if stop == "/confirm" and method == "POST":
             return 200, public(api.confirm(trip_id, user_id, body))
         if stop == "/stop" and method == "POST":
@@ -70,7 +72,16 @@ def trip_confirm(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 
+@bp.route(route="trips/{trip_id}/feedback", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def trip_feedback(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
 @bp.timer_trigger(schedule="%TRIP_WORKER_SCHEDULE%", arg_name="timer", run_on_startup=False, use_monitor=True)
 def trip_worker(timer: func.TimerRequest) -> None:
     # Cosmos processing documents are the outbox: stop + scheduling is a single CAS write.
     service().process_pending()
+    try:
+        feedback_service().recover_pending()
+    except Exception as exc:
+        logging.error("feedback_recovery_failed error_type=%s", type(exc).__name__)

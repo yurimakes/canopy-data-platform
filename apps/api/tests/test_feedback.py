@@ -1,4 +1,4 @@
-import copy
+import json
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -44,6 +44,24 @@ class FeedbackTests(unittest.TestCase):
         with self.feedback.connect() as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM trips').fetchone()[0], 0)
         self.assertEqual(self.submit(False)['_etag'], result['_etag'])
         self.assert_result_unchanged()
+
+    def test_http_feedback_and_legacy_defaults(self):
+        from trip_routes import dispatch
+        from services.trip_service import public
+        def request(body, user='alice', path=None):
+            return dispatch('POST', path or f'/api/trips/{self.id}/feedback', {}, json.dumps(body).encode(),
+                            self.trips, auth=lambda _: user, feedback_api=self.api)
+        old = public(self.original)
+        self.assertFalse(old['review_required'])
+        self.assertIsNone(old['feedback_status'])
+        self.assertIsNone(old['has_issue'])
+        self.assertIn(request({'request_id':'1','has_issue':True}, user='bob')[0], (403,404))
+        self.assertEqual(request({'request_id':'1','has_issue':True}, path='/api/trips/invalid%20id/feedback')[0],404)
+        status, result = request({'request_id':'1','has_issue':True,'feedback_text':'test'})
+        self.assertEqual(status,200)
+        self.assertTrue(result['review_required'])
+        self.assertNotIn('feedback_submission', result)
+        self.assertNotIn('feedback_text', result)
 
     def test_issue_text_and_empty_are_accepted_without_modifying_result(self):
         text = '버스로 나왔는데 실제로는 자동차였습니다.'

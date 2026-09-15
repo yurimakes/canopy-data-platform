@@ -6,6 +6,11 @@
   "description": "Cosmos canopy-db/trips: id=trip_id, partition key /user_id. Extends the team's Cosmos schema with lifecycle status and processor fields; legacy records are not migrated.",
   "required": ["trip_id", "user_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at", "segments", "model_version", "failed_step", "error_message"],
   "properties": {
+    "review_required": {"type": "boolean", "default": false},
+    "feedback_status": {"enum": [null, "pending", "no_issue", "submitted"]},
+    "has_issue": {"type": ["boolean", "null"]},
+    "feedback_id": {"type": ["string", "null"]},
+    "feedback_updated_at": {"type": ["string", "null"], "format": "date-time"},
     "trip_id": {"type": "string", "minLength": 1},
     "user_id": {"type": "string", "minLength": 1},
     "campaign_id": {"type": "string", "minLength": 1},
