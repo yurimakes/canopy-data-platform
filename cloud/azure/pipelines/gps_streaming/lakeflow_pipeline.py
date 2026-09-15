@@ -17,6 +17,7 @@ from pyspark.sql import SparkSession
 from gps_streaming.databricks_adapter import (
     DatabricksInferenceConfig,
     build_foreach_batch_handler,
+    ensure_prediction_table,
 )
 from gps_streaming.deployment_config import CanopyTableConfig
 from gps_streaming.spark_ingestion import (
@@ -72,6 +73,70 @@ _INFERENCE_CONFIG = DatabricksInferenceConfig(
     checkpoint_location="lakeflow-managed",
     tables=TABLES,
 )
+
+
+def _ensure_foreach_batch_targets() -> None:
+    """Create Delta tables owned by foreach-batch sinks before graph analysis.
+
+    These tables are external to the Lakeflow graph: the stateful sink MERGEs
+    features and segments into them, and the inference sink MERGEs predictions.
+    Lakeflow resolves ``mode_segments`` as a streaming source while planning the
+    graph, so the external target must already exist on the first update.
+    """
+    spark = _spark()
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLES.features_table} (
+          schema_version STRING NOT NULL,
+          event_id STRING NOT NULL,
+          user_id STRING NOT NULL,
+          device_id STRING NOT NULL,
+          trip_id STRING NOT NULL,
+          sequence BIGINT NOT NULL,
+          event_time TIMESTAMP NOT NULL,
+          received_at TIMESTAMP NOT NULL,
+          lat DOUBLE NOT NULL,
+          lon DOUBLE NOT NULL,
+          accuracy DOUBLE,
+          raw_speed DOUBLE,
+          altitude_m DOUBLE,
+          vertical_accuracy DOUBLE,
+          previous_event_time TIMESTAMP,
+          dt_s DOUBLE,
+          distance_m DOUBLE,
+          derived_speed_kmh DOUBLE,
+          transition_valid BOOLEAN NOT NULL,
+          invalid_reason STRING,
+          speed_min_60s DOUBLE,
+          processed_at TIMESTAMP NOT NULL
+        ) USING DELTA
+        """
+    )
+    spark.sql(
+        f"""
+        CREATE TABLE IF NOT EXISTS {TABLES.segments_table} (
+          trip_id STRING NOT NULL,
+          user_id STRING NOT NULL,
+          segment_id STRING NOT NULL,
+          start_time TIMESTAMP NOT NULL,
+          end_time TIMESTAMP NOT NULL,
+          speed_point_count INT NOT NULL,
+          weak_mode STRING NOT NULL,
+          weak_confidence DOUBLE NOT NULL,
+          status STRING NOT NULL,
+          detector_version STRING NOT NULL,
+          emitted_at TIMESTAMP NOT NULL
+        ) USING DELTA
+        """
+    )
+    ensure_prediction_table(spark, _INFERENCE_CONFIG)
+
+
+# ForEachBatch writes are outside Lakeflow-managed datasets. Create their Delta
+# contracts before Lakeflow analyzes flows that read them. The DDL is
+# idempotent because every statement uses CREATE TABLE IF NOT EXISTS.
+_ensure_foreach_batch_targets()
+
 _STATEFUL_HANDLER = build_stateful_batch_handler(_STATEFUL_CONFIG)
 _INFERENCE_HANDLER = None
 
