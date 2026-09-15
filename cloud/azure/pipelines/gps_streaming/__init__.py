@@ -2,11 +2,17 @@
 
 from .pipeline import EnrichedSpeedPoint, MockFirstLayerPipeline
 from .mock_detector import MockDetectorConfig, MockFirstLayerDetector, SegmentEvent
+from .segment_inference import SegmentInferenceResult, infer_closed_segment
+from .windowing import SpeedWindow, build_speed_windows
 
 __all__ = [
     "EnrichedSpeedPoint",
     "MockDetectorConfig",
     "MockFirstLayerDetector",
     "MockFirstLayerPipeline",
+    "SegmentInferenceResult",
     "SegmentEvent",
+    "SpeedWindow",
+    "build_speed_windows",
+    "infer_closed_segment",
 ]

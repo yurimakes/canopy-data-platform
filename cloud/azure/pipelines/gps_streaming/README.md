@@ -22,3 +22,19 @@ The core has no Spark dependency. A Databricks adapter can keep one instance of
 the state per trip in its stateful operator and write `EnrichedSpeedPoint` and
 `SegmentEvent` records to their respective Delta tables. The future real
 detector should implement the same `process(DetectorPoint)` boundary.
+
+## Closed-segment inference
+
+`segment_inference.py` defines the bounded handoff to the existing MLflow
+pyfunc model:
+
+- The default representative-window policy emits 1 window for 200–249 speed
+  points and 3 windows for the mock detector's 250–300 range.
+- The first and last eligible portions of longer segments are always covered.
+- MLflow receives one pandas row per window in the single `speed_sequence`
+  column; every row contains exactly 200 raw km/h values.
+- Window probability vectors are averaged, then `argmax` produces the strong
+  segment mode. The random weak mode remains output metadata only.
+- A segment with fewer than 200 persisted speed points returns
+  `insufficient_history` without invoking MLflow. A Databricks adapter should
+  treat this as retryable because Delta visibility may lag segment closure.
