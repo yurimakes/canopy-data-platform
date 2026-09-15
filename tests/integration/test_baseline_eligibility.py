@@ -57,5 +57,61 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(observation_context("u", "c", "2026-09-08T00:00:00Z", data)[2], "invalid_joined_at")
 
 
+class PersonalGateTests(unittest.TestCase):
+    def setUp(self):
+        import pandas as pd
+        self.pdf = pd.DataFrame([
+            {"user_id": "u", "campaign_id": "c", "week": "2026-W36", "trip_count": 6,
+             "total_distance_m": 10000.0, "total_kg_co2e": 1.2},
+            {"user_id": "u", "campaign_id": "c", "week": "2026-W37", "trip_count": 2,
+             "total_distance_m": 2000.0, "total_kg_co2e": 0.2},
+        ])
+        self.identities = {"users": [{"user_id": "u", "created_at": "2026-08-31T00:00:00Z"}]}
+
+    def compute(self, **kwargs):
+        from build_personal_baseline import _compute_personal_baseline
+        return _compute_personal_baseline(self.pdf, "baseline-policy-v3",
+                                         identities=kwargs.pop("identities", self.identities),
+                                         commute_scope_verified=kwargs.pop("commute_scope_verified", True), **kwargs)
+
+    def test_gate_before_existing_formula_and_weekly_input_unchanged(self):
+        original = self.pdf.copy(deep=True)
+        result = self.compute()
+        self.assertEqual(result.iloc[0]["status"], "collecting")
+        self.assertTrue(__import__("pandas").isna(result.iloc[0]["value"]))
+        self.assertEqual(result.iloc[0]["primary_baseline"], "population")
+        ready = result.iloc[1]
+        self.assertEqual(ready["status"], "ready")
+        self.assertEqual(ready["value"], 120.0)  # Original 1200 g / 10 km.
+        self.assertEqual(ready["baseline_g_co2e_per_km"], ready["value"])
+        self.assertEqual(ready["policy_version"], "baseline-policy-v3")
+        self.assertEqual(ready["eligibility_policy_version"], "eligibility-v1")
+        __import__("pandas").testing.assert_frame_equal(original, self.pdf)
+
+    def test_missing_identity_or_unverified_commute_never_computes(self):
+        for args in ({"identities": {}}, {"commute_scope_verified": False}):
+            result = self.compute(**args)
+            self.assertTrue((result.status == "collecting").all())
+            self.assertTrue(result.value.isna().all())
+
+    def test_personal_A_B_D_E_skip_ratio(self):
+        for case in ("days", "trips", "distance", "carbon"):
+            self.setUp()
+            if case == "days":
+                self.identities["users"][0]["created_at"] = "2026-09-01T00:00:00Z"
+            else:
+                column, value = {"trips": ("trip_count", 5), "distance": ("total_distance_m", 0),
+                                 "carbon": ("total_kg_co2e", float("nan"))}[case]
+                self.pdf.loc[0, column] = value
+            result = self.compute().iloc[1]
+            self.assertEqual(result["status"], "collecting", case)
+            self.assertTrue(__import__("pandas").isna(result["value"]), case)
+
+    def test_duplicate_weeks_rejected(self):
+        self.pdf = __import__("pandas").concat([self.pdf, self.pdf])
+        with self.assertRaisesRegex(ValueError, "Duplicate Weekly"):
+            self.compute()
+
+
 if __name__ == "__main__":
     unittest.main()
