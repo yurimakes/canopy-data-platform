@@ -20,6 +20,7 @@ from gps_streaming.databricks_adapter import (
     ensure_prediction_table,
 )
 from gps_streaming.deployment_config import CanopyTableConfig
+from gps_streaming.event_hubs_auth import connection_string, jaas_config
 from gps_streaming.spark_ingestion import (
     bronze_rows,
     parse_bronze_rows,
@@ -91,17 +92,7 @@ def _event_hubs_stream():
         scope=_conf("event_hubs.secret_scope"),
         key=_conf("event_hubs.secret_key"),
     )
-    connection_string = (
-        f"Endpoint=sb://{namespace}.servicebus.windows.net/;"
-        f"SharedAccessKeyName={policy_name};"
-        f"SharedAccessKey={policy_key}"
-    )
-    escaped = connection_string.replace("\\", "\\\\").replace('"', '\\"')
-    jaas = (
-        "kafkashaded.org.apache.kafka.common.security.plain.PlainLoginModule required "
-        'username="$ConnectionString" '
-        f'password="{escaped}";'
-    )
+    jaas = jaas_config(connection_string(namespace, policy_name, policy_key))
     return (
         _spark()
         .readStream.format("kafka")
