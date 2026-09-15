@@ -27,8 +27,8 @@ from gps_streaming.spark_ingestion import (
     valid_observation_rows,
 )
 from gps_streaming.transform_with_state import (
-    TransformWithStateConfig,
-    build_stateful_batch_handler,
+    FEATURE_COLUMNS,
+    SEGMENT_COLUMNS,
     stateful_rows,
 )
 
@@ -61,83 +61,20 @@ TABLES = CanopyTableConfig(
     predictions_name=_conf("predictions_table"),
 )
 
-# The checkpoint_location fields belong to the classic Structured Streaming
-# compatibility adapters. Lakeflow owns checkpoints for these flows, so these
-# sentinel values are never passed to a DataStreamWriter.
-_STATEFUL_CONFIG = TransformWithStateConfig(
-    checkpoint_location="lakeflow-managed",
-    tables=TABLES,
-)
+# The stateful processor should execute exactly once per observation stream.
+# Persist its tagged union as a private Lakeflow table, then fan out the feature
+# and segment projections as ordinary managed streaming tables. This keeps
+# mode_segments inside the Lakeflow dependency graph instead of treating it as
+# an external foreach-batch side effect.
+_STATEFUL_OUTPUT_TABLE = "canopy_gps_stateful_output"
+
+# The checkpoint_location field belongs to the classic Structured Streaming
+# compatibility adapter. Lakeflow owns the actual checkpoint for this sink.
 _INFERENCE_CONFIG = DatabricksInferenceConfig(
     model_uri=_conf("model_uri"),
     checkpoint_location="lakeflow-managed",
     tables=TABLES,
 )
-
-
-def _ensure_foreach_batch_targets() -> None:
-    """Create Delta tables owned by foreach-batch sinks before graph analysis.
-
-    These tables are external to the Lakeflow graph: the stateful sink MERGEs
-    features and segments into them, and the inference sink MERGEs predictions.
-    Lakeflow resolves ``mode_segments`` as a streaming source while planning the
-    graph, so the external target must already exist on the first update.
-    """
-    spark = _spark()
-    spark.sql(
-        f"""
-        CREATE TABLE IF NOT EXISTS {TABLES.features_table} (
-          schema_version STRING NOT NULL,
-          event_id STRING NOT NULL,
-          user_id STRING NOT NULL,
-          device_id STRING NOT NULL,
-          trip_id STRING NOT NULL,
-          sequence BIGINT NOT NULL,
-          event_time TIMESTAMP NOT NULL,
-          received_at TIMESTAMP NOT NULL,
-          lat DOUBLE NOT NULL,
-          lon DOUBLE NOT NULL,
-          accuracy DOUBLE,
-          raw_speed DOUBLE,
-          altitude_m DOUBLE,
-          vertical_accuracy DOUBLE,
-          previous_event_time TIMESTAMP,
-          dt_s DOUBLE,
-          distance_m DOUBLE,
-          derived_speed_kmh DOUBLE,
-          transition_valid BOOLEAN NOT NULL,
-          invalid_reason STRING,
-          speed_min_60s DOUBLE,
-          processed_at TIMESTAMP NOT NULL
-        ) USING DELTA
-        """
-    )
-    spark.sql(
-        f"""
-        CREATE TABLE IF NOT EXISTS {TABLES.segments_table} (
-          trip_id STRING NOT NULL,
-          user_id STRING NOT NULL,
-          segment_id STRING NOT NULL,
-          start_time TIMESTAMP NOT NULL,
-          end_time TIMESTAMP NOT NULL,
-          speed_point_count INT NOT NULL,
-          weak_mode STRING NOT NULL,
-          weak_confidence DOUBLE NOT NULL,
-          status STRING NOT NULL,
-          detector_version STRING NOT NULL,
-          emitted_at TIMESTAMP NOT NULL
-        ) USING DELTA
-        """
-    )
-    ensure_prediction_table(spark, _INFERENCE_CONFIG)
-
-
-# ForEachBatch writes are outside Lakeflow-managed datasets. Create their Delta
-# contracts before Lakeflow analyzes flows that read them. The DDL is
-# idempotent because every statement uses CREATE TABLE IF NOT EXISTS.
-_ensure_foreach_batch_targets()
-
-_STATEFUL_HANDLER = build_stateful_batch_handler(_STATEFUL_CONFIG)
 _INFERENCE_HANDLER = None
 
 
@@ -210,19 +147,45 @@ def gps_quarantine():
     return quarantine_rows(parsed)
 
 
-@dp.foreach_batch_sink(name="canopy_gps_stateful_sink")
-def canopy_gps_stateful_sink(batch_df, batch_id):
-    """Idempotently route tagged stateful output to features and segments."""
-    _STATEFUL_HANDLER(batch_df, batch_id)
-
-
-@dp.append_flow(
-    name="canopy_gps_stateful_flow",
-    target="canopy_gps_stateful_sink",
+@dp.table(
+    name=_STATEFUL_OUTPUT_TABLE,
+    private=True,
+    comment="Private tagged output from per-trip transformWithState processing.",
 )
-def canopy_gps_stateful_flow():
+def canopy_gps_stateful_output():
     observations = _spark().readStream.table(TABLES.observations_table)
     return stateful_rows(observations)
+
+
+@dp.table(
+    name=TABLES.features_table,
+    comment="Per-observation GPS motion features produced by the stateful runtime.",
+)
+def gps_features():
+    from pyspark.sql import functions as F
+
+    return (
+        _spark()
+        .readStream.table(_STATEFUL_OUTPUT_TABLE)
+        .where(F.col("record_type") == "feature")
+        .select(*FEATURE_COLUMNS)
+    )
+
+
+@dp.table(
+    name=TABLES.segments_table,
+    comment="Transportation-mode segments emitted by the first-layer detector.",
+)
+def mode_segments():
+    from pyspark.sql import functions as F
+
+    return (
+        _spark()
+        .readStream.table(_STATEFUL_OUTPUT_TABLE)
+        .where(F.col("record_type") == "segment")
+        .select(*SEGMENT_COLUMNS)
+        .withColumnRenamed("processed_at", "emitted_at")
+    )
 
 
 @dp.foreach_batch_sink(name="canopy_speedtransformer_sink")
@@ -230,6 +193,10 @@ def canopy_speedtransformer_sink(batch_df, batch_id):
     """Run bounded SpeedTransformer inference for newly closed segments."""
     global _INFERENCE_HANDLER
     if _INFERENCE_HANDLER is None:
+        # Prediction output remains an external Delta table because the
+        # foreach-batch handler performs idempotent MERGE semantics. Creating
+        # the table here is a runtime side effect, not pipeline-definition DDL.
+        ensure_prediction_table(batch_df.sparkSession, _INFERENCE_CONFIG)
         _INFERENCE_HANDLER = build_foreach_batch_handler(
             batch_df.sparkSession,
             _INFERENCE_CONFIG,
