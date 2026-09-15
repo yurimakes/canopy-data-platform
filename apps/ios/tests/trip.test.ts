@@ -116,6 +116,22 @@ it('archives old pending correction requests without submitting them',async()=>{
   await api.tick(true);
   expect(request).not.toHaveBeenCalled();expect((await api.result(trip.trip_id))?.legacy_confirmation).toEqual(confirmation);
 });
+it('retries a transient CAS conflict using the same feedback ID',async()=>{
+  let conflict=true;const ids:string[]=[];
+  const request=(async(url,options)=>{
+    if(String(url).endsWith('/feedback')) {
+      ids.push(JSON.parse(String(options?.body)).request_id);
+      if(conflict){conflict=false;return new Response(JSON.stringify({status:'concurrent_update'}),{status:409});}
+    }
+    return fetch(url,options);
+  }) as typeof fetch;
+  const s=await setup(':memory:',request);const trip=await finish(s);
+  await expect(s.api.sendFeedback(trip.trip_id,{has_issue:false})).rejects.toThrow('409');
+  expect((await s.api.result(trip.trip_id))?.feedback).toBeDefined();
+  await s.api.tick(true);
+  expect((await s.api.result(trip.trip_id))?.result?.feedback_status).toBe('no_issue');
+  expect(ids[0]).toBe(ids[1]);expect(ids).toHaveLength(2);
+});
 function location():LocationObject{return {timestamp:Date.now(),coords:{latitude:37.5,longitude:127,
   accuracy:150,speed:null,heading:null,altitude:null,altitudeAccuracy:null}};}
 async function setup(path=':memory:',request:typeof fetch=fetch,background=false) {

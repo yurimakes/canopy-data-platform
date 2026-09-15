@@ -121,12 +121,13 @@ export class TripApi {
       await this.db.saveSync('trip:'+id,{result});
       return result;
     } catch(e) {
-      if(e instanceof TripHttpError && (e.status===400 || e.status===409 || e.status===410)) {
+      if(e instanceof TripHttpError && (e.status===400 || e.status===410 || (e.status===409 && ['feedback_already_answered','feedback_conflict'].includes(e.code)))) {
         const rejected=state.feedback;
         state={...state};if(rejected)state.feedback_draft=rejected;delete state.feedback;
         if(e.code==='feedback_already_answered') {
-          const latest=await this.call(`/trips/${id}`,'GET',undefined,rejected?.api_url);
+          try {const latest=await this.call(`/trips/${id}`,'GET',undefined,rejected?.api_url);
           if(latest.trip_id===id && latest.user_id===state.result?.user_id)state.result=latest;
+          } catch { /* Keep the rejected draft even if refreshing is offline. */ }
         }
       }
       const attempts=(state.attempts??0)+1;

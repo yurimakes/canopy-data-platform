@@ -46,6 +46,8 @@ def validate_feedback(body):
     text = (text.strip() or None) if text is not None else None
     if not has_issue and text:
         raise ApiError(400, "invalid_field", "no_issue cannot include feedback text")
+    if text and any(0xD800 <= ord(char) <= 0xDFFF for char in text):
+        raise ApiError(400, "invalid_field", "feedback_text must contain valid Unicode")
     fingerprint = hashlib.sha256(json.dumps([has_issue, text], ensure_ascii=False).encode()).hexdigest()
     return request_id, has_issue, text, fingerprint
 

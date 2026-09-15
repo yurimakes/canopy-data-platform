@@ -63,6 +63,14 @@ class FeedbackTests(unittest.TestCase):
         self.assertNotIn('feedback_submission', result)
         self.assertNotIn('feedback_text', result)
 
+    def test_unicode_limit_and_invalid_surrogate(self):
+        from services.trip_feedback import validate_feedback
+        self.assertEqual(validate_feedback({'request_id':'1','has_issue':True,'feedback_text':'😀'*500})[2], '😀'*500)
+        for text in ('😀'*501, chr(0xD800)):
+            with self.assertRaises(ApiError) as error:
+                validate_feedback({'request_id':'1','has_issue':True,'feedback_text':text})
+            self.assertEqual(error.exception.status,400)
+
     def test_result_has_carbon_before_any_feedback(self):
         self.assertEqual(self.original['confirmed_trip']['total_carbon_kg'], .778224)
         self.assertEqual(self.original['confirmed_trip']['bus_distance_m'], 6200)
