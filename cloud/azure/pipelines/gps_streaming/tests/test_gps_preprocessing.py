@@ -88,17 +88,27 @@ class GpsTransitionProcessorTest(unittest.TestCase):
         self.assertEqual(result.invalid_reason, "speed_above_200_kmh")
         self.assertIsNone(result.derived_speed_kmh)
 
+    def test_late_event_does_not_move_the_trip_cursor_backwards(self) -> None:
+        processor = GpsTransitionProcessor()
+        processor.process(observation(10, seconds=10.0, lat=0.0, lon=0.0))
+        late = processor.process(observation(5, seconds=5.0, lat=0.0, lon=0.0))
+        current = processor.process(observation(11, seconds=11.0, lat=0.00001, lon=0.0))
+
+        self.assertEqual(late.invalid_reason, "non_positive_dt")
+        self.assertEqual(current.dt_s, 1.0)
+        self.assertEqual(current.previous_event_time, START + timedelta(seconds=10))
+
 
 class GpsFirstLayerRuntimeTest(unittest.TestCase):
-    def test_201_observations_produce_one_200_speed_segment(self) -> None:
+    def test_251_observations_produce_one_250_speed_segment(self) -> None:
         detector = MockFirstLayerDetector(
-            MockDetectorConfig(min_speed_points=200, max_speed_points=200)
+            MockDetectorConfig(min_speed_points=250, max_speed_points=250)
         )
         runtime = GpsFirstLayerRuntime(
             first_layer=MockFirstLayerPipeline(detector=detector)
         )
         segments = []
-        for sequence in range(201):
+        for sequence in range(251):
             output = runtime.process(
                 observation(sequence, lat=37.5 + sequence * 0.00001)
             )
@@ -106,11 +116,11 @@ class GpsFirstLayerRuntimeTest(unittest.TestCase):
                 segments.append(output.segment)
 
         self.assertEqual(len(segments), 1)
-        self.assertEqual(segments[0].speed_point_count, 200)
+        self.assertEqual(segments[0].speed_point_count, 250)
 
     def test_invalid_transition_discards_partial_segment_state(self) -> None:
         detector = MockFirstLayerDetector(
-            MockDetectorConfig(min_speed_points=200, max_speed_points=200)
+            MockDetectorConfig(min_speed_points=250, max_speed_points=250)
         )
         runtime = GpsFirstLayerRuntime(
             first_layer=MockFirstLayerPipeline(detector=detector)

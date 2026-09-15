@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import re
+from dataclasses import dataclass, field
 from typing import Any
 
-
-_TABLE_NAME = re.compile(
-    r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$"
-)
+from .deployment_config import CanopyTableConfig
 
 
 @dataclass(frozen=True)
@@ -19,11 +15,7 @@ class SparkIngestionConfig:
     bronze_checkpoint: str
     observations_checkpoint: str
     quarantine_checkpoint: str
-    bronze_table: str = "canopy.bronze.gps_events"
-    observations_table: str = "canopy.silver.gps_observations"
-    quarantine_table: str = "canopy.silver.gps_quarantine"
-    features_table: str = "canopy.silver.gps_features"
-    segments_table: str = "canopy.silver.mode_segments"
+    tables: CanopyTableConfig = field(default_factory=CanopyTableConfig)
 
     def __post_init__(self) -> None:
         for value in (
@@ -33,15 +25,26 @@ class SparkIngestionConfig:
         ):
             if not value.strip():
                 raise ValueError("all checkpoint locations are required")
-        for value in (
-            self.bronze_table,
-            self.observations_table,
-            self.quarantine_table,
-            self.features_table,
-            self.segments_table,
-        ):
-            if not _TABLE_NAME.fullmatch(value):
-                raise ValueError(f"expected catalog.schema.table, got {value!r}")
+
+    @property
+    def bronze_table(self) -> str:
+        return self.tables.bronze_table
+
+    @property
+    def observations_table(self) -> str:
+        return self.tables.observations_table
+
+    @property
+    def quarantine_table(self) -> str:
+        return self.tables.quarantine_table
+
+    @property
+    def features_table(self) -> str:
+        return self.tables.features_table
+
+    @property
+    def segments_table(self) -> str:
+        return self.tables.segments_table
 
 
 def table_ddl(config: SparkIngestionConfig) -> tuple[str, ...]:

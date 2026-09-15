@@ -6,16 +6,13 @@ domain package and its unit tests remain usable outside Databricks.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-import re
 from typing import Any, Callable
 
+from .deployment_config import CanopyTableConfig
 from .mock_detector import SegmentEvent
 from .segment_inference import SegmentInferenceResult, infer_closed_segment
-
-
-_TABLE_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -24,9 +21,7 @@ class DatabricksInferenceConfig:
 
     model_uri: str
     checkpoint_location: str
-    gps_features_table: str = "canopy.silver.gps_features"
-    segments_table: str = "canopy.silver.mode_segments"
-    predictions_table: str = "canopy.gold.mode_segment_predictions"
+    tables: CanopyTableConfig = field(default_factory=CanopyTableConfig)
     query_name: str = "canopy-speedtransformer-segment-inference"
 
     def __post_init__(self) -> None:
@@ -34,13 +29,18 @@ class DatabricksInferenceConfig:
             raise ValueError("model_uri is required")
         if not self.checkpoint_location.strip():
             raise ValueError("checkpoint_location is required")
-        for value in (
-            self.gps_features_table,
-            self.segments_table,
-            self.predictions_table,
-        ):
-            if not _TABLE_NAME.fullmatch(value):
-                raise ValueError(f"expected catalog.schema.table, got {value!r}")
+
+    @property
+    def gps_features_table(self) -> str:
+        return self.tables.features_table
+
+    @property
+    def segments_table(self) -> str:
+        return self.tables.segments_table
+
+    @property
+    def predictions_table(self) -> str:
+        return self.tables.predictions_table
 
 
 def ensure_prediction_table(spark: Any, config: DatabricksInferenceConfig) -> None:

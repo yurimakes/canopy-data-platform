@@ -1,0 +1,76 @@
+bundle:
+  name: canopy-gps-streaming
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - ..
+  exclude:
+    - ../**/__pycache__/**
+
+variables:
+  catalog:
+    description: Existing Unity Catalog catalog.
+    default: dbw_canopy_dev
+  bronze_schema:
+    description: Existing dedicated Bronze schema.
+    default: bronze
+  silver_schema:
+    description: Existing dedicated Silver schema.
+    default: silver
+  gold_schema:
+    description: Existing dedicated Gold schema.
+    default: gold
+  bronze_events_table:
+    default: gps_events
+  observations_table:
+    default: gps_observations
+  quarantine_table:
+    default: gps_quarantine
+  features_table:
+    default: gps_features
+  segments_table:
+    default: mode_segments
+  predictions_table:
+    default: mode_segment_predictions
+  checkpoint_root:
+    description: Existing UC Volume directory dedicated to these checkpoints.
+    default: /Volumes/dbw_canopy_dev/bronze/canopy_checkpoints
+  event_hubs_bootstrap_servers:
+    description: Event Hubs Kafka host and port, without credentials.
+    default: REPLACE.servicebus.windows.net:9093
+  event_hubs_topic:
+    description: Event Hub entity name.
+    default: REPLACE
+  event_hubs_consumer_group:
+    description: Dedicated consumer group for the Bronze stream.
+    default: canopy-databricks
+  event_hubs_secret_scope:
+    description: Existing Databricks secret scope.
+    default: canopy-dev
+  event_hubs_secret_key:
+    description: Key containing the Event Hubs connection string.
+    default: event-hubs-listen-connection-string
+  model_uri:
+    description: Existing Unity Catalog MLflow model alias URI.
+    default: models:/dbw_canopy_dev.gold.canopy_speedtransformer@champion
+  job_policy_id:
+    description: Existing Job Compute policy ID.
+    default: 001EA50E25D6BC64
+  node_type_id:
+    description: Azure VM node type allowed by the policy.
+    default: Standard_D4ds_v5
+  spark_version:
+    description: DBR 17.3 LTS / Spark 4.0 runtime key.
+    default: 17.3.x-scala2.13
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405605578654524.4.azuredatabricks.net
+      profile: CANOPY_DEV
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

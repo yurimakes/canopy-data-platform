@@ -6,6 +6,7 @@ from cloud.azure.pipelines.gps_streaming.databricks_adapter import (
     prediction_row,
 )
 from cloud.azure.pipelines.gps_streaming.segment_inference import SegmentInferenceResult
+from cloud.azure.pipelines.gps_streaming.deployment_config import CanopyTableConfig
 
 
 UTC = timezone.utc
@@ -17,15 +18,18 @@ class DatabricksInferenceConfigTest(unittest.TestCase):
             model_uri="models:/canopy_speedtransformer@champion",
             checkpoint_location="abfss://checkpoints/segment-inference",
         )
-        self.assertEqual(config.gps_features_table, "canopy.silver.gps_features")
-        self.assertEqual(config.predictions_table, "canopy.gold.mode_segment_predictions")
+        self.assertEqual(config.gps_features_table, "dbw_canopy_dev.silver.gps_features")
+        self.assertEqual(
+            config.predictions_table,
+            "dbw_canopy_dev.gold.mode_segment_predictions",
+        )
 
-    def test_rejects_unsafe_or_incomplete_table_name(self) -> None:
-        with self.assertRaisesRegex(ValueError, "catalog.schema.table"):
+    def test_rejects_default_pipeline_schema(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cannot be"):
             DatabricksInferenceConfig(
                 model_uri="model",
                 checkpoint_location="checkpoint",
-                predictions_table="gold.predictions",
+                tables=CanopyTableConfig(gold_schema="default"),
             )
 
 
@@ -40,7 +44,7 @@ class PredictionRowTest(unittest.TestCase):
             end_time=now,
             weak_mode="walk",
             weak_confidence=0.6,
-            detector_version="mock-random-v1",
+            detector_version="mock-random-v2",
             status="scored",
             strong_mode="bus",
             strong_confidence=0.7,

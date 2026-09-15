@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Mapping
 
 from .features import RollingSpeedMin
 from .mock_detector import DetectorPoint, MockFirstLayerDetector, SegmentEvent
@@ -58,3 +59,14 @@ class MockFirstLayerPipeline:
     def clear_trip(self, trip_id: str) -> int:
         self.features.clear_trip(trip_id)
         return self.detector.clear_trip(trip_id)
+
+    def snapshot_trip(self, trip_id: str) -> dict[str, Any]:
+        return {
+            "features": self.features.snapshot_trip(trip_id),
+            "detector": self.detector.snapshot_trip(trip_id),
+        }
+
+    def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any] | None) -> None:
+        snapshot = snapshot or {}
+        self.features.restore_trip(trip_id, snapshot.get("features"))
+        self.detector.restore_trip(trip_id, snapshot.get("detector"))

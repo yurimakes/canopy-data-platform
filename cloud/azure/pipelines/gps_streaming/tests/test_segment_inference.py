@@ -26,7 +26,7 @@ def _segment(speed_point_count: int) -> SegmentEvent:
         weak_mode="walk",
         weak_confidence=0.61,
         status="closed",
-        detector_version="mock-random-v1",
+        detector_version="mock-random-v2",
     )
 
 

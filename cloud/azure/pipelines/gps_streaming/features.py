@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
 import math
+from typing import Any, Mapping
 
 
 class RollingSpeedMin:
@@ -52,3 +53,25 @@ class RollingSpeedMin:
         self._values.pop(trip_id, None)
         self._minima.pop(trip_id, None)
         self._last_event_time.pop(trip_id, None)
+
+    def snapshot_trip(self, trip_id: str) -> dict[str, Any] | None:
+        values = self._values.get(trip_id)
+        if not values:
+            return None
+        return {
+            "values": [
+                {"event_time": event_time.isoformat(), "speed_kmh": speed}
+                for event_time, speed in values
+            ]
+        }
+
+    def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any] | None) -> None:
+        self.clear_trip(trip_id)
+        if not snapshot:
+            return
+        for item in snapshot.get("values", ()):
+            self.update(
+                trip_id,
+                datetime.fromisoformat(str(item["event_time"])),
+                float(item["speed_kmh"]),
+            )

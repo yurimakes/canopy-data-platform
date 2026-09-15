@@ -5,6 +5,7 @@ from .mock_detector import MockDetectorConfig, MockFirstLayerDetector, SegmentEv
 from .segment_inference import SegmentInferenceResult, infer_closed_segment
 from .windowing import SpeedWindow, build_speed_windows
 from .databricks_adapter import DatabricksInferenceConfig
+from .deployment_config import CanopyTableConfig
 from .gps_preprocessing import (
     DerivedGpsPoint,
     GpsFirstLayerRuntime,
@@ -13,9 +14,15 @@ from .gps_preprocessing import (
     GpsTransitionProcessor,
 )
 from .spark_ingestion import SparkIngestionConfig
+from .transform_with_state import (
+    CanopyGpsStatefulProcessor,
+    TransformWithStateConfig,
+)
 
 __all__ = [
     "EnrichedSpeedPoint",
+    "CanopyTableConfig",
+    "CanopyGpsStatefulProcessor",
     "DatabricksInferenceConfig",
     "DerivedGpsPoint",
     "GpsFirstLayerRuntime",
@@ -26,6 +33,7 @@ __all__ = [
     "MockFirstLayerDetector",
     "MockFirstLayerPipeline",
     "SparkIngestionConfig",
+    "TransformWithStateConfig",
     "SegmentInferenceResult",
     "SegmentEvent",
     "SpeedWindow",

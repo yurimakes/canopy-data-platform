@@ -87,6 +87,45 @@ class GpsObservation:
             ),
         )
 
+    def to_state(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "event_id": self.event_id,
+            "user_id": self.user_id,
+            "device_id": self.device_id,
+            "trip_id": self.trip_id,
+            "sequence": self.sequence,
+            "event_time": self.event_time.isoformat(),
+            "received_at": self.received_at.isoformat(),
+            "lat": self.lat,
+            "lon": self.lon,
+            "accuracy": self.accuracy,
+            "speed": self.speed,
+            "altitude_m": self.altitude_m,
+            "vertical_accuracy": self.vertical_accuracy,
+        }
+
+    @classmethod
+    def from_state(cls, state: Mapping[str, Any]) -> "GpsObservation":
+        return cls(
+            schema_version=str(state["schema_version"]),
+            event_id=str(state["event_id"]),
+            user_id=str(state["user_id"]),
+            device_id=str(state["device_id"]),
+            trip_id=str(state["trip_id"]),
+            sequence=int(state["sequence"]),
+            event_time=datetime.fromisoformat(str(state["event_time"])),
+            received_at=datetime.fromisoformat(str(state["received_at"])),
+            lat=float(state["lat"]),
+            lon=float(state["lon"]),
+            accuracy=_optional_finite_float(state.get("accuracy"), "accuracy"),
+            speed=_optional_finite_float(state.get("speed"), "speed"),
+            altitude_m=_optional_finite_float(state.get("altitude_m"), "altitude_m"),
+            vertical_accuracy=_optional_finite_float(
+                state.get("vertical_accuracy"), "vertical_accuracy"
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class DerivedGpsPoint:
@@ -115,8 +154,8 @@ class GpsTransitionProcessor:
 
     def process(self, observation: GpsObservation) -> DerivedGpsPoint:
         previous = self._previous.get(observation.trip_id)
-        self._previous[observation.trip_id] = observation
         if previous is None:
+            self._previous[observation.trip_id] = observation
             return DerivedGpsPoint(
                 observation=observation,
                 previous_event_time=None,
@@ -129,8 +168,11 @@ class GpsTransitionProcessor:
 
         dt_s = (observation.event_time - previous.event_time).total_seconds()
         if not math.isfinite(dt_s) or dt_s <= 0.0:
+            # A late or duplicate event must not move the per-trip cursor
+            # backwards and corrupt every following transition.
             return _invalid_transition(observation, previous.event_time, dt_s, "non_positive_dt")
 
+        self._previous[observation.trip_id] = observation
         distance_m = haversine_m(previous.lat, previous.lon, observation.lat, observation.lon)
         speed_kmh = distance_m / dt_s * 3.6
         if not math.isfinite(speed_kmh):
@@ -154,6 +196,18 @@ class GpsTransitionProcessor:
 
     def clear_trip(self, trip_id: str) -> None:
         self._previous.pop(trip_id, None)
+
+    def snapshot_trip(self, trip_id: str) -> dict[str, Any] | None:
+        previous = self._previous.get(trip_id)
+        return None if previous is None else previous.to_state()
+
+    def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any] | None) -> None:
+        self.clear_trip(trip_id)
+        if snapshot is not None:
+            observation = GpsObservation.from_state(snapshot)
+            if observation.trip_id != trip_id:
+                raise ValueError("transition snapshot trip_id does not match state key")
+            self._previous[trip_id] = observation
 
 
 class GpsFirstLayerRuntime:
@@ -192,6 +246,21 @@ class GpsFirstLayerRuntime:
     def clear_trip(self, trip_id: str) -> int:
         self.transition_processor.clear_trip(trip_id)
         return self.first_layer.clear_trip(trip_id)
+
+    def snapshot_trip(self, trip_id: str) -> dict[str, Any]:
+        return {
+            "version": 1,
+            "previous_observation": self.transition_processor.snapshot_trip(trip_id),
+            "first_layer": self.first_layer.snapshot_trip(trip_id),
+        }
+
+    def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any]) -> None:
+        if int(snapshot.get("version", 0)) != 1:
+            raise ValueError("unsupported GPS runtime state version")
+        self.transition_processor.restore_trip(
+            trip_id, snapshot.get("previous_observation")
+        )
+        self.first_layer.restore_trip(trip_id, snapshot.get("first_layer"))
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

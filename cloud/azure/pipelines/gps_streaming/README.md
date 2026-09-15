@@ -9,7 +9,7 @@ Current integration behavior:
   be persisted with each enriched Silver point.
 - The mock detector accepts `speed_min_60s` as part of its input contract but
   deliberately ignores it.
-- Each mock segment target is selected uniformly from 200 through 300 derived
+- Each mock segment target is selected uniformly from 250 through 300 derived
   speed points, inclusive.
 - The weak mode and confidence are random but replayable for a fixed seed and
   `trip_id`.
@@ -18,8 +18,10 @@ Current integration behavior:
 - Weak output remains metadata and must not be passed into SpeedTransformer as
   a feature or prior.
 
-The core has no Spark dependency. A Databricks adapter can keep one instance of
-the state per trip in its stateful operator and write `EnrichedSpeedPoint` and
+The core has no Spark dependency. `transform_with_state.py` binds it to DBR
+17.3's Python Row `transformWithState` API. The adapter stores one versioned
+JSON `ValueState` per `trip_id`, sorts each key's rows inside a micro-batch,
+restores the neutral runtime, and writes `EnrichedSpeedPoint` and
 `SegmentEvent` records to their respective Delta tables. The future real
 detector should implement the same `process(DetectorPoint)` boundary.
 
@@ -53,9 +55,10 @@ pyfunc model:
   idempotent.
 
 Workspace-specific values are deliberately required at deployment time:
-`model_uri` and `checkpoint_location`. The default logical tables are
-`canopy.silver.gps_features`, `canopy.silver.mode_segments`, and
-`canopy.gold.mode_segment_predictions`.
+`model_uri` and `checkpoint_location`. `CanopyTableConfig` makes the catalog,
+all three schema names, and every table basename configurable. Development
+defaults resolve to `dbw_canopy_dev.bronze`, `.silver`, and `.gold`; using the
+Unity Catalog `default` schema for any pipeline layer is rejected.
 
 ## GPS preprocessing
 
@@ -71,8 +74,10 @@ Workspace-specific values are deliberately required at deployment time:
 - resets partial mock-segment state after an invalid transition so a model
   window never bridges rejected data.
 
-The first observation in a trip has no derived transition. Consequently, 201
-GPS observations are required to produce 200 derived speed points.
+The first observation in a trip has no derived transition. Consequently, a
+mock segment cannot close before 251 GPS observations produce its minimum 250
+derived speed points. SpeedTransformer inference windows remain exactly 200
+derived speed points.
 
 ## Spark ingestion boundary
 
@@ -85,8 +90,20 @@ GPS observations are required to produce 200 derived speed points.
 - creates the Bronze, parsed-observation, quarantine, feature, and mock-segment
   table contracts.
 
-The stateful observation-to-feature step is intentionally not bound to a Spark
-API yet. Apache Spark 4 identifies `TransformWithState` as the successor to
-`applyInPandasWithState`; the correct implementation therefore depends on the
-selected Databricks Runtime. The framework-neutral core will be reused either
-way.
+The stateful observation-to-feature step uses Python Row
+`transformWithState`, `TimeMode.None`, append output, and a RocksDB state store.
+The tagged operator output is routed in one `foreachBatch`; Delta `MERGE` on
+`event_id` and `segment_id` makes partial sink success and batch retry safe.
+
+## Asset Bundle template
+
+`databricks.yml` and `resources/gps_streaming.job.yml` define a development
+target for the verified `dbw-canopy-dev` workspace. The template selects DBR
+17.3 LTS, Standard access mode, the existing Job Compute policy, explicit
+RocksDB/Avro state-store settings, and parameterizes table names, checkpoint
+root, Event Hubs non-secret settings, secret lookup names, and MLflow model URI.
+
+The template is configuration only. Read-only `bundle validate` and
+`bundle sync --dry-run` checks pass for `CANOPY_DEV`; it has not been synced or
+deployed. See `WORKSPACE_PROVISIONING.md` before running any bundle command
+that changes workspace state.

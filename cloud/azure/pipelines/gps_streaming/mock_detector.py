@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import random
+from typing import Any, Mapping
 
 
 DEFAULT_MODES = ("bike", "bus", "car", "train", "walk")
@@ -13,15 +14,15 @@ DEFAULT_MODES = ("bike", "bus", "car", "train", "walk")
 
 @dataclass(frozen=True)
 class MockDetectorConfig:
-    min_speed_points: int = 200
+    min_speed_points: int = 250
     max_speed_points: int = 300
     modes: tuple[str, ...] = DEFAULT_MODES
     seed: int = 316
-    detector_version: str = "mock-random-v1"
+    detector_version: str = "mock-random-v2"
 
     def __post_init__(self) -> None:
-        if self.min_speed_points < 200:
-            raise ValueError("emitted segments must contain at least 200 speed points")
+        if self.min_speed_points < 250:
+            raise ValueError("mock segments must contain at least 250 speed points")
         if self.max_speed_points < self.min_speed_points:
             raise ValueError("max_speed_points must be >= min_speed_points")
         if not self.modes:
@@ -60,7 +61,7 @@ class _TripState:
 
 
 class MockFirstLayerDetector:
-    """Emit reproducible random weak predictions for 200–300-point segments.
+    """Emit reproducible random weak predictions for 250–300-point segments.
 
     ``speed_min_60s`` is intentionally accepted through ``DetectorPoint`` but
     is not used. It reserves the feature contract for the future real model.
@@ -120,6 +121,47 @@ class MockFirstLayerDetector:
         state = self._trips.pop(trip_id, None)
         return 0 if state is None else state.point_count
 
+    def snapshot_trip(self, trip_id: str) -> dict[str, Any] | None:
+        state = self._trips.get(trip_id)
+        if state is None:
+            return None
+        return {
+            "rng_state": state.rng.getstate(),
+            "segment_number": state.segment_number,
+            "target_points": state.target_points,
+            "point_count": state.point_count,
+            "start_time": None if state.start_time is None else state.start_time.isoformat(),
+        }
+
+    def restore_trip(self, trip_id: str, snapshot: Mapping[str, Any] | None) -> None:
+        self._trips.pop(trip_id, None)
+        if not snapshot:
+            return
+        target_points = int(snapshot["target_points"])
+        point_count = int(snapshot["point_count"])
+        if not self.config.min_speed_points <= target_points <= self.config.max_speed_points:
+            raise ValueError(
+                "persisted mock detector target is incompatible with the configured range"
+            )
+        if not 0 <= point_count < target_points:
+            raise ValueError("persisted mock detector point count is invalid")
+        rng = random.Random()
+        rng.setstate(_nested_tuple(snapshot["rng_state"]))
+        start_time = snapshot.get("start_time")
+        self._trips[trip_id] = _TripState(
+            rng=rng,
+            segment_number=int(snapshot["segment_number"]),
+            target_points=target_points,
+            point_count=point_count,
+            start_time=None if start_time is None else datetime.fromisoformat(str(start_time)),
+        )
+
     def _trip_seed(self, trip_id: str) -> int:
         material = f"{self.config.seed}:{trip_id}".encode("utf-8")
         return int.from_bytes(hashlib.sha256(material).digest()[:8], "big")
+
+
+def _nested_tuple(value: Any) -> Any:
+    if isinstance(value, list):
+        return tuple(_nested_tuple(item) for item in value)
+    return value

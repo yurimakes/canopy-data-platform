@@ -4,6 +4,7 @@ from cloud.azure.pipelines.gps_streaming.spark_ingestion import (
     SparkIngestionConfig,
     table_ddl,
 )
+from cloud.azure.pipelines.gps_streaming.deployment_config import CanopyTableConfig
 
 
 def config(**overrides) -> SparkIngestionConfig:
@@ -21,18 +22,18 @@ class SparkIngestionConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checkpoint"):
             config(bronze_checkpoint="")
 
-    def test_rejects_incomplete_table_identifier(self) -> None:
-        with self.assertRaisesRegex(ValueError, "catalog.schema.table"):
-            config(features_table="silver.gps_features")
+    def test_rejects_default_pipeline_schema(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cannot be"):
+            config(tables=CanopyTableConfig(silver_schema="default"))
 
     def test_ddl_contains_all_pipeline_owned_tables_and_contract_fields(self) -> None:
         statements = "\n".join(table_ddl(config()))
         for table in (
-            "canopy.bronze.gps_events",
-            "canopy.silver.gps_observations",
-            "canopy.silver.gps_quarantine",
-            "canopy.silver.gps_features",
-            "canopy.silver.mode_segments",
+            "dbw_canopy_dev.bronze.gps_events",
+            "dbw_canopy_dev.silver.gps_observations",
+            "dbw_canopy_dev.silver.gps_quarantine",
+            "dbw_canopy_dev.silver.gps_features",
+            "dbw_canopy_dev.silver.mode_segments",
         ):
             self.assertIn(table, statements)
         for field in (
