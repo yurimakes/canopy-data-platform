@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MODES, currentMode, type TransportMode, type GpsEvent, type Summary } from '../types';
-import type { Confirmation, ServerTrip } from '../tripApi';
+import type { FeedbackInput, ServerTrip } from '../tripApi';
 import {TripResult} from './TripResult';
 export type MeasurementProps = {
   collectionMode?: "user" | "developer"; onBack(): void;
@@ -17,7 +17,7 @@ export type MeasurementProps = {
   retryCount?:number; canShareEvent?:boolean; onShareEvent?():void;
   resultTrip?:Summary; sent?:number; blocked?:number; onShareCheck?():void;
   serverTrip?:ServerTrip;tripError?:string;onRetryTrip?():void;
-  confirmationPending?:Confirmation[];onConfirm(segments:Confirmation[]):Promise<void>;
+  feedbackPending?:FeedbackInput;onFeedback(input:FeedbackInput):Promise<void>;
   onHistory?():void;
 };
 // Temporary entry point. Replace the selection with the team's authenticated role later.
@@ -87,7 +87,7 @@ export function MeasurementScreen(p: MeasurementProps) {
         <Text style={s.status}>Trip 처리 결과</Text>
         <Text>{p.serverTrip?.status==='ready'?'처리 완료':p.serverTrip?.status==='failed'?'처리 실패':p.serverTrip?.status==='processing'?'서버 처리 중':'GPS 전송 및 종료 접수 대기'}</Text>
         {!!p.tripError && <Text style={s.error}>{p.tripError}</Text>}
-        {p.serverTrip?.status==='ready' && <TripResult key={p.serverTrip.trip_id} trip={p.serverTrip} pending={p.confirmationPending} onConfirm={p.onConfirm}/>}
+        {p.serverTrip?.status==='ready' && <TripResult key={p.serverTrip.trip_id} trip={p.serverTrip} pending={p.feedbackPending} onFeedback={p.onFeedback}/>}
         {p.serverTrip?.status==='failed' && <>
           <Text style={s.error}>{p.serverTrip.failed_step}: {p.serverTrip.error_message}</Text>
           <Pressable accessibilityRole="button" onPress={p.onRetryTrip}><Text style={s.modeText}>Trip 처리 재시도</Text></Pressable>

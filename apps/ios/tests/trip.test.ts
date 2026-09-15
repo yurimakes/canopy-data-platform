@@ -66,55 +66,55 @@ async function finish(s:Awaited<ReturnType<typeof setup>>) {
   return (await s.api.result(s.collector.trip!.trip_id))!.result!;
 }
 
-it('confirms, corrects, reloads carbon and preserves original prediction through real HTTP',async()=>{
+it('shows carbon before feedback and keeps the result unchanged after an issue report',async()=>{
   const s=await setup();const result=await finish(s);
-  const original=result.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:segment.mode}));
-  const accepted=await s.api.confirm(result.trip_id,original);
-  expect(accepted.confirmation_status).toBe('confirmed');expect(accepted.revision).toBe(2);
-  expect(accepted.confirmed_trip?.total_carbon_kg).toBe(0);
-  const edited=original.map(segment=>({...segment,confirmed_mode:'car' as const}));
-  const corrected=await s.api.confirm(result.trip_id,edited);
-  expect(corrected.revision).toBe(3);
-  expect(corrected.original_segments![0].mode).toBe('walk');
-  expect(corrected.confirmed_segments![0].mode).toBe('car');
-  expect(corrected.confirmed_trip!.car_distance_m).toBe(result.segments[0].distance_m);
-  expect(corrected.confirmed_trip!.total_carbon_kg).toBeCloseTo(result.segments[0].distance_m/1000*.16591,6);
-  expect((await s.api.refresh(result.trip_id)).confirmed_trip).toEqual(corrected.confirmed_trip);
+  expect(result.confirmed_trip?.mode_source).toBe('model_prediction');
+  const accepted=await s.api.sendFeedback(result.trip_id,{has_issue:true,feedback_text:'버스 구간 확인 부탁드립니다.'});
+  expect(accepted.feedback_status).toBe('submitted');expect(accepted.review_required).toBe(true);
+  expect(accepted.segments).toEqual(result.segments);expect(accepted.confirmed_trip).toEqual(result.confirmed_trip);
+  expect((await s.api.refresh(result.trip_id)).feedback_id).toBe(accepted.feedback_id);
 });
 
-it('persists a lost confirmation response and retries the same request after SQLite reopen',async()=>{
+it('persists a lost feedback response and retries the same request after SQLite reopen',async()=>{
   const path=join(directory,randomUUID()+'.sqlite');let drop=true;const ids:string[]=[];
   const request=(async(url,options)=>{
-    if(String(url).endsWith('/confirm')) {
+    if(String(url).endsWith('/feedback')) {
       ids.push(JSON.parse(String(options?.body)).request_id);
       const response=await fetch(url,options);
-      if(drop){drop=false;throw Error('confirmation response lost');}
+      if(drop){drop=false;throw Error('feedback response lost');}
       return response;
     }
     return fetch(url,options);
   }) as typeof fetch;
   const s=await setup(path,request);const trip=await finish(s);
-  const edits=trip.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:'car' as const}));
-  await expect(s.api.confirm(trip.trip_id,edits)).rejects.toThrow('response lost');
-  expect((await s.api.result(trip.trip_id))?.confirmation?.segments).toEqual(edits);
+  await expect(s.api.sendFeedback(trip.trip_id,{has_issue:true})).rejects.toThrow('response lost');
+  expect((await s.api.result(trip.trip_id))?.feedback?.has_issue).toBe(true);
   const reopened=database(path);await reopened.db.init(randomUUID,new Date().toISOString());
-  const restored=new TripApi(reopened.db,config,randomUUID,request);
-  await restored.tick(true);
+  const restored=new TripApi(reopened.db,config,randomUUID,request);await restored.tick(true);
   const state=await restored.result(trip.trip_id);
-  expect(state?.confirmation).toBeUndefined();expect(state?.result?.revision).toBe(2);
+  expect(state?.feedback).toBeUndefined();expect(state?.result?.feedback_status).toBe('submitted');
+  expect(state?.result?.confirmed_trip).toEqual(trip.confirmed_trip);
   expect(ids).toHaveLength(2);expect(ids[0]).toBe(ids[1]);
 });
 
-it('reloads a newer revision instead of silently overwriting another confirmation',async()=>{
+it('reloads an existing response instead of overwriting it with a different answer',async()=>{
   const s=await setup();const trip=await finish(s);
-  const edits=trip.segments.map(segment=>({segment_id:segment.segment_id,confirmed_mode:'bus' as const}));
-  const response=await fetch(base+`/trips/${trip.trip_id}/confirm`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-    body:JSON.stringify({request_id:randomUUID(),expected_revision:trip.revision,segments:edits})});
+  const response=await fetch(base+`/trips/${trip.trip_id}/feedback`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({request_id:randomUUID(),has_issue:false})});
   expect(response.status).toBe(200);
-  await expect(s.api.confirm(trip.trip_id,edits.map(s=>({...s,confirmed_mode:'car' as const})))).rejects.toThrow('409');
+  await expect(s.api.sendFeedback(trip.trip_id,{has_issue:true})).rejects.toThrow('409');
   const state=await s.api.result(trip.trip_id);
-  expect(state?.confirmation).toBeUndefined();expect(state?.result?.revision).toBe(2);
-  expect(state?.result?.confirmed_segments?.[0].mode).toBe('bus');
+  expect(state?.feedback).toBeUndefined();expect(state?.result?.feedback_status).toBe('no_issue');
+  expect(state?.result?.segments).toEqual(trip.segments);
+});
+
+it('archives old pending correction requests without submitting them',async()=>{
+  const s=await setup();const trip=await finish(s);
+  const confirmation={request_id:randomUUID(),api_url:base,expected_revision:1,segments:[]};
+  await s.db.saveSync('trip:'+trip.trip_id,{result:trip,confirmation});
+  const request=vi.fn(fetch);const api=new TripApi(s.db,config,randomUUID,request);
+  await api.tick(true);
+  expect(request).not.toHaveBeenCalled();expect((await api.result(trip.trip_id))?.legacy_confirmation).toEqual(confirmation);
 });
 function location():LocationObject{return {timestamp:Date.now(),coords:{latitude:37.5,longitude:127,
   accuracy:150,speed:null,heading:null,altitude:null,altitudeAccuracy:null}};}

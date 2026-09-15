@@ -14,18 +14,21 @@ export type ConfirmedTrip = {
   confirmation_source?:'system'|'user';
   is_mock:boolean;model_version:string;
 };
-export type Confirmation = {segment_id:string;confirmed_mode:TransportMode};
+type Confirmation = {segment_id:string;confirmed_mode:TransportMode};
+export type FeedbackInput = {has_issue:boolean;feedback_text?:string|null};
+export type FeedbackIntent = FeedbackInput & {request_id:string;api_url:string};
 type ConfirmIntent = {request_id:string;expected_revision:number;segments:Confirmation[];api_url:string};
 export type ServerTrip = {
   trip_id:string; user_id:string; device_id:string; started_at:string; ended_at:string|null;
   status:'collecting'|'processing'|'ready'|'failed'; model_version:string|null; is_mock:boolean;
   failed_step:string|null; error_message:string|null;
+  review_required?:boolean;feedback_status?:'pending'|'submitted'|'no_issue'|null;has_issue?:boolean|null;feedback_id?:string|null;
   segments:FinalSegment[];original_segments?:FinalSegment[];confirmed_segments?:FinalSegment[];
   confirmation_status?:'pending'|'confirmed';revision?:number;confirmed_at?:string;confirmed_trip?:ConfirmedTrip;
 };
 export type TripConfig = {url:string;token:string;functionKey?:string;allowLocalHttp?:boolean};
 type StartIntent = {request_id:string;device_id:string;api_url:string};
-type Sync = {result?:ServerTrip;error?:string;retry_at?:number;attempts?:number;retry_request_id?:string;confirmation?:ConfirmIntent};
+type Sync = {result?:ServerTrip;error?:string;retry_at?:number;attempts?:number;retry_request_id?:string;confirmation?:ConfirmIntent;legacy_confirmation?:ConfirmIntent;feedback?:FeedbackIntent;feedback_draft?:FeedbackInput};
 class TripHttpError extends Error {
   constructor(public status:number,public code:string,message:string){super(`Trip API ${status}: ${message}`);}
 }
@@ -92,37 +95,39 @@ export class TripApi {
       return result;
     } finally {this.confirming.delete(id);}
   }
-  async confirm(id:string,segments?:Confirmation[]):Promise<ServerTrip> {
-    if(this.confirming.has(id))throw Error('확인 결과를 저장하고 있습니다.');
+  async sendFeedback(id:string,input?:FeedbackInput):Promise<ServerTrip> {
+    if(this.confirming.has(id))throw Error('피드백을 전송하고 있습니다.');
     this.confirming.add(id);
     let state:Sync={};
     try {
       const trip=(await this.db.list()).find(t=>t.trip_id===id);
       state=await this.result(id)??{};
-      if(!trip?.server || state.result?.status!=='ready')throw Error('Trip 처리 완료 후 확인할 수 있습니다.');
-      let intent=state.confirmation;
-      if(intent && segments && JSON.stringify(intent.segments)!==JSON.stringify(segments))throw Error('대기 중인 확인 요청을 먼저 재전송하세요.');
+      if(!trip?.server || state.result?.status!=='ready')throw Error('Trip 처리 완료 후 피드백을 보낼 수 있습니다.');
+      let intent=state.feedback;
       if(!intent) {
-        if(!segments)throw Error('확인할 이동수단을 선택하세요.');
-        intent={request_id:this.uuid(),expected_revision:state.result.revision??0,segments,api_url:trip.server.api_url};
-        state={...state,confirmation:intent};delete state.error;
+        if(!input)throw Error('문제 여부를 선택하세요.');
+        const text=input.feedback_text?.trim()||null;
+        if(Array.from(input.feedback_text??'').length>500)throw Error('피드백은 500자까지 입력할 수 있습니다.');
+        intent={request_id:this.uuid(),api_url:trip.server.api_url,has_issue:input.has_issue,feedback_text:text};
+        state={...state,feedback:intent};delete state.error;
         await this.db.saveSync('trip:'+id,state);
+      } else if(input && (input.has_issue!==intent.has_issue || (input.feedback_text?.trim()||null)!==(intent.feedback_text??null))) {
+        throw Error('대기 중인 피드백을 먼저 재전송하세요.');
       }
-      let result=await this.call(`/trips/${id}/confirm`,'POST',{
-        request_id:intent.request_id,expected_revision:intent.expected_revision,segments:intent.segments},intent.api_url);
-      if(result.trip_id!==id || result.user_id!==trip.user_id || result.confirmation_status!=='confirmed')throw Error('확인 응답의 Trip 또는 사용자 정보가 일치하지 않습니다.');
-      // Clear the durable intent only after the server acknowledges it.
-      state={result};await this.db.saveSync('trip:'+id,state);
-      result=await this.call(`/trips/${id}`,'GET',undefined,intent.api_url);
-      if(result.trip_id!==id || result.user_id!==trip.user_id)throw Error('결과 조회의 Trip 또는 사용자 정보가 일치하지 않습니다.');
+      const result=await this.call(`/trips/${id}/feedback`,'POST',{
+        request_id:intent.request_id,has_issue:intent.has_issue,feedback_text:intent.feedback_text},intent.api_url);
+      if(result.trip_id!==id || result.user_id!==trip.user_id || result.has_issue!==intent.has_issue ||
+        result.feedback_status!==(intent.has_issue?'submitted':'no_issue'))throw Error('피드백 응답이 요청과 일치하지 않습니다.');
       await this.db.saveSync('trip:'+id,{result});
       return result;
     } catch(e) {
-      if(e instanceof TripHttpError && e.code==='revision_conflict') {
-        // A different editor won. Never overwrite that revision automatically.
-        state={...state};delete state.confirmation;
-        const latest=await this.call(`/trips/${id}`,'GET',undefined,state.result? (await this.db.list()).find(t=>t.trip_id===id)?.server?.api_url:undefined);
-        if(latest.trip_id===id && latest.user_id===state.result?.user_id)state.result=latest;
+      if(e instanceof TripHttpError && (e.status===400 || e.status===409 || e.status===410)) {
+        const rejected=state.feedback;
+        state={...state};if(rejected)state.feedback_draft=rejected;delete state.feedback;
+        if(e.code==='feedback_already_answered') {
+          const latest=await this.call(`/trips/${id}`,'GET',undefined,rejected?.api_url);
+          if(latest.trip_id===id && latest.user_id===state.result?.user_id)state.result=latest;
+        }
       }
       const attempts=(state.attempts??0)+1;
       await this.db.saveSync('trip:'+id,{...state,error:String(e),attempts,retry_at:this.now()+Math.min(60000,1000*2**Math.min(attempts,6))});
@@ -142,8 +147,13 @@ export class TripApi {
         const state=await this.result(trip.trip_id) ?? {};
         if(this.confirming.has(trip.trip_id))continue;
         if(state.confirmation) {
+          // Preserve old unsent correction intent locally, but never submit it.
+          state.legacy_confirmation=state.confirmation;delete state.confirmation;
+          await this.db.saveSync('trip:'+trip.trip_id,state);
+        }
+        if(state.feedback) {
           if(wake || (state.retry_at??0)<=this.now()) {
-            try {await this.confirm(trip.trip_id);}catch(e){this.error=String(e);}
+            try {await this.sendFeedback(trip.trip_id);}catch(e){this.error=String(e);}
           }
           continue;
         }

@@ -10,7 +10,7 @@ import { ports, foregroundOnly } from './src/location';
 import { files } from './src/files';
 import { exportTrip } from './src/exporter';
 import type { Summary } from './src/types';
-import type { Confirmation, ServerTrip } from './src/tripApi';
+import type { FeedbackInput, ServerTrip } from './src/tripApi';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -29,7 +29,7 @@ export default function App() {
   const [resultTrip,setResultTrip]=useState<Summary>();
   const [serverTrip,setServerTrip]=useState<ServerTrip>();
   const [tripError,setTripError]=useState('');
-  const [confirmationPending,setConfirmationPending]=useState<Confirmation[]>();
+  const [feedbackPending,setFeedbackPending]=useState<FeedbackInput>();
   const [selectedTrip,setSelectedTrip]=useState<string>();
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
@@ -54,7 +54,7 @@ export default function App() {
         const status=await service!.db.deliveryStatus(id??null);
         const proof=await service!.db.deliveryEvidence(id??null);
         const remote=id ? await tripApi.result(id) : null;
-        if(alive){setServerTrip(remote?.result);setConfirmationPending(remote?.confirmation?.segments);setTripError(remote?.error??tripApi.error);}
+        if(alive){setServerTrip(remote?.result);setFeedbackPending(remote?.feedback);setTripError(remote?.error??tripApi.error);}
         if(alive){setResultTrip(summary);setDelivery(status);setEvidence(proof);setUploadError(proof.head?.last_error || uploader.error);}
       }catch(e){if(alive)setError(String(e));}finally{refreshing=false;}
     }
@@ -101,13 +101,13 @@ export default function App() {
       await files.share(file.uri,'metadata');
     }catch(e){setError('측정 결과 공유 오류: '+String(e));}finally{setSharing(false);}
   }
-  async function confirm(segments:Confirmation[]) {
+  async function feedback(input:FeedbackInput) {
     if(!resultTrip)throw Error('Trip 결과가 없습니다.');
     const api=await getTripApi();
-    try {setServerTrip(await api.confirm(resultTrip.trip_id,segments));setTripError('');}
+    try {setServerTrip(await api.sendFeedback(resultTrip.trip_id,input));setTripError('');}
     finally {
       const state=await api.result(resultTrip.trip_id);
-      setConfirmationPending(state?.confirmation?.segments);
+      setFeedbackPending(state?.feedback);
       if(state?.result)setServerTrip(state.result);
       setTripError(state?.error??'');
     }
@@ -116,7 +116,7 @@ export default function App() {
     const saved=trips.filter(t=>t.server&&t.status!=='recording'&&(t.collection_mode??'developer')===screen);
     Alert.alert('이전 이동 결과',saved.length?'이동을 선택하면 서버에서 최신 결과를 조회합니다.':'저장된 이동이 없습니다.',[
       ...saved.slice(offset,offset+5).map(t=>({text:new Date(t.started_at).toLocaleString('ko-KR'),onPress:()=>{
-        setSelectedTrip(t.trip_id);setServerTrip(undefined);setConfirmationPending(undefined);setTripError('');
+        setSelectedTrip(t.trip_id);setServerTrip(undefined);setFeedbackPending(undefined);setTripError('');
         void getTripApi().then(api=>api.refresh(t.trip_id)).then(setServerTrip).catch(e=>setTripError(String(e)));
       }})),
       ...(saved.length>offset+5?[{text:'이전 기록 더 보기',onPress:()=>history(offset+5)}]:[]),{text:'취소',style:'cancel'},
@@ -138,7 +138,7 @@ export default function App() {
     resultTrip={resultMatches?resultTrip:undefined} sent={delivery?.sent} blocked={delivery?.blocked} onShareCheck={()=>{void shareCheck();}}
     canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
     serverTrip={resultMatches && serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
-    confirmationPending={confirmationPending} onConfirm={confirm} onHistory={()=>history()}
+    feedbackPending={feedbackPending} onFeedback={feedback} onHistory={()=>history()}
     onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;
