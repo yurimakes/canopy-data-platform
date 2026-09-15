@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Trip feedback, not a corrected label",
+  "description": "canopy-db/trip_feedback, /user_id partition. One deterministic UUID5 ID per user_id/trip_id. No document is created for no_issue. fingerprint and trip_flag_applied support retry and cross-container repair; text is never copied to trips or logs.",
+  "type": "object",
+  "required": ["id", "feedback_id", "trip_id", "user_id", "has_issue", "feedback_text", "created_at", "review_status"],
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "feedback_id": {"type": "string", "format": "uuid"},
+    "trip_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "has_issue": {"const": true},
+    "feedback_text": {"type": ["string", "null"], "maxLength": 500},
+    "created_at": {"type": "string", "format": "date-time"},
+    "review_status": {"enum": ["pending", "reviewed", "resolved"]},
+    "trip_flag_applied": {"type": "boolean"},
+    "request_id": {"type": "string"},
+    "fingerprint": {"type": "string"}
+  }
+}
