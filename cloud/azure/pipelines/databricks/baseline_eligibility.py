@@ -11,11 +11,22 @@ import yaml
 
 def load_eligibility_policy(path=None):
     # Git Folder OR the same directory tree extracted from the runtime bundle.
-    path = Path(path or os.environ.get("CANOPY_BASELINE_ELIGIBILITY_PATH")
-                or Path(__file__).resolve().parents[4] / "shared/configs/baseline_eligibility.yaml")
-    if not path.is_file():
-        raise FileNotFoundError(f"Eligibility YAML missing: {path}. Deploy the code/config bundle together.")
-    policy = yaml.safe_load(path.read_text(encoding="utf-8"))
+    path = str(path or os.environ.get("CANOPY_BASELINE_ELIGIBILITY_PATH")
+               or Path(__file__).resolve().parents[4] / "shared/configs/baseline_eligibility.yaml")
+    if path.startswith("abfss://"):
+        # Use the workspace's existing Storage access, never a key in the URI.
+        from pyspark.sql import SparkSession
+        spark = SparkSession.builder.getOrCreate()
+        rows = spark.read.option("wholetext", True).text(path).limit(2).collect()
+        if len(rows) != 1:
+            raise ValueError("Eligibility Storage path must resolve to exactly one YAML file")
+        content = rows[0]["value"]
+    else:
+        path = Path(path)
+        if not path.is_file():
+            raise FileNotFoundError(f"Eligibility YAML missing: {path}. Deploy the code/config bundle together.")
+        content = path.read_text(encoding="utf-8")
+    policy = yaml.safe_load(content)
     p, g = policy["personal"], policy["global"]
     for value in (p["minimum_observation_days"], p["minimum_confirmed_commute_trips"],
                   g["minimum_eligible_participants"]):

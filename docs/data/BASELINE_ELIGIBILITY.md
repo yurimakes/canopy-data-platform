@@ -47,7 +47,15 @@ Personal은 7일 이상 관측하고 확정 출퇴근 Trip 6개 이상, 거리 �
 
 ## YAML 배포 방법
 
-새 Blob이나 정책 저장용 Azure 리소스를 만들지 않았고 YAML을 Storage에 올리지 않았습니다. 기존 공용 설정 폴더와 코드를 함께 배포합니다.
+2026-09-15에 기존 Storage에 정책 YAML을 업로드하고 다운로드한 바이트가 원본과 같은지 확인했습니다. 새 Storage 계정이나 컨테이너는 만들지 않았습니다.
+
+```text
+abfss://curated@stcanopydev5dt.dfs.core.windows.net/config/baseline/eligibility-v1/baseline_eligibility.yaml
+```
+
+Job에 `--eligibility-policy`로 위 경로를 전달하거나 `CANOPY_BASELINE_ELIGIBILITY_PATH`에 설정합니다. Databricks의 기존 Storage 권한으로 읽습니다. 권한 오류나 파일 누락 시 로컬 정책으로 바꾸지 않고 실패합니다. 업로드 확인과 Databricks 실행 확인은 별개이며, 실제 Job 실행은 아직 하지 않았습니다.
+
+코드는 다음 묶음으로 배포할 수 있습니다.
 
 ```powershell
 python tools/azure/package_baseline_eligibility.py --workspace-root /Workspace/Shared/canopy-baseline

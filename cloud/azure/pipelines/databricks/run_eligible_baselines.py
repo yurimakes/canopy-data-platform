@@ -14,10 +14,13 @@ def main(argv=None):
     parser.add_argument("--campaign-id")
     parser.add_argument("--evaluation-week")
     parser.add_argument("--identities-file")
+    parser.add_argument("--eligibility-policy", help="Local YAML file or an abfss:// Storage file")
     parser.add_argument("--confirmed-commute-only", action="store_true",
                         help="Only after verifying that the input Weekly Gold trip_count counts confirmed commutes")
     parser.add_argument("--check-config", action="store_true")
     args = parser.parse_args(argv)
+    if args.eligibility_policy:
+        os.environ["CANOPY_BASELINE_ELIGIBILITY_PATH"] = args.eligibility_policy
     policy = load_eligibility_policy()
     baseline_policy_path = Path(__file__).resolve().with_name("baseline_policy.yaml")
     if not baseline_policy_path.is_file():

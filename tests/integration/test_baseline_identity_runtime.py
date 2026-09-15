@@ -11,10 +11,26 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines/databricks"))
-from baseline_eligibility import load_identities, observation_context
+from baseline_eligibility import load_eligibility_policy, load_identities, observation_context
 
 
 class IdentityAndRuntimeTests(unittest.TestCase):
+    def test_storage_policy_is_read_without_local_fallback(self):
+        uri = "abfss://curated@stcanopydev5dt.dfs.core.windows.net/config/baseline/eligibility-v1/baseline_eligibility.yaml"
+        content = (ROOT / "shared/configs/baseline_eligibility.yaml").read_text(encoding="utf-8")
+        with patch("pyspark.sql.SparkSession") as session:
+            spark = session.builder.getOrCreate.return_value
+            collect = spark.read.option.return_value.text.return_value.limit.return_value.collect
+            collect.return_value = [{"value": content}]
+            self.assertEqual(load_eligibility_policy(uri)["policy_version"], "eligibility-v1")
+            spark.read.option.return_value.text.assert_called_once_with(uri)
+            collect.return_value = []
+            with self.assertRaises(ValueError):
+                load_eligibility_policy(uri)
+            collect.side_effect = PermissionError("Storage access denied")
+            with self.assertRaises(PermissionError):
+                load_eligibility_policy(uri)
+
     def test_cosmos_partition_reads_and_membership_priority(self):
         client = MagicMock()
         db = client.get_database_client.return_value
