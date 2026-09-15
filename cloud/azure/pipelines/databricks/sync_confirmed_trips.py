@@ -1,20 +1,12 @@
 import os
 
 from azure.cosmos import CosmosClient
+from azure.identity import DefaultAzureCredential
 from pyspark.sql import SparkSession
-from pyspark.sql import functions as F
 
-def _get_secret_or_env(scope, secret_key, env_var):
-    try:
-        return dbutils.secrets.get(scope=scope, key=secret_key)  # noqa: F821
-    except Exception:
-        return os.environ.get(env_var)
-
-
-COSMOS_ENDPOINT = _get_secret_or_env("canopy-scope", "cosmos-endpoint", "CANOPY_COSMOS_ENDPOINT")
-COSMOS_KEY = _get_secret_or_env("canopy-scope", "cosmos-key", "CANOPY_COSMOS_KEY")
+COSMOS_ENDPOINT = os.environ.get("CANOPY_COSMOS_ENDPOINT")
 COSMOS_DATABASE = os.environ.get("CANOPY_COSMOS_DATABASE", "canopy-db")
-COSMOS_CONTAINER = "trips"
+COSMOS_CONTAINER = os.environ.get("CANOPY_COSMOS_TRIPS_CONTAINER", "trips")
 
 CONFIRMED_TRIPS_PATH = os.environ.get(
     "CANOPY_CONFIRMED_TRIPS_PATH",
@@ -23,21 +15,51 @@ CONFIRMED_TRIPS_PATH = os.environ.get(
 
 
 def read_confirmed_from_cosmos():
-    client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
+    """Read finalized system Trip results.
+
+    `confirmation_status` is not treated as a user override gate. The current backend
+    finishes automatic processing by setting Trip `status=ready`; user issue feedback
+    is a separate support workflow and does not change the baseline input automatically.
+    """
+    if not COSMOS_ENDPOINT:
+        raise RuntimeError("CANOPY_COSMOS_ENDPOINT is required")
+
+    client = CosmosClient(COSMOS_ENDPOINT, credential=DefaultAzureCredential())
     database = client.get_database_client(COSMOS_DATABASE)
     container = database.get_container_client(COSMOS_CONTAINER)
 
-    query = "SELECT * FROM c WHERE c.confirmation_status = 'confirmed'"
+    query = "SELECT * FROM c WHERE c.type = 'trip' AND c.status = 'ready'"
     return list(container.query_items(query=query, enable_cross_partition_query=True))
 
 
 KEEP_FIELDS = [
-    "trip_id", "user_id", "campaign_id", "status", "confirmation_status",
-    "started_at", "ended_at", "updated_at", "segments", "carbon",
+    "trip_id",
+    "user_id",
+    "campaign_id",
+    "status",
+    "confirmation_status",
+    "confirmation_source",
+    "started_at",
+    "ended_at",
+    "updated_at",
+    "segments",
+    "carbon",
 ]
 
-SEGMENT_KEEP_FIELDS = ["segment_id", "model_prediction", "distance_m"]
-CARBON_KEEP_FIELDS = ["kg_co2e"]
+SEGMENT_KEEP_FIELDS = [
+    "segment_id",
+    "model_prediction",
+    "distance_m",
+    "carbon_kg",
+]
+CARBON_KEEP_FIELDS = [
+    "kg_co2e",
+    "mode_source",
+    "user_confirmation_applied",
+    "policy_version",
+    "factor_version",
+    "unit",
+]
 
 
 def _strip_segment(segment):
@@ -55,7 +77,7 @@ def _strip_to_known_fields(item):
 
 def write_curated(spark, items):
     if not items:
-        raise RuntimeError("no confirmed trips returned from Cosmos DB")
+        raise RuntimeError("no ready trips returned from Cosmos DB")
 
     trimmed = [_strip_to_known_fields(item) for item in items]
     df = spark.createDataFrame(trimmed)
@@ -73,7 +95,7 @@ def write_curated(spark, items):
 def verify(spark):
     df = spark.read.format("delta").load(CONFIRMED_TRIPS_PATH)
     count = df.count()
-    print(f"[verify] confirmed_trips rows={count}")
+    print(f"[verify] ready baseline-input trips rows={count}")
     return count > 0
 
 
@@ -85,9 +107,9 @@ def run():
 
     ok = verify(spark)
     if not ok:
-        raise RuntimeError("confirmed_trips sync failed: empty result")
+        raise RuntimeError("Trip baseline-input sync failed: empty result")
 
-    print("[done] confirmed_trips sync complete")
+    print("[done] ready Trip baseline-input sync complete")
 
 
 if __name__ == "__main__":

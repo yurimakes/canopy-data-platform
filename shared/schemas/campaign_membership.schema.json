@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canopy.local/schemas/campaign_membership.schema.json",
+  "title": "Canopy campaign membership",
+  "description": "canopy-db/campaign_memberships, partition /user_id. id equals campaign_id, giving one membership per user/campaign. Participation backend sets joined_at; rejoining must not silently reset it.",
+  "type": "object",
+  "required": ["id", "user_id", "campaign_id", "joined_at"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "joined_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

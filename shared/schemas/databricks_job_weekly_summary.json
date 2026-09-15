@@ -1,5 +1,6 @@
 {
   "name": "canopy-weekly-summary",
+  "note": "Draft orchestration definition only. Do not deploy as the final Job until eligibility and remaining weekly tasks are merged.",
   "tasks": [
     {
       "task_key": "sync_confirmed_trips",
@@ -17,9 +18,9 @@
       "spark_python_task": {
         "python_file": "dbfs:/canopy/jobs/build_weekly_summary.py",
         "parameters": [
-          "{{campaign_id}}",
-          "{{week_start}}",
-          "{{week_end}}"
+          "{{job.parameters.campaign_id}}",
+          "{{job.parameters.week_start}}",
+          "{{job.parameters.week_end}}"
         ]
       },
       "environment_key": "canopy_env"
@@ -32,7 +33,7 @@
       "spark_python_task": {
         "python_file": "dbfs:/canopy/jobs/build_personal_baseline.py",
         "parameters": [
-          "{{campaign_id}}"
+          "{{job.parameters.campaign_id}}"
         ]
       },
       "environment_key": "canopy_env"
@@ -40,13 +41,13 @@
     {
       "task_key": "build_global_baseline",
       "depends_on": [
-        { "task_key": "build_weekly_summary" }
+        { "task_key": "build_personal_baseline" }
       ],
       "spark_python_task": {
         "python_file": "dbfs:/canopy/jobs/build_global_baseline.py",
         "parameters": [
-          "{{campaign_id}}",
-          "{{evaluation_week}}"
+          "{{job.parameters.campaign_id}}",
+          "{{job.parameters.evaluation_week}}"
         ]
       },
       "environment_key": "canopy_env"
@@ -59,7 +60,10 @@
         "client": "1",
         "dependencies": [
           "azure-cosmos",
-          "pyyaml"
+          "azure-identity",
+          "pyyaml",
+          "pandas",
+          "pyarrow"
         ]
       }
     }
