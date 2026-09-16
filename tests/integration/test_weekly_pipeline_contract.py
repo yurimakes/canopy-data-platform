@@ -3,6 +3,7 @@ import ast
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import unittest
 
@@ -37,6 +38,41 @@ def spark_type(schema):
 
 
 class WeeklyContractTests(unittest.TestCase):
+    @unittest.skipUnless(os.environ.get("CANOPY_TEST_SPARK") == "1", "로컬 Spark 실행 환경 필요")
+    def test_spark_weekly_calculation_and_contract_failures(self):
+        from pyspark.sql import SparkSession, functions as F
+        spark = (SparkSession.builder.master("local[2]").appName("weekly-contract")
+                 .config("spark.sql.shuffle.partitions", "2").config("spark.ui.enabled", "false")
+                 .config("spark.sql.session.timeZone", "UTC").getOrCreate())
+        spark.sparkContext.setLogLevel("OFF")
+        try:
+            m = fixture()
+            contract = m["contracts"]["final_trip"]
+            row = dict(trip_id="t1", user_id="u1", campaign_id="pipeline_test_contract", status="ready",
+                       started_at="2026-09-13T16:00:00Z", ended_at="2026-09-13T16:10:00Z",
+                       updated_at="2026-09-13T16:11:00Z", is_mock=True,
+                       segments=[dict(segment_id="s1", model_prediction="walk", distance_m=100., carbon_kg=0.),
+                                 dict(segment_id="s2", model_prediction="bus", distance_m=900., carbon_kg=.09)],
+                       carbon=dict(kg_co2e=.09, policy_version="v1", factor_version="v1", unit="kgCO2e"))
+            frame = spark.createDataFrame([(json.dumps(row),)], "payload string").select(
+                F.from_json("payload", spark_type(contract["json_schema"])).alias("r")).select("r.*")
+            frame = runtime.checked(frame, contract, "input")
+            weekly = runtime.weekly_summary({"trips": frame}, runtime.run_context(m["run"]))
+            out = runtime.checked(weekly, m["contracts"]["weekly"], "weekly").collect()
+            self.assertEqual(len(out), 1)
+            self.assertEqual(out[0].week, "2026-W38")
+            self.assertEqual(out[0].trip_count, 1)
+            self.assertEqual(out[0].total_distance_m, 1000.)
+            self.assertAlmostEqual(out[0].total_kg_co2e, .09)
+            self.assertEqual(out[0].transit_primary_trip_count, 1)
+            with self.assertRaises(Exception):
+                runtime.checked(frame.unionByName(frame), contract, "duplicate").collect()
+            wrong = frame.withColumn("carbon", F.col("carbon").withField("unit", F.lit("grams")))
+            with self.assertRaises(Exception):
+                runtime.checked(wrong, contract, "bad_unit").collect()
+        finally:
+            spark.stop()
+
     def test_existing_contracts_are_valid_and_preserve_weekly_schema(self):
         m = fixture()
         for contract in m["contracts"].values():
