@@ -2,6 +2,8 @@
 import json
 import logging
 import re
+import os
+from typing import List
 import azure.functions as func
 from services.runtime import authenticate, service, feedback_service
 from services.trip_service import ApiError, public
@@ -82,7 +84,29 @@ def trip_feedback(req: func.HttpRequest) -> func.HttpResponse:
 def trip_worker(timer: func.TimerRequest) -> None:
     # Cosmos processing documents are the outbox: stop + scheduling is a single CAS write.
     service().process_pending()
+    if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
+        from services.trip_dispatch import recover
+        recover(service().store)
     try:
         feedback_service().recover_pending()
     except Exception as exc:
         logging.error("feedback_recovery_failed error_type=%s", type(exc).__name__)
+
+
+if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
+    @bp.retry(strategy="exponential_backoff", max_retry_count="5", minimum_interval="00:00:05", maximum_interval="00:01:00")
+    @bp.event_hub_message_trigger(arg_name="events", connection="TRIP_EVENTHUB", event_hub_name="%EVENTHUB_NAME%",
+                                  consumer_group="%TRIP_EVENTHUB_CONSUMER_GROUP%", cardinality="many")
+    def trip_end_received(events: List[func.EventHubEvent]):
+        from services.trip_dispatch import receive, recover
+        store = service().store
+        accepted = False
+        for event in events:
+            try:
+                payload = json.loads(event.get_body().decode("utf-8"))
+            except (ValueError, UnicodeError):
+                continue
+            if isinstance(payload, dict) and payload.get("event_type") == "trip_ended":
+                accepted = receive(store, payload) or accepted
+        if accepted:
+            recover(store)

@@ -45,11 +45,16 @@ def service():
         module_name, class_name = selection.split(":", 1)
         processor = getattr(importlib.import_module(module_name), class_name)()
     campaign_id = os.environ["TRIP_CAMPAIGN_ID"]
+    publisher = None
+    if os.getenv("TRIP_END_EVENTS_ENABLED", "false").lower() == "true":
+        from .trip_lifecycle import EventHubLifecyclePublisher
+        publisher = EventHubLifecyclePublisher()
     if not campaign_id.strip():
         raise RuntimeError("TRIP_CAMPAIGN_ID is required")
     return TripService(store, processor, campaign_id=campaign_id, grace_seconds=int(os.getenv("TRIP_PROCESS_DELAY_SECONDS", "5")),
                        lease_seconds=int(os.getenv("TRIP_PROCESS_LEASE_SECONDS", "900")),
-                       process_on_stop=os.getenv("TRIP_PROCESS_ON_STOP", "true").lower() == "true")
+                       process_on_stop=os.getenv("TRIP_PROCESS_ON_STOP", "true").lower() == "true",
+                       lifecycle_publisher=publisher, result_owner=os.getenv("TRIP_RESULT_OWNER", "functions"))
 
 
 @lru_cache
