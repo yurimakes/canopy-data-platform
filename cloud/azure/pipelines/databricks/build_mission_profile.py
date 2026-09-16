@@ -1,4 +1,8 @@
-"""Build weekly mission profiles: mobility fit + preference + capability."""
+"""주간 미션 프로필 생성: 이동행동 + 성향 + 공통 난이도.
+
+성향은 사용자가 완료한 비교가능 미션만 양의 증거로 누적한다.
+미완료는 난이도·기회 부족·비선호를 구분하기 어려우므로 감점하지 않는다.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -15,9 +19,8 @@ TRANSIT_MODES = {"bus", "rail"}
 SUPPORTED_MODES = LOW_CARBON_MODES | {"car"}
 CATEGORY_IDS = ("challenge", "habit", "easy_win", "explore")
 SHORT_CAR_MAX_DISTANCE_M = 2000.0
-PROFILE_VERSION = "mission-profile-v2"
-PREFERENCE_PRIOR_ALPHA = 1.0
-PREFERENCE_PRIOR_BETA = 1.0
+PROFILE_VERSION = "mission-profile-v3"
+PREFERENCE_PRIOR = 1.0
 
 CONFIRMED_TRIPS_PATH = os.environ.get(
     "CANOPY_CONFIRMED_TRIPS_PATH",
@@ -61,11 +64,10 @@ def _segment_mode(segment: Mapping[str, Any]) -> str | None:
 
 
 def derive_trip_primary_mode(trip: Mapping[str, Any]) -> tuple[str | None, float | None, str | None]:
-    """Use the unique mode with greatest summed segment distance; do not guess ties."""
+    """세그먼트 거리 합이 유일하게 가장 큰 mode만 Trip 대표 mode로 사용한다."""
     segments = trip.get("segments")
     if not isinstance(segments, list) or not segments:
         return None, None, "segments_missing"
-
     distance_by_mode: dict[str, float] = defaultdict(float)
     total = 0.0
     for segment in segments:
@@ -83,98 +85,99 @@ def derive_trip_primary_mode(trip: Mapping[str, Any]) -> tuple[str | None, float
             return None, None, "non_positive_distance"
         distance_by_mode[mode] += distance
         total += distance
-
-    if not distance_by_mode or total <= 0:
-        return None, None, "non_positive_distance"
-    maximum = max(distance_by_mode.values())
+    maximum = max(distance_by_mode.values()) if distance_by_mode else 0.0
     winners = [mode for mode, value in distance_by_mode.items() if abs(value - maximum) < 1e-9]
+    if not winners:
+        return None, None, "non_positive_distance"
     if len(winners) != 1:
         return None, total, "primary_mode_tie"
     return winners[0], total, None
 
 
 def compute_category_preferences(
-    offer_sets: Iterable[Mapping[str, Any]],
+    bundles: Iterable[Mapping[str, Any]],
     category_ids: Iterable[str] = CATEGORY_IDS,
     *,
-    prior_alpha: float = PREFERENCE_PRIOR_ALPHA,
-    prior_beta: float = PREFERENCE_PRIOR_BETA,
+    prior: float = PREFERENCE_PRIOR,
 ) -> dict[str, dict[str, float | int]]:
-    """Learn preference from choice, not from mission completion.
-
-    A week updates preference only when the user actually selects one candidate.
-    The selected category is a success and the other simultaneously offered
-    categories are failures. A week with no selection adds no preference evidence.
-    """
+    """완료된 비교가능 미션만 성향의 양의 증거로 누적한다."""
     state = {
         category: {
-            "alpha": float(prior_alpha),
-            "beta": float(prior_beta),
-            "selected_count": 0,
-            "choice_set_count": 0,
+            "prior": float(prior),
+            "assigned_count": 0,
+            "comparable_assigned_count": 0,
+            "completed_count": 0,
+            "positive_evidence_count": 0,
         }
         for category in category_ids
     }
-
-    for offer in sorted(offer_sets, key=lambda item: str(item.get("week_start", ""))):
-        selected_template = offer.get("selected_mission_template_id")
-        candidates = offer.get("candidates") or []
-        if not selected_template or not isinstance(candidates, list):
-            continue
-        selected = next(
-            (candidate for candidate in candidates if candidate.get("mission_template_id") == selected_template),
-            None,
-        )
-        if not selected or not selected.get("category_id"):
-            continue
-        selected_category = selected["category_id"]
-        offered_categories = {
-            candidate.get("category_id") for candidate in candidates if candidate.get("category_id") in state
-        }
-        for category in offered_categories:
-            state[category]["choice_set_count"] += 1
-            if category == selected_category:
-                state[category]["alpha"] += 1.0
-                state[category]["selected_count"] += 1
-            else:
-                state[category]["beta"] += 1.0
-
-    for category, values in state.items():
-        alpha = float(values["alpha"])
-        beta = float(values["beta"])
-        values["posterior_mean"] = alpha / (alpha + beta)
-        values["observations"] = int(values["choice_set_count"])
+    for bundle in sorted(bundles, key=lambda item: str(item.get("week_start", ""))):
+        for mission in bundle.get("missions") or []:
+            category = mission.get("category_id")
+            if category not in state:
+                continue
+            row = state[category]
+            row["assigned_count"] += 1
+            comparable = mission.get("preference_comparable") is True
+            if comparable:
+                row["comparable_assigned_count"] += 1
+            if mission.get("completed") is True:
+                row["completed_count"] += 1
+                if comparable:
+                    row["positive_evidence_count"] += 1
+    total_mass = sum(float(row["prior"]) + int(row["positive_evidence_count"]) for row in state.values())
+    for row in state.values():
+        mass = float(row["prior"]) + int(row["positive_evidence_count"])
+        row["preference_share"] = mass / total_mass if total_mass > 0 else 0.0
     return state
 
 
-def compute_family_capability(assignments: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Keep difficulty evidence separate from category preference evidence."""
-    state: dict[str, dict[str, Any]] = {}
-    ordered = sorted(assignments, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
-    for assignment in ordered:
-        family = assignment.get("mission_family")
-        target = assignment.get("target_count")
-        rate = assignment.get("achievement_rate")
-        if not isinstance(family, str) or not isinstance(target, int) or target <= 0:
+def compute_difficulty_state(bundles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """가장 최근 주의 비교가능 미션 수행 결과를 다음 주 공통 난이도 입력으로 만든다."""
+    ordered = sorted(bundles, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
+    for bundle in reversed(ordered):
+        missions = [m for m in (bundle.get("missions") or []) if m.get("preference_comparable") is True]
+        target = bundle.get("common_target_count")
+        if not missions or not isinstance(target, int) or target <= 0:
             continue
-        if isinstance(rate, bool) or not isinstance(rate, (int, float)):
-            rate = None
-        row = state.setdefault(
-            family,
-            {
+        completed = sum(1 for mission in missions if mission.get("completed") is True)
+        return {
+            "last_week_start": bundle.get("week_start"),
+            "last_common_target_count": target,
+            "last_comparable_mission_count": len(missions),
+            "last_completed_comparable_count": completed,
+        }
+    return {
+        "last_week_start": None,
+        "last_common_target_count": None,
+        "last_comparable_mission_count": 0,
+        "last_completed_comparable_count": 0,
+    }
+
+
+def compute_family_capability(bundles: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    state: dict[str, dict[str, Any]] = {}
+    ordered = sorted(bundles, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
+    for bundle in ordered:
+        for mission in bundle.get("missions") or []:
+            family = mission.get("mission_family")
+            target = mission.get("target_count")
+            rate = mission.get("achievement_rate")
+            if not isinstance(family, str) or not isinstance(target, int) or target <= 0:
+                continue
+            row = state.setdefault(family, {
                 "assignment_count": 0,
                 "completed_count": 0,
                 "last_target_count": None,
                 "last_achievement_rate": None,
                 "max_completed_target_count": 0,
-            },
-        )
-        row["assignment_count"] += 1
-        row["last_target_count"] = target
-        row["last_achievement_rate"] = None if rate is None else float(rate)
-        if rate is not None and float(rate) >= 1.0:
-            row["completed_count"] += 1
-            row["max_completed_target_count"] = max(row["max_completed_target_count"], target)
+            })
+            row["assignment_count"] += 1
+            row["last_target_count"] = target
+            row["last_achievement_rate"] = float(rate) if isinstance(rate, (int, float)) and not isinstance(rate, bool) else None
+            if mission.get("completed") is True:
+                row["completed_count"] += 1
+                row["max_completed_target_count"] = max(row["max_completed_target_count"], target)
     return state
 
 
@@ -185,13 +188,11 @@ def build_profile_from_trips(
     campaign_id: str,
     source_week_start: str,
     source_week_end: str,
-    offer_history: Iterable[Mapping[str, Any]] = (),
-    assignment_history: Iterable[Mapping[str, Any]] = (),
+    bundle_history: Iterable[Mapping[str, Any]] = (),
     carbon_change_rate: float | None = None,
 ) -> dict[str, Any]:
     valid = car = short_car = transit = low_carbon = invalid = 0
     invalid_reasons: dict[str, int] = defaultdict(int)
-
     for trip in trips:
         mode, distance_m, reason = derive_trip_primary_mode(trip)
         if reason:
@@ -208,16 +209,13 @@ def build_profile_from_trips(
         if mode in LOW_CARBON_MODES:
             low_carbon += 1
 
-    category_preferences = compute_category_preferences(offer_history)
-    family_capability = compute_family_capability(assignment_history)
-    preference_observations = sum(int(value["observations"]) for value in category_preferences.values())
-    profile_status = "ready" if valid > 0 else ("preference_only" if preference_observations > 0 else "collecting")
+    bundles = list(bundle_history)
+    category_preferences = compute_category_preferences(bundles)
+    difficulty_state = compute_difficulty_state(bundles)
+    family_capability = compute_family_capability(bundles)
+    positive_evidence_count = sum(int(row["positive_evidence_count"]) for row in category_preferences.values())
+    profile_status = "ready" if valid > 0 else ("history_only" if bundles else "collecting")
 
-    assignments = sorted(
-        assignment_history,
-        key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))),
-    )
-    previous = assignments[-1] if assignments else {}
     profile: dict[str, Any] = {
         "type": "mission_profile",
         "profile_version": PROFILE_VERSION,
@@ -237,12 +235,9 @@ def build_profile_from_trips(
         "low_carbon_trip_count": low_carbon,
         "carbon_change_rate": carbon_change_rate,
         "category_preferences": category_preferences,
-        "preference_observation_count": preference_observations,
+        "preference_positive_evidence_count": positive_evidence_count,
+        "difficulty_state": difficulty_state,
         "family_capability": family_capability,
-        "previous_mission_family": previous.get("mission_family"),
-        "previous_target_count": previous.get("target_count"),
-        "previous_achievement_rate": previous.get("achievement_rate"),
-        "previous_mission_completed": previous.get("completed"),
     }
     canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     profile["profile_hash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -256,7 +251,6 @@ def _iso_week_label(day_iso: str) -> str:
 
 def _carbon_change_map(spark, campaign_id: str, source_week_start: str):
     from pyspark.sql import functions as F
-
     source_day = datetime.fromisoformat(source_week_start).date()
     current_week = _iso_week_label(source_week_start)
     previous_week = _iso_week_label((source_day - timedelta(days=7)).isoformat())
@@ -266,7 +260,6 @@ def _carbon_change_map(spark, campaign_id: str, source_week_start: str):
         )
     except Exception:
         return {}
-
     values: dict[str, dict[str, float]] = {}
     for row in weekly.select("user_id", "week", "total_kg_co2e").collect():
         values.setdefault(row["user_id"], {})[row["week"]] = row["total_kg_co2e"]
@@ -274,10 +267,7 @@ def _carbon_change_map(spark, campaign_id: str, source_week_start: str):
     for user_id, weeks in values.items():
         current = weeks.get(current_week)
         previous = weeks.get(previous_week)
-        result[user_id] = (
-            None if current is None or previous is None or float(previous) <= 0
-            else (float(current) - float(previous)) / float(previous)
-        )
+        result[user_id] = None if current is None or previous is None or float(previous) <= 0 else (float(current) - float(previous)) / float(previous)
     return result
 
 
@@ -286,28 +276,23 @@ def _cosmos_clients():
         return None, None
     from azure.cosmos import CosmosClient
     from azure.identity import DefaultAzureCredential
-
     client = CosmosClient(COSMOS_ENDPOINT, credential=DefaultAzureCredential())
     db = client.get_database_client(COSMOS_DATABASE)
     return db.get_container_client(COSMOS_PROFILE_CONTAINER), db.get_container_client(COSMOS_MISSION_CONTAINER)
 
 
-def _load_mission_history(container, campaign_id: str, source_week_start: str):
+def _load_mission_bundles(container, campaign_id: str, source_week_start: str):
     if container is None:
-        return [], []
+        return []
     query = (
         "SELECT * FROM c WHERE c.campaign_id = @campaign_id "
-        "AND c.week_start <= @source_week_start "
-        "AND (c.type = 'mission_offer_set' OR c.type = 'mission_assignment')"
+        "AND c.week_start <= @source_week_start AND c.type = 'mission_bundle'"
     )
     params = [
         {"name": "@campaign_id", "value": campaign_id},
         {"name": "@source_week_start", "value": source_week_start},
     ]
-    items = list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
-    offers = [item for item in items if item.get("type") == "mission_offer_set"]
-    assignments = [item for item in items if item.get("type") == "mission_assignment"]
-    return offers, assignments
+    return list(container.query_items(query=query, parameters=params, enable_cross_partition_query=True))
 
 
 def _group_history_by_user(items: Iterable[Mapping[str, Any]]):
@@ -322,17 +307,13 @@ def _group_history_by_user(items: Iterable[Mapping[str, Any]]):
 def _latest_profile_document(profile: Mapping[str, Any]) -> dict[str, Any]:
     campaign_id = str(profile["campaign_id"])
     user_id = str(profile["user_id"])
-    return {
-        **profile,
-        "id": f"mission-profile-latest:{campaign_id}:{user_id}",
-        "pk": f"{campaign_id}:{user_id}",
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    return {**profile, "id": f"mission-profile-latest:{campaign_id}:{user_id}", "pk": f"{campaign_id}:{user_id}", "updated_at": datetime.now(timezone.utc).isoformat()}
 
 
 def _gold_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
     result = dict(profile)
     result["category_preferences_json"] = json.dumps(result.pop("category_preferences"), ensure_ascii=False, sort_keys=True)
+    result["difficulty_state_json"] = json.dumps(result.pop("difficulty_state"), ensure_ascii=False, sort_keys=True)
     result["family_capability_json"] = json.dumps(result.pop("family_capability"), ensure_ascii=False, sort_keys=True)
     return result
 
@@ -340,7 +321,7 @@ def _gold_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
 def run(campaign_id: str, source_week_start: str, source_week_end: str):
     from pyspark.sql import SparkSession, Window
     from pyspark.sql import functions as F
-    from pyspark.sql.types import BooleanType, DoubleType, IntegerType, MapType, StringType, StructField, StructType
+    from pyspark.sql.types import DoubleType, IntegerType, MapType, StringType, StructField, StructType
 
     spark = SparkSession.builder.getOrCreate()
     start_utc, end_utc = _utc_week_bounds(source_week_start, source_week_end)
@@ -353,23 +334,15 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
     )
     window = Window.partitionBy("trip_id").orderBy(F.col("updated_at").desc())
     raw = raw.withColumn("_rn", F.row_number().over(window)).filter(F.col("_rn") == 1).drop("_rn")
-
     trip_struct = F.struct(*[F.col(name) for name in raw.columns])
     trip_rows = raw.groupBy("user_id").agg(F.collect_list(trip_struct).alias("trips")).collect()
-    trips_by_user = {
-        row["user_id"]: [trip.asDict(recursive=True) for trip in row["trips"]]
-        for row in trip_rows
-    }
+    trips_by_user = {row["user_id"]: [trip.asDict(recursive=True) for trip in row["trips"]] for row in trip_rows}
 
     profile_container, mission_container = _cosmos_clients()
-    offers, assignments = _load_mission_history(mission_container, campaign_id, source_week_start)
-    offers_by_user = _group_history_by_user(offers)
-    assignments_by_user = _group_history_by_user(assignments)
+    bundles = _load_mission_bundles(mission_container, campaign_id, source_week_start)
+    bundles_by_user = _group_history_by_user(bundles)
     carbon_by_user = _carbon_change_map(spark, campaign_id, source_week_start)
-
-    # Include users known from Trip data or mission history. A completely new user with
-    # no Trip and no history is handled by API cold start and does not need a profile row.
-    users = sorted(set(trips_by_user) | set(offers_by_user) | set(assignments_by_user))
+    users = sorted(set(trips_by_user) | set(bundles_by_user))
     profiles = []
     for user_id in users:
         profile = build_profile_from_trips(
@@ -378,8 +351,7 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
             campaign_id=campaign_id,
             source_week_start=source_week_start,
             source_week_end=source_week_end,
-            offer_history=offers_by_user.get(user_id, []),
-            assignment_history=assignments_by_user.get(user_id, []),
+            bundle_history=bundles_by_user.get(user_id, []),
             carbon_change_rate=carbon_by_user.get(user_id),
         )
         profiles.append(profile)
@@ -387,7 +359,7 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
             profile_container.upsert_item(_latest_profile_document(profile))
 
     if not profiles:
-        print(f"[done] campaign_id={campaign_id} no profile population; API cold start remains available")
+        print(f"[완료] campaign_id={campaign_id} 프로필 대상 없음; 신규 사용자는 API cold start 사용")
         return []
 
     schema = StructType([
@@ -408,13 +380,10 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
         StructField("transit_primary_trip_count", IntegerType(), False),
         StructField("low_carbon_trip_count", IntegerType(), False),
         StructField("carbon_change_rate", DoubleType(), True),
-        StructField("preference_observation_count", IntegerType(), False),
+        StructField("preference_positive_evidence_count", IntegerType(), False),
         StructField("category_preferences_json", StringType(), False),
+        StructField("difficulty_state_json", StringType(), False),
         StructField("family_capability_json", StringType(), False),
-        StructField("previous_mission_family", StringType(), True),
-        StructField("previous_target_count", IntegerType(), True),
-        StructField("previous_achievement_rate", DoubleType(), True),
-        StructField("previous_mission_completed", BooleanType(), True),
         StructField("profile_hash", StringType(), False),
     ])
     out = spark.createDataFrame([_gold_profile(profile) for profile in profiles], schema=schema)
@@ -425,7 +394,7 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
         .partitionBy("campaign_id", "source_week_start")
         .save(GOLD_MISSION_PROFILE_PATH)
     )
-    print(f"[done] campaign_id={campaign_id} profiles={len(profiles)} source_week={source_week_start}")
+    print(f"[완료] campaign_id={campaign_id} profiles={len(profiles)} source_week={source_week_start}")
     return profiles
 
 
