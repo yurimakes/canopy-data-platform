@@ -1,9 +1,9 @@
 """주간 미션 프로필 생성.
 
 Runtime은 공통 Weekly Gold 행동 사실을 읽고, 완료된 미션 이력을 결합한다.
-미션 이력은 ADLS Gold `mission_response_weekly`를 우선 사용하고, 아직 해당
-파이프라인이 준비되지 않은 환경에서는 Cosmos mission bundle을 명시적 fallback으로
-사용한다. Cosmos fallback 사용 여부는 profile의 `mission_history_source`에 남긴다.
+미션 이력은 ADLS Gold `mission_response_weekly`를 우선 사용한다. 아직 해당
+파이프라인이 준비되지 않은 개발/전환 환경에서만 명시적으로 Cosmos bundle history
+fallback을 허용한다. 실제 사용한 source는 profile의 `mission_history_source`에 남긴다.
 
 테스트/계약 검증을 위한 순수 Trip helper는 유지한다.
 """
@@ -39,7 +39,7 @@ GOLD_MISSION_RESPONSE_PATH = os.environ.get(
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
 )
 ALLOW_COSMOS_HISTORY_FALLBACK = os.environ.get(
-    "CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK", "true"
+    "CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK", "false"
 ).lower() == "true"
 
 COSMOS_ENDPOINT = os.environ.get("CANOPY_COSMOS_ENDPOINT")
@@ -146,11 +146,7 @@ def compute_category_preferences(
 
 
 def compute_difficulty_state(bundles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """최근 difficulty-comparable assignment 결과를 다음 주 adaptive target 입력으로 만든다.
-
-    과거 v3 bundle에는 `difficulty_comparable`이 없으므로 기존
-    `preference_comparable`을 fallback으로 사용한다.
-    """
+    """최근 difficulty-comparable assignment 결과를 다음 주 adaptive target 입력으로 만든다."""
     ordered = sorted(bundles, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
     for bundle in reversed(ordered):
         missions = [
@@ -318,8 +314,22 @@ def build_profile_from_weekly_summary(
     summary = summary or {}
     valid = int(summary.get("valid_primary_trip_count") or 0)
     total = int(summary.get("trip_count") or 0)
-    invalid = int(summary.get("ambiguous_primary_trip_count") or max(total - valid, 0))
-    invalid_reasons = {"primary_mode_ambiguous": invalid} if invalid else {}
+    if summary.get("invalid_primary_trip_count") is not None:
+        invalid = int(summary.get("invalid_primary_trip_count") or 0)
+    else:
+        invalid = int(summary.get("ambiguous_primary_trip_count") or max(total - valid, 0))
+
+    tie_count = int(summary.get("ambiguous_primary_trip_count") or 0)
+    invalid_segment_count = int(summary.get("invalid_segment_primary_trip_count") or 0)
+    invalid_reasons: dict[str, int] = {}
+    if tie_count:
+        invalid_reasons["primary_mode_tie"] = tie_count
+    if invalid_segment_count:
+        invalid_reasons["invalid_segment"] = invalid_segment_count
+    accounted = tie_count + invalid_segment_count
+    if invalid > accounted:
+        invalid_reasons["primary_mode_other_invalid"] = invalid - accounted
+
     history = list(bundle_history)
     return _finish_profile(
         user_id=user_id,
@@ -468,7 +478,10 @@ def _history_by_user(spark, mission_container, campaign_id: str, source_week_sta
     if ALLOW_COSMOS_HISTORY_FALLBACK:
         bundles = _load_mission_bundles(mission_container, campaign_id, source_week_start)
         return _group_history_by_user(bundles), "cosmos_bundle_fallback"
-    return {}, "none"
+    raise RuntimeError(
+        "mission_response_weekly Gold is unavailable and "
+        "CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK is false"
+    )
 
 
 def _latest_profile_document(profile: Mapping[str, Any]) -> dict[str, Any]:
