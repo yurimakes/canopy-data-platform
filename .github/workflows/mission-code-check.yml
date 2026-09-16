@@ -12,6 +12,7 @@ on:
       - "cloud/azure/functions/func_canopy_dev/tests/test_mission_*.py"
       - "cloud/azure/pipelines/databricks/build_mission_profile.py"
       - "cloud/azure/pipelines/databricks/build_weekly_summary.py"
+      - "cloud/azure/pipelines/databricks/tests/test_*mission*.py"
       - "cloud/azure/pipelines/databricks/tests/test_build_mission_profile.py"
       - "shared/schemas/mission/**"
       - "shared/schemas/baseline/weekly_user_gold.schema.json"
@@ -43,4 +44,4 @@ jobs:
         run: python -m pytest -q tests/test_mission_policy.py tests/test_mission_service_contract.py
       - name: Run profile tests
         working-directory: cloud/azure/pipelines/databricks
-        run: python -m pytest -q tests/test_build_mission_profile.py
+        run: python -m pytest -q tests/test_build_mission_profile.py tests/test_mission_profile_contract.py
