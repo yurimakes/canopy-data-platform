@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "canopy.weekly-user-gold.v1",
   "title": "Canopy Weekly User Gold",
-  "description": "One row per user_id + campaign_id + ISO week. Input Trip set is commute-only and status=ready; trip_count therefore means accepted commute Trip count.",
+  "description": "One row per user_id + campaign_id + ISO week. Input Trip set is commute-only and status=ready; trip_count therefore means accepted commute Trip count. Mission behavior facts are additive v1 fields derived once in Weekly Gold.",
   "type": "object",
   "required": [
     "user_id", "campaign_id", "week", "trip_count", "total_distance_m", "total_kg_co2e",
@@ -40,7 +40,15 @@
     "mode_carbon_ratio_bike": {"type": "number", "minimum": 0},
     "mode_carbon_ratio_car": {"type": "number", "minimum": 0},
     "mode_carbon_ratio_bus": {"type": "number", "minimum": 0},
-    "mode_carbon_ratio_rail": {"type": "number", "minimum": 0}
+    "mode_carbon_ratio_rail": {"type": "number", "minimum": 0},
+    "valid_primary_trip_count": {"type": "integer", "minimum": 0, "description": "Trips whose unique max-distance primary mode can be determined."},
+    "ambiguous_primary_trip_count": {"type": "integer", "minimum": 0, "description": "Trips excluded from primary-mode facts because the maximum mode distance is tied/ambiguous."},
+    "car_primary_trip_count": {"type": "integer", "minimum": 0},
+    "transit_primary_trip_count": {"type": "integer", "minimum": 0},
+    "low_carbon_trip_count": {"type": "integer", "minimum": 0},
+    "short_car_trip_count": {"type": "integer", "minimum": 0, "description": "Primary car Trips with total Trip distance <= 2000 m."},
+    "car_primary_ratio": {"type": ["number", "null"], "minimum": 0},
+    "short_car_share": {"type": ["number", "null"], "minimum": 0}
   },
   "additionalProperties": true
 }
