@@ -3,11 +3,9 @@
 작성일: 2026-09-16  
 기계 판독 계약: `shared/schemas/canopy_weekly_data_contract_v1.yaml`
 
-## 1. 이 문서의 목적
+## 1. 목적
 
-`Weekly Summary`, `Eligibility`, `Personal/Global Baseline`, `Mission Profile`, `Mission`, `Reward`, `Mission Response`, `Behavior Change`, `Ranking`을 업무 순서가 아니라 **실제 데이터 의존성**으로 고정한다.
-
-핵심은 모든 작업을 한 줄로 연결하지 않는 것이다. `Weekly Summary`에서 Baseline branch와 Mission branch가 갈라지고, Mission 실행 이후에야 `Behavior Change`가 생성된다.
+`Weekly Summary`, `Baseline`, `Mission`, `Reward`, `Ranking`의 실제 데이터 의존성을 고정한다. Behavior Change는 별도 팀원 작업 영역이며 이 문서에서는 **Mission과 Behavior Change 사이에 데이터 의존성이 없다는 경계만 정의**한다. Behavior Change의 계산식·정책·grain·스키마는 이 문서가 소유하지 않는다.
 
 ```text
 ready Canonical Trip
@@ -37,23 +35,29 @@ Weekly User Gold (W)
                             |
                             v
                     Mission Response
-                      /             \
-                     v               v
-          next Mission Profile    Behavior Change
-                                     |
-                                     v
-                                 Campaign KPI
+                            |
+                            v
+                 next Mission Profile history
 
 Reward Ledger -> Ranking Snapshot
+
+Behavior Change
+  = separate teammate-owned weekly behavior branch
+  = no Mission Profile/Bundle/Progress/Response dependency
 ```
 
-## 2. 가장 중요한 의존성 결론
+## 2. Mission과 Behavior Change 경계
 
-### Weekly Profile은 Behavior Change를 기다리지 않는다
+최신 팀 합의에 따라 아래 연결은 **사용하지 않는다.**
 
-`Behavior Change -> Weekly Profile`은 잘못된 의존성이다. 미션을 부여하려면 먼저 Profile이 필요하고, Behavior Change는 그 미션이 실제로 수행된 뒤에 계산된다.
+```text
+Mission Response -> Behavior Change   X
+Mission Completion -> Behavior Change X
+Mission Assignment -> Behavior Change X
+Behavior Change -> Mission Profile    X
+```
 
-올바른 순서는 다음과 같다.
+Mission 영역은 Mission 자체의 수행과 다음 주 개인화에만 책임진다.
 
 ```text
 Weekly Summary
@@ -61,56 +65,14 @@ Weekly Summary
   -> Mission Bundle
   -> Trip 기반 Mission Progress
   -> Mission Response
-  -> Behavior Change
+  -> 다음 주 Mission Profile의 성향/난이도 이력
 ```
 
-### Baseline과 Mission Profile은 Weekly Summary 이후 병렬이다
+Behavior Change는 별도 업무 영역에서 Weekly Summary 등 팀이 합의한 기준 데이터로 계산한다. **미션 수행 여부를 Behavior Change의 원인이나 판정 입력으로 해석하지 않는다.**
 
-```text
-Weekly Summary
-  +-> Eligibility -> Personal -> Global
-  +-> Mission Profile
-```
+## 3. Weekly Summary와 Mission Profile
 
-Mission Profile은 Global Baseline이나 Behavior Change가 없어도 생성 가능하다. 신규 사용자는 Profile 자체가 없어도 API cold start로 카테고리별 starter mission을 받을 수 있다.
-
-### Personal -> Global은 직렬이다
-
-Global은 같은 평가 주차의 `ready Personal baseline`을 동일 가중 평균하므로 Personal 계산이 먼저 끝나야 한다.
-
-## 3. 주차 의미를 반드시 분리한다
-
-Snapshot형 데이터에는 **원천 주차와 적용 주차를 섞지 않는다.**
-
-예: W38 이동 결과로 W39의 기준과 미션을 준비하는 경우
-
-```text
-Weekly Summary
-week = W38
-
-Mission Profile
-source_week = W38
-effective_week = W39
-
-Personal Baseline
-evaluation/effective_week = W39
-source = W38 및 그 이전 완료 주
-
-Global Baseline
-evaluation/effective_week = W39
-
-Mission Bundle
-week = W39
-
-W39 Trip Reward
-uses frozen W39 baseline snapshot
-```
-
-이 원칙을 지키면 현재 주 Trip이 현재 주 Baseline에 먼저 들어가는 leakage를 막을 수 있다.
-
-## 4. Weekly User Gold: 공통 행동 Fact Layer
-
-Producer: `cloud/azure/pipelines/databricks/build_weekly_summary.py`
+Weekly Summary는 주간 이동행동의 공통 Fact Layer다.
 
 Grain:
 
@@ -118,12 +80,12 @@ Grain:
 user_id + campaign_id + week
 ```
 
-기존 Baseline용 필드에 더해 Mission Profile에서 다시 Canonical Trip을 스캔하지 않도록 아래 파생 사실을 한 번만 계산한다.
+Mission Profile이 Canonical Trip을 다시 집계하지 않도록 아래 행동 사실을 Weekly Gold에서 제공한다.
 
 | 필드 | 의미 |
 |---|---|
 | `valid_primary_trip_count` | 대표 이동수단을 유일하게 정할 수 있는 Trip 수 |
-| `ambiguous_primary_trip_count` | 거리합 최대 mode 동률 등으로 대표 mode를 정하지 않은 Trip 수 |
+| `ambiguous_primary_trip_count` | 대표 mode를 정하지 않은 Trip 수 |
 | `car_primary_trip_count` | 대표 mode=car인 Trip 수 |
 | `transit_primary_trip_count` | 대표 mode=bus/rail인 Trip 수 |
 | `low_carbon_trip_count` | 대표 mode=walk/bike/bus/rail인 Trip 수 |
@@ -131,70 +93,31 @@ user_id + campaign_id + week
 | `car_primary_ratio` | car primary / valid primary |
 | `short_car_share` | short car / car primary |
 
-대표 이동수단 규칙은 각 Trip의 segment를 mode별 거리로 합친 뒤 **거리합이 유일하게 가장 큰 mode**를 사용한다. 동률이면 임의로 고르지 않는다.
+대표 이동수단은 Trip segment를 mode별 거리로 합친 뒤 거리합이 **유일하게 가장 큰 mode**를 사용한다. 동률이면 임의 선택하지 않는다.
 
-이 변경은 기존 Weekly Summary 필드를 삭제하거나 의미를 바꾸지 않는 additive extension이다.
-
-## 5. Baseline branch
-
-### Eligibility
-
-입력:
-- Weekly User Gold 이력
-- 사용자/캠페인 가입·참여 시각
-- `baseline_eligibility.yaml`
-
-현재 구현 계약은 `eligibility-v1`이며 Personal 7일/출퇴근 Trip 6개/유효 거리·탄소, Global ready Personal 사용자 6명 기준을 사용한다. 이 값들은 계산 코드에 중복 하드코딩하지 않고 정책 파일에서 읽는다.
-
-### Personal Baseline
-
-Producer: `build_personal_baseline.py`
-
-Grain:
-
-```text
-user_id + campaign_id + evaluation week
-```
-
-공식:
-
-```text
-이전 완료 주까지 누적 gCO2e / 이전 완료 주까지 누적 km
-```
-
-평가 주 자체는 분자/분모에 넣지 않는다.
-
-### Global Baseline
-
-Producer: `build_global_baseline.py`
-
-Grain:
-
-```text
-campaign_id + evaluation week
-```
-
-공식:
-
-```text
-sum(ready Personal baseline) / count(ready Personal users)
-```
-
-캠페인 총 탄소 / 총거리와는 다른 지표다.
-
-## 6. Mission Profile branch
-
-Producer: `build_mission_profile.py`  
-Version: `mission-profile-v3`
-
-입력:
+Mission Profile 입력:
 
 ```text
 Weekly User Gold
-+ past Cosmos mission_bundle history
++ past mission_bundle / mission outcome history
 ```
 
-Runtime에서 Canonical Trip을 다시 집계하지 않는다. 행동 사실은 Weekly Gold에서 재사용한다.
+명시적 비입력:
+
+```text
+Behavior Change
+Global Baseline
+Reward Ledger
+```
+
+Mission Profile의 `carbon_change_rate`가 필요하다면 이는 Weekly Summary의 주간 탄소값에서 직접 계산하는 **Mission용 행동 feature**이며, Behavior Change Dataset을 읽는다는 뜻이 아니다.
+
+## 4. Mission Profile / Bundle / Progress / Response
+
+### Mission Profile
+
+Producer: `build_mission_profile.py`  
+Version: `mission-profile-v3`
 
 Grain:
 
@@ -202,29 +125,7 @@ Grain:
 user_id + campaign_id + source_week_start
 ```
 
-핵심 필드:
-
-```text
-source_week_start
-source_week_end
-effective_week_start
-profile_status
-car_ratio
-short_car_trip_count
-short_car_share
-transit_primary_trip_count
-low_carbon_trip_count
-carbon_change_rate
-category_preferences
-difficulty_state
-family_capability
-profile_version
-profile_hash
-```
-
-카테고리 성향은 완료된 `preference_comparable=true` 미션만 양의 증거로 누적한다. 미완료는 비선호인지, 어려움인지, 기회 부족인지 구분하기 어려워 감점하지 않는다.
-
-## 7. Mission Bundle
+### Mission Bundle
 
 Producer: `mission_engine.py`  
 Policy: `mission-policy-v3`
@@ -235,94 +136,27 @@ Grain:
 1 bundle / user_id + campaign_id + week_start
 ```
 
-MVP 카테고리:
+MVP는 `challenge`, `habit`, `easy_win`, `explore` 카테고리별 assignment를 함께 부여한다. 사용자가 하나를 선택하는 POST 단계는 없다.
+
+### Mission Progress
+
+입력:
 
 ```text
-challenge
-habit
-easy_win
-explore
+current Mission Bundle
++ ready Canonical Trip
++ mission_policy
 ```
 
-각 카테고리는 별도 `assignment_id`를 가진다. 사용자가 하나를 선택하는 POST 단계는 없다.
+역할은 assignment별 진행률·완료 여부를 계산하는 것까지다. Behavior Change를 읽거나 생성하지 않는다.
 
-동일 주 bundle은 발급 뒤 고정한다. profile/policy가 같은 주 중간에 바뀌어도 기존 bundle을 자동 교체하지 않는다.
+### Mission Response
 
-## 8. Reward branch
-
-### 기본 탄소 보상은 Mission과 분리한다
-
-기본 탄소 보상은 다음 입력만 필요하다.
+권장 grain:
 
 ```text
-ready Canonical Trip
-+ evaluation-week Personal Baseline
-+ evaluation-week Global Baseline
-+ Personal이 준비되지 않은 경우 external Population Baseline
-+ reward_policy
+campaign_id + user_id + assignment_id + week
 ```
-
-`Mission Response`나 `Behavior Change`는 기본 탄소 보상의 필수 선행 데이터가 아니다.
-
-Mission 완료 보너스를 도입하려면 별도 `reward_type=mission_bonus`로 처리한다.
-
-### Reward grain
-
-`baseline-policy-v4`의 `reward_context.granularity=trip`에 맞춰 다음 grain을 사용한다.
-
-```text
-trip_id + reward_type
-```
-
-동일 주의 모든 Trip은 같은 Weekly Frozen Baseline snapshot을 사용한다.
-
-### Cold start
-
-Personal이 준비되지 않은 첫 주에는 Population Baseline을 사용한다. Population 실제 숫자와 출처는 외부에서 주입한다.
-
-```text
-CANOPY_POPULATION_BASELINE_G_CO2E_PER_KM
-CANOPY_POPULATION_BASELINE_SOURCE_ID
-```
-
-코드에는 임의 숫자를 넣지 않는다. 외부 값이 없으면 계산 결과는 `not_eligible`로 남기되 지급하지 않는다.
-
-### Reward Ledger identity
-
-기본 Trip 보상의 idempotency identity:
-
-```text
-campaign_id + user_id + reward_type + source_id(trip_id)
-```
-
-정책 버전이 바뀌었다는 이유로 같은 Trip에 두 번째 기본 보상을 만들지 않는다. 정정이 필요하면 원 지급을 보존하고 adjustment record를 추가한다.
-
-## 9. Reward PR #26에서 보존한 부분과 교정한 부분
-
-2026-09-16 merge된 PR #26의 팀원 구현을 기준으로 호환 수정했다.
-
-보존한 설계:
-- Reward 계산은 Cosmos Baseline latest가 아니라 ADLS Gold Baseline history를 읽는다.
-- Personal 개선 판정을 Global 유지 판정보다 먼저 수행한다.
-- 실제 포인트 환산율이 팀 합의 전이므로 임의 숫자를 넣지 않는다.
-- Cosmos `create_item`을 사용해 중복 지급을 원자적으로 막는다.
-- 지급 결과를 ADLS Reward Ledger history에도 미러링한다.
-
-교정한 계약과 이유:
-
-| 기존 PR #26 | 교정 | 이유 |
-|---|---|---|
-| 사용자/주차당 보상 1건 | Trip당 기본 탄소 보상 | `baseline-policy-v4`가 reward grain을 Trip으로 확정 |
-| Personal/Global 모두 없으면 `not_eligible` | Personal 미준비면 Population fallback | Baseline cold-start 계약과 일치 |
-| `user+campaign+week` reward id | `campaign+user+reward_type+trip_id` | 같은 주 여러 Trip 각각 보상하면서 재시도 중복 방지 |
-| 기본 reward 계산이 Mission Response도 읽음 | Mission dependency 제거 | Mission과 기본 탄소 보상은 데이터 의존성이 없음 |
-| points=null이어도 상태만으로 payable 가능 | points 확정 전 `payable=false` | null 지급 Ledger 방지 |
-
-팀원 코드의 구조 자체를 갈아엎은 것이 아니라, 서로 다른 WBS에서 이미 확정한 Baseline 계약과 Reward 구현 사이의 인터페이스를 맞춘 것이다.
-
-## 10. Mission Response와 Behavior Change
-
-Mission Response는 Mission Bundle/Progress/Event와 실제 Trip을 한 주 단위로 묶는다.
 
 권장 필드:
 
@@ -334,63 +168,98 @@ category_id
 difficulty_band
 target_count
 preference_comparable
+mission_shown_count
+mission_started_count
+mission_completed_count
 progress_count
 achievement_rate
-mission_completed_count
+linked_trip_count
 ```
 
-Behavior Change는 그 다음 단계다.
+주요 consumer:
 
 ```text
-Mission Response
-+ 개입 전 Weekly behavior
-+ 개입 후 Weekly behavior
-+ Personal context
-+ behavior_change_policy
--> changed / no_change / insufficient_data
+다음 주 Mission Profile
+Mission 자체 KPI
+Campaign KPI의 mission section
 ```
 
-이는 인과효과가 아니라 관측된 변화로 해석한다.
+명시적 비consumer:
 
-## 11. 저장소 역할
+```text
+Behavior Change
+```
+
+카테고리 성향 학습 규칙은 그대로 유지한다.
+- `completed=true` + `preference_comparable=true` -> 해당 카테고리 positive evidence +1
+- 미완료 -> 감점 없음
+- 비교불가 완료 -> 수행 이력은 보존하되 preference 학습에서 제외
+
+## 5. Reward와 Mission 분리
+
+기본 탄소 Reward도 Mission 결과와 독립적이다.
+
+```text
+ready Canonical Trip
++ Frozen Personal/Global/Population Baseline
++ reward_policy
+-> Trip Reward
+-> Reward Ledger
+-> Ranking
+```
+
+향후 Mission 완료 보너스를 도입할 때만 별도 `reward_type=mission_bonus`로 연결한다.
+
+## 6. 주차 규칙
+
+예: W38 이동 결과로 W39 미션을 만드는 경우
+
+```text
+Weekly Summary: W38
+Mission Profile: source=W38, effective=W39
+Mission Bundle: W39
+Mission Progress/Response: W39
+Mission Response history -> W40 Profile 입력
+```
+
+현재 주 결과가 같은 주 Profile 발급에 역으로 들어가지 않도록 source/effective week를 분리한다.
+
+## 7. 저장소 역할
 
 ### ADLS Gold
-
-계산/분석의 canonical processing source다.
-
 - Weekly Summary
 - Personal/Global History
 - Mission Profile History
-- Reward Calculation
-- Reward Ledger History
-- Mission Response
-- Behavior Change
-- Campaign KPI
+- Mission Response History
+- Reward Calculation / Ledger History
 
 ### Cosmos DB
-
-운영 상태와 low-latency 조회, 원자적 Ledger에 사용한다.
-
-- Baseline latest serving copy
 - Mission Profile latest
-- Mission Bundle
+- Mission Bundle / operational mission state
+- Baseline latest serving copy
 - Reward Ledger
 - Ranking Snapshot
 
-Reward/Behavior 같은 batch job이 Cosmos Baseline latest를 canonical 중간 입력으로 사용하지 않는다.
+## 8. 변경 기록
 
-## 12. 현재 남은 E2E 확인
+### 2026-09-16 — Mission / Behavior Change 분리
 
-코드 계약이 맞아도 다음은 실제 Azure에서 별도로 증명해야 한다.
+팀 합의에 따라 기존 문서의 다음 연결을 제거했다.
 
-- Weekly Gold 새 primary/short-car 필드 Delta 저장 및 재실행
-- Weekly Gold -> Mission Profile 실제 입력 연결
-- Cosmos Mission container partition key와 Managed Identity 권한
-- 신규 사용자 GET -> 4카테고리 bundle -> 동일주 재조회
-- 실제 Trip -> Mission Progress/Completion
-- Population 공식 값/출처 주입
-- Trip Reward Calculation -> Cosmos Reward Ledger -> ADLS history
-- Reward Cosmos container partition key가 현재 코드의 `user_id`와 일치하는지 확인
-- Reward Ledger의 현재 key/secret 인증을 프로젝트의 Managed Identity 원칙과 통합할지 확인
+```text
+Mission Response -> Behavior Change
+Mission Progress -> Behavior Change
+```
 
-이 E2E 증거 전에는 관련 WBS를 최종 완료로 올리지 않는다.
+이번 수정 범위는 **Mission 쪽 경계 수정만**이다. Behavior Change의 정책, 계산 코드, 스키마, 검산 기준은 담당 팀원 영역으로 남긴다.
+
+## 9. Mission 쪽 남은 E2E 확인
+
+- Weekly Gold primary/short-car field 실제 Delta 저장
+- Weekly Gold -> Mission Profile 실행
+- Cosmos Mission container partition key / Managed Identity 권한
+- 신규 사용자 GET -> 4카테고리 bundle -> 동일 주 재조회
+- 실제 Trip -> Mission Progress / Completion
+- Mission Response -> 다음 주 Mission Profile preference/difficulty 재생성
+
+이 증거 전에는 Mission 관련 WBS를 최종 완료로 단정하지 않는다.
