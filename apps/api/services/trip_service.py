@@ -45,13 +45,23 @@ class TripService:
         from .trip_confirmation import confirm
         return confirm(self, trip_id, user_id, body)
 
-    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test", process_on_stop=False):
+    def __init__(self, store: TripStore, processor: TripProcessor, clock=utcnow, grace_seconds=5, lease_seconds=900, campaign_id="local-test", process_on_stop=False, lifecycle_publisher=None, result_owner="functions"):
         self.store, self.processor, self.clock = store, processor, clock
         self.campaign_id = campaign_id
         self.grace_seconds, self.lease_seconds = grace_seconds, lease_seconds
         self.process_on_stop = process_on_stop
+        if result_owner not in ("functions", "databricks"):
+            raise ValueError("result_owner must be functions or databricks")
+        if result_owner == "databricks" and lifecycle_publisher is None:
+            raise ValueError("Databricks finalization requires lifecycle publishing")
+        self.lifecycle_publisher, self.result_owner = lifecycle_publisher, result_owner
 
     def after_stop(self, item):
+        if self.lifecycle_publisher:
+            from .trip_lifecycle import deliver
+            item = deliver(self.store, self.lifecycle_publisher, item, iso(self.clock()))
+        if item.get("result_owner") == "databricks":
+            return item
         if self.process_on_stop and item["status"] == "processing":
             # Start only this Trip, using the same durable claim as the recovery timer.
             if item.get("lease_until", "") <= iso(self.clock()):
@@ -102,6 +112,8 @@ class TripService:
             now = self.clock()
             if item["status"] == "collecting":
                 expected = body.get("expected_last_sequence")
+                if self.lifecycle_publisher and expected is None:
+                    raise ApiError(400, "invalid_field", "expected_last_sequence is required for Trip end publishing")
                 if expected is not None and (isinstance(expected, bool) or not isinstance(expected, int) or not 0 <= expected <= 10000000):
                     raise ApiError(400, "invalid_field", "expected_last_sequence must be a nonnegative integer")
                 try:
@@ -116,6 +128,10 @@ class TripService:
                         failed_step=None, error_message=None, is_mock=False,
                         process_after=iso(now + timedelta(seconds=self.grace_seconds)), lease_until="",
                         processing_generation=item["processing_generation"] + 1, last_retry_id=retry_id)
+            item.setdefault("result_owner", self.result_owner)
+            if self.lifecycle_publisher:
+                from .trip_lifecycle import end_event
+                item["trip_end_outbox"] = {"status": "pending", "event": end_event(item, iso(now))}
             try:
                 saved = self.store.replace(item)
                 LOG.info("trip_processing trip_id=%s generation=%s", trip_id, saved["processing_generation"])
@@ -125,11 +141,17 @@ class TripService:
         raise ApiError(409, "concurrent_update", "retry the same stop request")
 
     def process_pending(self, limit=20) -> int:
+        if self.lifecycle_publisher:
+            from .trip_lifecycle import deliver
+            for trip in self.store.pending_trip_ends(limit):
+                deliver(self.store, self.lifecycle_publisher, trip, iso(self.clock()))
         return self._process(self.store.pending(iso(self.clock()), limit))
 
     def _process(self, items) -> int:
         processed = 0
         for item in items:
+            if item.get("result_owner") == "databricks":
+                continue
             item.update(lease_until=iso(self.clock() + timedelta(seconds=self.lease_seconds)), worker_id=str(uuid4()))
             try:
                 claimed = self.store.replace(item)
