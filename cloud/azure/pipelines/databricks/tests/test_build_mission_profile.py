@@ -61,3 +61,9 @@ def test_only_ambiguous_trips_is_collecting():
     assert p["profile_status"] == "collecting"
     assert p["valid_trip_count"] == 0
     assert p["invalid_trip_reasons"]["primary_mode_tie"] == 1
+
+
+def test_campaign_timezone_week_bounds_are_converted_to_utc():
+    start, end = mod._utc_week_bounds("2026-09-07", "2026-09-14", "Asia/Seoul")
+    assert start.startswith("2026-09-06T15:00:00+00:00")
+    assert end.startswith("2026-09-13T15:00:00+00:00")
