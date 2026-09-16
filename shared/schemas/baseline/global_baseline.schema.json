@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.global-baseline.v1",
+  "title": "Canopy Global Baseline History",
+  "description": "One row per campaign_id + evaluation week. Uses equal weight across Personal-ready users that match the active Eligibility policy version.",
+  "type": "object",
+  "required": [
+    "campaign_id", "week", "valid_participant_count", "baseline_g_co2e_per_km",
+    "method", "policy_version", "status", "value", "eligible_participant_count",
+    "eligibility_policy_version"
+  ],
+  "properties": {
+    "campaign_id": {"type": "string", "minLength": 1},
+    "week": {"type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$"},
+    "valid_participant_count": {"type": "integer", "minimum": 0},
+    "baseline_g_co2e_per_km": {"type": ["number", "null"], "minimum": 0},
+    "method": {"enum": ["global_average_of_personal_baseline", "insufficient_data"]},
+    "policy_version": {"type": "string", "minLength": 1},
+    "status": {"enum": ["collecting", "ready"]},
+    "value": {"type": ["number", "null"], "minimum": 0},
+    "eligible_participant_count": {"type": "integer", "minimum": 0},
+    "eligibility_policy_version": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}
