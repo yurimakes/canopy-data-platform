@@ -1,0 +1,48 @@
+policy_version: mission-policy-v1
+week:
+  start_day: monday
+  interval: "[week_start, week_end)"
+selection:
+  car_majority_threshold: 0.5
+  short_car_majority_threshold: 0.5
+  ordered_templates:
+    - short_car_to_active
+    - car_to_transit
+    - low_carbon_maintain
+profile:
+  short_car_max_distance_km: 2.0
+  low_carbon_modes: [walk, bike, bus, rail]
+  transit_modes: [bus, rail]
+  primary_mode_rule: unique_max_segment_distance
+  ambiguous_primary_mode_status: collecting
+  zero_car_short_share: null
+  zero_car_short_share_does_not_block_maintain: true
+templates:
+  short_car_to_active:
+    family: short_car_to_active
+    title: "가까운 거리는 걷기·자전거로 이동하기"
+    accepted_modes: [walk, bike]
+    max_distance_km: 2.0
+    opportunity_field: short_car_trip_count
+    target_strategy: adaptive_same_family
+  car_to_transit:
+    family: car_to_transit
+    title: "자동차 대신 대중교통 이용하기"
+    accepted_modes: [bus, rail]
+    opportunity_field: car_primary_trip_count
+    target_strategy: adaptive_same_family
+  low_carbon_maintain:
+    family: low_carbon_maintain
+    title: "친환경 이동 습관 이어가기"
+    accepted_modes: [walk, bike, bus, rail]
+    opportunity_field: low_carbon_trip_count
+    target_strategy: maintain_observed
+adaptive_target:
+  first_target_count: 1
+  completed_increment: 1
+  zero_achievement_decrement: 1
+  minimum_target_count: 1
+  missing_previous_result_strategy: first_target
+assignment:
+  one_per_user_campaign_week: true
+  freeze_after_issue: true
