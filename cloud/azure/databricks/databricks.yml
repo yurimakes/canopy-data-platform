@@ -1,0 +1,41 @@
+bundle:
+  name: canopy-mode-inference
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - mode_inference/**
+    - requirements.lakeflow.txt
+  exclude:
+    - .venv/**
+    - tests/**
+    - '**/__pycache__/**'
+
+variables:
+  catalog:
+    default: dbw_canopy_dev
+  silver_schema:
+    default: silver
+  input_observations_table:
+    default: gps_observations
+  output_predictions_table:
+    default: mode_predictions
+  transition_model_uri:
+    description: Explicit registered-model version; no Champion alias currently exists.
+    default: models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1
+  state_timeout:
+    description: Stateful trip-retention policy. Only none is supported in the first append-only implementation.
+    default: none
+  timezone:
+    default: UTC
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405605578654524.4.azuredatabricks.net
+      profile: CANOPY_DEV
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
