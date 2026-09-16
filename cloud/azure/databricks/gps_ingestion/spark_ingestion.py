@@ -124,10 +124,13 @@ def bronze_rows(kafka_events: Any) -> Any:
     )
 
 
-def _variant_get(payload: Any, field: str, target_type: str) -> Any:
+def _variant_get(payload_column: str, field: str, target_type: str) -> Any:
     from pyspark.sql import functions as F
 
-    return F.try_variant_get(payload, f"$.{field}", target_type)
+    # Spark Connect exposes this SQL function even when its Python wrapper is absent.
+    return F.expr(
+        f"try_variant_get(`{payload_column}`, '$.{field}', '{target_type}')"
+    )
 
 
 def _reason(condition: Any, value: Any) -> Any:
@@ -146,14 +149,18 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
     """
     from pyspark.sql import functions as F
 
-    frame = bronze_events.withColumn("_payload", F.try_parse_json(F.col("body")))
-    frame = frame.withColumn("_payload_schema", F.schema_of_variant(F.col("_payload")))
+    frame = bronze_events.withColumn("_payload", F.expr("try_parse_json(body)"))
+    frame = frame.withColumn(
+        "_payload_schema", F.expr("schema_of_variant(_payload)")
+    )
     is_object = F.col("_payload_schema").startswith("OBJECT<")
 
     for field in _ALL_COLLECTOR_FIELDS:
         raw_name = f"_raw_{field}"
-        frame = frame.withColumn(raw_name, _variant_get(F.col("_payload"), field, "variant"))
-        frame = frame.withColumn(f"_schema_{field}", F.schema_of_variant(F.col(raw_name)))
+        frame = frame.withColumn(raw_name, _variant_get("_payload", field, "variant"))
+        frame = frame.withColumn(
+            f"_schema_{field}", F.expr(f"schema_of_variant(`{raw_name}`)")
+        )
 
     def raw(field: str) -> Any:
         return F.col(f"_raw_{field}")
@@ -165,7 +172,9 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
         return raw(field).isNotNull()
 
     def json_null(field: str) -> Any:
-        return F.coalesce(F.is_variant_null(raw(field)), F.lit(False))
+        return F.coalesce(
+            F.expr(f"is_variant_null(`_raw_{field}`)"), F.lit(False)
+        )
 
     def is_string(field: str) -> Any:
         return value_schema(field) == F.lit("STRING")
@@ -175,18 +184,18 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
 
     for field in _STRING_FIELDS + ("collection_mode", "label"):
         frame = frame.withColumn(
-            f"_{field}_text", _variant_get(F.col("_payload"), field, "string")
+            f"_{field}_text", _variant_get("_payload", field, "string")
         )
     for field in ("lat", "lon") + _NULLABLE_NUMERIC_FIELDS:
         frame = frame.withColumn(
-            f"_{field}_number", _variant_get(F.col("_payload"), field, "double")
+            f"_{field}_number", _variant_get("_payload", field, "double")
         )
     frame = frame.withColumn(
-        "_sequence_number", _variant_get(F.col("_payload"), "sequence", "bigint")
+        "_sequence_number", _variant_get("_payload", "sequence", "bigint")
     )
     frame = frame.withColumn(
         "_quality_flags",
-        _variant_get(F.col("_payload"), "quality_flags", "array<string>"),
+        _variant_get("_payload", "quality_flags", "array<string>"),
     )
     frame = frame.withColumn(
         "_event_time_timestamp", F.try_to_timestamp(F.col("_event_time_text"))
@@ -414,7 +423,7 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
         "rejection_reasons", F.array_compact(F.array(*reasons))
     )
     frame = frame.withColumn(
-        "rejection_reason", F.element_at(F.col("rejection_reasons"), F.lit(1))
+        "rejection_reason", F.expr("try_element_at(rejection_reasons, 1)")
     )
 
     return frame.select(
