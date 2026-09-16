@@ -68,7 +68,9 @@ def test_01_02_03_04_cold_start_assigns_four_categories_without_user_choice():
     assert by_category(missions)["habit"]["completion_rule"]["metric"] == "distinct_day_count"
     assert by_category(missions)["easy_win"]["completion_rule"]["metric"] == "qualifying_trip_count"
     assert by_category(missions)["explore"]["completion_rule"]["metric"] == "distinct_mode_count"
-    assert by_category(missions)["explore"]["preference_comparable"] is False
+    assert all(m["affinity_comparable"] is False for m in missions)
+    assert all(m["difficulty_comparable"] is False for m in missions)
+    assert all(m["preference_comparable"] is False for m in missions)
 
 
 def test_05_06_behavior_fit_changes_challenge_template():
