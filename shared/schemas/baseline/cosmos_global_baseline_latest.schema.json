@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.cosmos-global-baseline-latest.v1",
+  "title": "Canopy Cosmos Global Baseline Latest",
+  "description": "Latest Global Baseline document for fast API/Reward/Behavior Change lookup. Written from Global Baseline Gold with deterministic ItemOverwrite semantics.",
+  "type": "object",
+  "required": [
+    "id", "document_type", "campaign_id", "week", "status", "value_gco2e_per_km",
+    "valid_participant_count", "eligible_participant_count", "method", "policy_version",
+    "eligibility_policy_version"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^baseline:global:"},
+    "document_type": {"const": "global_baseline_latest"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "week": {"type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$"},
+    "status": {"enum": ["collecting", "ready"]},
+    "value_gco2e_per_km": {"type": ["number", "null"], "minimum": 0},
+    "valid_participant_count": {"type": "integer", "minimum": 0},
+    "eligible_participant_count": {"type": "integer", "minimum": 0},
+    "method": {"enum": ["global_average_of_personal_baseline", "insufficient_data"]},
+    "policy_version": {"type": "string", "minLength": 1},
+    "eligibility_policy_version": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}
