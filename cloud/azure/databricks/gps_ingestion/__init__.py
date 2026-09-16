@@ -1,10 +1,10 @@
 """Canopy GPS ingestion package."""
 
-from .deployment_config import CanopyTableConfig
+from .deployment_config import GpsIngestionTableConfig
 from .event_hubs_auth import connection_string, jaas_config, normalized_policy_key
 
 __all__ = [
-    "CanopyTableConfig",
+    "GpsIngestionTableConfig",
     "connection_string",
     "jaas_config",
     "normalized_policy_key",

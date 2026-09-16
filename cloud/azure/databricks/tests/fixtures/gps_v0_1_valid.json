@@ -1,0 +1,21 @@
+{
+  "schema_version": "canopy.gps.collector.v0.1",
+  "event_id": "11111111-1111-4111-8111-111111111111",
+  "user_id": "22222222-2222-4222-8222-222222222222",
+  "device_id": "33333333-3333-4333-8333-333333333333",
+  "trip_id": "44444444-4444-4444-8444-444444444444",
+  "sequence": 1,
+  "event_time": "2026-09-16T01:02:03.123Z",
+  "received_at": "2026-09-16T01:02:04.123Z",
+  "lat": 37.5665,
+  "lon": 126.978,
+  "accuracy": 4.5,
+  "speed": 1.25,
+  "altitude_m": 38.0,
+  "vertical_accuracy_m": 2.0,
+  "course_deg": 90.0,
+  "source": "expo-location.foreground",
+  "quality_flags": [],
+  "raw_location": {"timestamp": 1789520523123, "coords": {"provider": "gps"}},
+  "label": "walking"
+}
