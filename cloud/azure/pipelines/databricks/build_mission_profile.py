@@ -108,7 +108,10 @@ def compute_category_preferences(
     *,
     prior: float = PREFERENCE_PRIOR,
 ) -> dict[str, dict[str, float | int]]:
-    """완료된 비교가능 미션만 affinity의 양의 증거로 누적한다."""
+    """완료된 affinity-comparable 미션만 양의 증거로 누적한다.
+
+    `preference_comparable`은 기존 bundle 하위 호환을 위한 fallback이다.
+    """
     state = {
         category: {
             "prior": float(prior),
@@ -126,7 +129,9 @@ def compute_category_preferences(
                 continue
             row = state[category]
             row["assigned_count"] += 1
-            comparable = mission.get("preference_comparable") is True
+            comparable = mission.get(
+                "affinity_comparable", mission.get("preference_comparable")
+            ) is True
             if comparable:
                 row["comparable_assigned_count"] += 1
             if mission.get("completed") is True:
@@ -141,9 +146,17 @@ def compute_category_preferences(
 
 
 def compute_difficulty_state(bundles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """최근 difficulty-comparable assignment 결과를 다음 주 adaptive target 입력으로 만든다.
+
+    과거 v3 bundle에는 `difficulty_comparable`이 없으므로 기존
+    `preference_comparable`을 fallback으로 사용한다.
+    """
     ordered = sorted(bundles, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
     for bundle in reversed(ordered):
-        missions = [m for m in (bundle.get("missions") or []) if m.get("preference_comparable") is True]
+        missions = [
+            m for m in (bundle.get("missions") or [])
+            if m.get("difficulty_comparable", m.get("preference_comparable")) is True
+        ]
         target = bundle.get("common_target_count")
         if not missions or not isinstance(target, int) or target <= 0:
             continue
@@ -374,13 +387,21 @@ def _responses_to_bundles(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, A
             "common_target_count": row.get("common_target_count"),
             "missions": [],
         })
+        affinity_comparable = row.get(
+            "affinity_comparable", row.get("preference_comparable")
+        ) is True
+        difficulty_comparable = row.get(
+            "difficulty_comparable", row.get("preference_comparable")
+        ) is True
         bundle["missions"].append({
             "category_id": row.get("category_id"),
             "mission_family": row.get("mission_family"),
             "target_count": row.get("target_count"),
             "achievement_rate": row.get("achievement_rate"),
             "completed": row.get("completed") is True,
-            "preference_comparable": row.get("preference_comparable") is True,
+            "affinity_comparable": affinity_comparable,
+            "difficulty_comparable": difficulty_comparable,
+            "preference_comparable": affinity_comparable,
         })
     return list(grouped.values())
 
