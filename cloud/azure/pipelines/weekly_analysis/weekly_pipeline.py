@@ -9,9 +9,7 @@
 미제출 계약은 확정값으로 가장하지 않고 연결 시 오류 처리.
 """
 import copy
-import inspect
-import ast
-import textwrap
+import dis
 import json
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -992,10 +990,8 @@ def register_pipeline():
     # 담당자가 예외를 계산 코드로 교체했는지 확인. 별도 implemented 설정 편집 불필요
     for stage in manifest["stages"]:
         hook = globals()[stage["function"]]
-        body = ast.parse(textwrap.dedent(inspect.getsource(hook))).body[0].body
-        body = [node for node in body if not (isinstance(node, ast.Expr)
-                and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str))]
-        stage["implemented"] = not (len(body) == 1 and isinstance(body[0], ast.Raise))
+        stage["implemented"] = any(op.opname in {"RETURN_VALUE", "RETURN_CONST"}
+                                   for op in dis.get_instructions(hook))
     context, stages, sources = preflight(manifest)
     if spark.conf.get("spark.sql.session.timeZone") not in {"UTC", "Etc/UTC"}:
         raise ValueError("파이프라인 설정 spark.sql.session.timeZone=UTC 필요")
