@@ -1,68 +1,41 @@
 import copy
 from pathlib import Path
+
+import pytest
 import mission_engine
 
 HERE = Path(__file__).resolve().parent
 POLICY = mission_engine.load_mission_policy(HERE.parent / "mission_policy.yaml")
+WEEK_START = "2026-09-14"
+WEEK_END = "2026-09-21"
+NOW = "2026-09-14T00:00:00+00:00"
 
 
 def profile(**overrides):
     base = {
         "profile_status": "ready",
-        "profile_version": "mission-profile-v1",
+        "profile_version": "mission-profile-v2",
         "profile_hash": "hash-1",
         "source_week_start": "2026-09-07",
-        "source_week_end": "2026-09-14",
+        "source_week_end": WEEK_START,
         "valid_trip_count": 10,
-        "car_primary_trip_count": 0,
-        "car_ratio": 0.0,
-        "short_car_trip_count": 0,
-        "short_car_share": None,
-        "low_carbon_trip_count": 10,
-        "previous_mission_family": None,
-        "previous_target_count": None,
-        "previous_achievement_rate": None,
+        "car_primary_trip_count": 4,
+        "car_ratio": .4,
+        "short_car_trip_count": 2,
+        "short_car_share": .5,
+        "transit_primary_trip_count": 3,
+        "low_carbon_trip_count": 6,
+        "category_preferences": {},
+        "family_capability": {},
     }
     base.update(overrides)
     return base
 
 
-CASES = [
-    ("01_collecting", profile(profile_status="collecting", valid_trip_count=0, car_ratio=None), "collecting", None, None),
-    ("02_short_majority", profile(car_primary_trip_count=8, car_ratio=.8, short_car_trip_count=6, short_car_share=.75, low_carbon_trip_count=2), "assigned", "short_car_to_active", 1),
-    ("03_short_boundary_exact_half", profile(car_primary_trip_count=8, car_ratio=.8, short_car_trip_count=4, short_car_share=.5, low_carbon_trip_count=2), "assigned", "car_to_transit", 1),
-    ("04_car_boundary_exact_half", profile(car_primary_trip_count=5, car_ratio=.5, short_car_trip_count=4, short_car_share=.8, low_carbon_trip_count=5), "assigned", "low_carbon_maintain", 5),
-    ("05_just_over_both", profile(car_primary_trip_count=6, car_ratio=.51, short_car_trip_count=4, short_car_share=.51, low_carbon_trip_count=4), "assigned", "short_car_to_active", 1),
-    ("06_car_over_short_under", profile(car_primary_trip_count=6, car_ratio=.51, short_car_trip_count=2, short_car_share=.49, low_carbon_trip_count=4), "assigned", "car_to_transit", 1),
-    ("07_zero_car_nullable_short_share", profile(car_primary_trip_count=0, car_ratio=0.0, short_car_trip_count=0, short_car_share=None, low_carbon_trip_count=10), "assigned", "low_carbon_maintain", 10),
-    ("08_all_transit_maintain", profile(car_primary_trip_count=0, car_ratio=0.0, short_car_share=None, low_carbon_trip_count=5, valid_trip_count=5), "assigned", "low_carbon_maintain", 5),
-    ("09_short_completed_increment", profile(car_primary_trip_count=5, car_ratio=.8, short_car_trip_count=4, short_car_share=.8, low_carbon_trip_count=1, previous_mission_family="short_car_to_active", previous_target_count=1, previous_achievement_rate=1.0), "assigned", "short_car_to_active", 2),
-    ("10_short_partial_hold", profile(car_primary_trip_count=6, car_ratio=.8, short_car_trip_count=5, short_car_share=.8, previous_mission_family="short_car_to_active", previous_target_count=2, previous_achievement_rate=.5), "assigned", "short_car_to_active", 2),
-    ("11_short_zero_decrement", profile(car_primary_trip_count=6, car_ratio=.8, short_car_trip_count=5, short_car_share=.8, previous_mission_family="short_car_to_active", previous_target_count=2, previous_achievement_rate=0.0), "assigned", "short_car_to_active", 1),
-    ("12_short_opportunity_cap", profile(car_primary_trip_count=5, car_ratio=.8, short_car_trip_count=3, short_car_share=.8, previous_mission_family="short_car_to_active", previous_target_count=4, previous_achievement_rate=1.0), "assigned", "short_car_to_active", 3),
-    ("13_transit_completed_increment", profile(car_primary_trip_count=5, car_ratio=.8, short_car_trip_count=1, short_car_share=.2, previous_mission_family="car_to_transit", previous_target_count=2, previous_achievement_rate=1.0), "assigned", "car_to_transit", 3),
-    ("14_transit_minimum_one", profile(car_primary_trip_count=5, car_ratio=.8, short_car_trip_count=1, short_car_share=.2, previous_mission_family="car_to_transit", previous_target_count=1, previous_achievement_rate=0.0), "assigned", "car_to_transit", 1),
-    ("15_family_changed_resets", profile(car_primary_trip_count=5, car_ratio=.8, short_car_trip_count=1, short_car_share=.2, previous_mission_family="short_car_to_active", previous_target_count=4, previous_achievement_rate=1.0), "assigned", "car_to_transit", 1),
-    ("16_maintain_ignores_escalation", profile(car_primary_trip_count=2, car_ratio=.2, short_car_trip_count=1, short_car_share=.5, low_carbon_trip_count=7, previous_mission_family="low_carbon_maintain", previous_target_count=6, previous_achievement_rate=1.0), "assigned", "low_carbon_maintain", 7),
-    ("17_car_majority_missing_short_share", profile(car_primary_trip_count=6, car_ratio=.6, short_car_trip_count=0, short_car_share=None, low_carbon_trip_count=4), "collecting", None, None),
-    ("18_short_opportunity_one_cap", profile(car_primary_trip_count=1, valid_trip_count=1, car_ratio=1.0, short_car_trip_count=1, short_car_share=1.0, low_carbon_trip_count=0, previous_mission_family="short_car_to_active", previous_target_count=1, previous_achievement_rate=1.0), "assigned", "short_car_to_active", 1),
-    ("19_same_family_missing_result_resets", profile(car_primary_trip_count=6, car_ratio=.8, short_car_trip_count=1, short_car_share=.2, previous_mission_family="car_to_transit", previous_target_count=3, previous_achievement_rate=None), "assigned", "car_to_transit", 1),
-    ("20_ratio_boundary_precision", profile(car_primary_trip_count=5001, valid_trip_count=10000, car_ratio=.5001, short_car_trip_count=2500, short_car_share=2500/5001, low_carbon_trip_count=4999), "assigned", "car_to_transit", 1),
-]
-
-
-def test_twenty_policy_cases():
-    assert len(CASES) == 20
-    for name, p, expected_status, expected_template, expected_target in CASES:
-        decision = mission_engine.decide_mission(p, POLICY)
-        assert decision.status == expected_status, name
-        assert decision.template_id == expected_template, name
-        assert decision.target_count == expected_target, name
-
-
 class MemoryRepo:
-    def __init__(self, profile_doc):
+    def __init__(self, profile_doc=None):
         self.profile_doc = profile_doc
+        self.offers = {}
         self.assignments = {}
 
     @staticmethod
@@ -72,45 +45,195 @@ class MemoryRepo:
     def get_latest_profile(self, campaign_id, user_id):
         return self.profile_doc
 
+    def get_offer_set(self, campaign_id, user_id, week_start):
+        return copy.deepcopy(self.offers.get(mission_engine.offer_set_id(campaign_id, user_id, week_start)))
+
+    def create_offer_set(self, item):
+        self.offers.setdefault(item["id"], copy.deepcopy(item))
+        return copy.deepcopy(self.offers[item["id"]])
+
     def get_assignment(self, campaign_id, user_id, week_start):
-        return self.assignments.get(mission_engine.assignment_id(campaign_id, user_id, week_start))
+        return copy.deepcopy(self.assignments.get(mission_engine.assignment_id(campaign_id, user_id, week_start)))
 
     def create_assignment(self, item):
         self.assignments.setdefault(item["id"], copy.deepcopy(item))
         return copy.deepcopy(self.assignments[item["id"]])
 
+    def mark_offer_selected(self, offer, mission_template_id, selected_at):
+        stored = self.offers[offer["id"]]
+        if not stored.get("selected_mission_template_id"):
+            stored["selected_mission_template_id"] = mission_template_id
+            stored["selected_at"] = selected_at
+        return copy.deepcopy(stored)
 
-def test_assignment_is_idempotent_and_frozen():
+
+def by_category(candidates):
+    return {candidate["category_id"]: candidate for candidate in candidates}
+
+
+def test_01_02_03_cold_start_offers_all_categories_with_equal_priors_and_minimum_target():
+    candidates = mission_engine.build_offer_candidates(None, POLICY, week_start=WEEK_START)
+    assert len(candidates) == 4
+    assert {item["category_id"] for item in candidates} == {"challenge", "habit", "easy_win", "explore"}
+    assert all(item["preference_score"] == .5 for item in candidates)
+    assert all(item["target_count"] == 1 for item in candidates)
+    assert candidates[0]["category_id"] == "challenge"
+    assert candidates[0]["is_recommended"] is True
+
+
+def test_04_stale_behavior_profile_keeps_preference_but_uses_starter_templates():
     p = profile(
-        car_primary_trip_count=8,
-        car_ratio=.8,
-        short_car_trip_count=6,
-        short_car_share=.75,
-        low_carbon_trip_count=2,
+        source_week_end="2026-09-07",
+        category_preferences={
+            "habit": {"alpha": 5.0, "beta": 1.0},
+            "challenge": {"alpha": 1.0, "beta": 4.0},
+        },
     )
-    repo = MemoryRepo(p)
-    first = mission_engine.assign_for_week(
+    candidates = mission_engine.build_offer_candidates(p, POLICY, week_start=WEEK_START)
+    assert candidates[0]["category_id"] == "habit"
+    assert all(item["mission_template_id"].endswith("starter") for item in candidates)
+
+
+def test_05_06_behavior_fit_changes_challenge_template():
+    short = by_category(mission_engine.build_offer_candidates(
+        profile(short_car_trip_count=3, car_primary_trip_count=5), POLICY, week_start=WEEK_START
+    ))
+    assert short["challenge"]["mission_template_id"] == "challenge_short_car_to_active"
+
+    no_short = by_category(mission_engine.build_offer_candidates(
+        profile(short_car_trip_count=0, car_primary_trip_count=5), POLICY, week_start=WEEK_START
+    ))
+    assert no_short["challenge"]["mission_template_id"] == "challenge_car_to_transit"
+
+
+def test_07_08_09_other_categories_choose_behavior_fit_templates():
+    candidates = by_category(mission_engine.build_offer_candidates(
+        profile(short_car_trip_count=2, car_primary_trip_count=4, low_carbon_trip_count=6),
+        POLICY,
+        week_start=WEEK_START,
+    ))
+    assert candidates["habit"]["mission_template_id"] == "habit_low_carbon_maintain"
+    assert candidates["easy_win"]["mission_template_id"] == "easy_short_active_once"
+    assert candidates["explore"]["mission_template_id"] == "explore_active"
+
+
+def test_10_11_12_13_adaptive_family_target_rules():
+    base = profile(short_car_trip_count=4)
+    template = POLICY["catalog"]["challenge_short_car_to_active"]
+
+    completed = copy.deepcopy(base)
+    completed["family_capability"] = {"short_car_to_active": {"last_target_count": 2, "last_achievement_rate": 1.0}}
+    assert mission_engine.compute_target_count(template, completed, POLICY, week_start=WEEK_START)[0] == 3
+
+    partial = copy.deepcopy(base)
+    partial["family_capability"] = {"short_car_to_active": {"last_target_count": 2, "last_achievement_rate": .5}}
+    assert mission_engine.compute_target_count(template, partial, POLICY, week_start=WEEK_START)[0] == 2
+
+    zero = copy.deepcopy(base)
+    zero["family_capability"] = {"short_car_to_active": {"last_target_count": 1, "last_achievement_rate": 0.0}}
+    assert mission_engine.compute_target_count(template, zero, POLICY, week_start=WEEK_START)[0] == 1
+
+    capped = profile(short_car_trip_count=2)
+    capped["family_capability"] = {"short_car_to_active": {"last_target_count": 3, "last_achievement_rate": 1.0}}
+    assert mission_engine.compute_target_count(template, capped, POLICY, week_start=WEEK_START)[0] == 2
+
+
+def test_14_15_preference_ranking_and_equal_prior_tie_are_deterministic():
+    p = profile(category_preferences={
+        "habit": {"alpha": 4.0, "beta": 1.0},
+        "challenge": {"alpha": 2.0, "beta": 3.0},
+        "easy_win": {"alpha": 2.0, "beta": 2.0},
+        "explore": {"alpha": 1.0, "beta": 4.0},
+    })
+    ranked = mission_engine.build_offer_candidates(p, POLICY, week_start=WEEK_START)
+    assert ranked[0]["category_id"] == "habit"
+    assert ranked[0]["is_recommended"] is True
+
+    equal = mission_engine.build_offer_candidates(profile(), POLICY, week_start=WEEK_START)
+    assert [item["category_id"] for item in equal] == ["challenge", "habit", "easy_win", "explore"]
+
+
+def test_16_offer_set_is_idempotent_and_frozen():
+    repo = MemoryRepo(profile())
+    first = mission_engine.issue_offer_set(
         repo, POLICY, user_id="u1", campaign_id="c1",
-        week_start="2026-09-14", week_end="2026-09-21", now_iso="2026-09-14T00:00:00+00:00"
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
     )
-    first_assignment = copy.deepcopy(first["assignment"])
-    repo.profile_doc["car_ratio"] = 0.0
-    repo.profile_doc["low_carbon_trip_count"] = 10
-    second = mission_engine.assign_for_week(
+    repo.profile_doc["category_preferences"] = {"habit": {"alpha": 99.0, "beta": 1.0}}
+    second = mission_engine.issue_offer_set(
         repo, POLICY, user_id="u1", campaign_id="c1",
-        week_start="2026-09-14", week_end="2026-09-21", now_iso="2026-09-15T00:00:00+00:00"
+        week_start=WEEK_START, week_end=WEEK_END, now_iso="2026-09-15T00:00:00+00:00",
     )
     assert first["idempotent"] is False
     assert second["idempotent"] is True
-    assert second["assignment"] == first_assignment
+    assert first["offer_set"] == second["offer_set"]
 
 
-def test_assignment_rejects_stale_profile():
-    p = profile(source_week_end="2026-09-07")
-    repo = MemoryRepo(p)
-    result = mission_engine.assign_for_week(
+def test_17_selection_creates_one_active_assignment():
+    repo = MemoryRepo(None)
+    offer_result = mission_engine.issue_offer_set(
         repo, POLICY, user_id="u1", campaign_id="c1",
-        week_start="2026-09-14", week_end="2026-09-21", now_iso="2026-09-14T00:00:00+00:00"
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
     )
-    assert result["status"] == "collecting"
-    assert result["reason"] == "latest_profile_is_not_previous_completed_week"
+    offer = offer_result["offer_set"]
+    selected = next(item for item in offer["candidates"] if item["category_id"] == "explore")
+    result = mission_engine.select_mission(
+        repo, POLICY, user_id="u1", campaign_id="c1",
+        week_start=WEEK_START, week_end=WEEK_END,
+        requested_offer_set_id=offer["offer_set_id"],
+        mission_template_id=selected["mission_template_id"], now_iso=NOW,
+    )
+    assert result["status"] == "assigned"
+    assert result["assignment"]["category_id"] == "explore"
+    assert len(repo.assignments) == 1
+
+
+def test_18_second_different_selection_cannot_replace_first_assignment():
+    repo = MemoryRepo(None)
+    offer = mission_engine.issue_offer_set(
+        repo, POLICY, user_id="u1", campaign_id="c1",
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
+    )["offer_set"]
+    first, second = offer["candidates"][0], offer["candidates"][1]
+    mission_engine.select_mission(
+        repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END,
+        requested_offer_set_id=offer["offer_set_id"], mission_template_id=first["mission_template_id"], now_iso=NOW,
+    )
+    result = mission_engine.select_mission(
+        repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END,
+        requested_offer_set_id=offer["offer_set_id"], mission_template_id=second["mission_template_id"], now_iso=NOW,
+    )
+    assert result["selection_conflict"] is True
+    assert result["assignment"]["mission_template_id"] == first["mission_template_id"]
+
+
+def test_19_invalid_selection_is_rejected():
+    repo = MemoryRepo(None)
+    offer = mission_engine.issue_offer_set(
+        repo, POLICY, user_id="u1", campaign_id="c1",
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
+    )["offer_set"]
+    with pytest.raises(mission_engine.MissionSelectionError):
+        mission_engine.select_mission(
+            repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END,
+            requested_offer_set_id=offer["offer_set_id"], mission_template_id="not-offered", now_iso=NOW,
+        )
+
+
+def test_20_get_state_returns_assignment_after_selection():
+    repo = MemoryRepo(None)
+    offer = mission_engine.get_week_state(
+        repo, POLICY, user_id="u1", campaign_id="c1",
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
+    )["offer_set"]
+    chosen = offer["candidates"][0]
+    mission_engine.select_mission(
+        repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END,
+        requested_offer_set_id=offer["offer_set_id"], mission_template_id=chosen["mission_template_id"], now_iso=NOW,
+    )
+    state = mission_engine.get_week_state(
+        repo, POLICY, user_id="u1", campaign_id="c1",
+        week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW,
+    )
+    assert state["status"] == "assigned"
+    assert state["assignment"]["mission_template_id"] == chosen["mission_template_id"]
