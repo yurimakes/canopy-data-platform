@@ -93,7 +93,7 @@ def save_gold(spark, path, document):
     verify_document(document)
     frame = gold_frame(spark, document)
     if not DeltaTable.isDeltaTable(spark, path):
-        frame.write.format("delta").mode("errorifexists").save(path)
+        frame.write.format("delta").mode("error").save(path)
     else:
         table = DeltaTable.forPath(spark, path)
         rows = table.toDF().filter((F.col("trip_id") == document["trip_id"]) &

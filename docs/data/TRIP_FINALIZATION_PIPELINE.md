@@ -74,4 +74,19 @@ Databricks의 ADLS 접근 권한이 Cosmos 권한을 뜻하지 않는다.
 .\apps\api\.venv\Scripts\python.exe -m unittest discover -s tests/integration -p test_trip_finalization_pipeline.py -v
 ```
 
-실제 Databricks 검증 결과는 아래에 기록한다.
+## 실제 검증 결과 (2026-09-16)
+
+- [수동 Job 실행 성공](https://adb-7405605578654524.4.azuredatabricks.net/jobs/136906075485874/runs/1100007699709732): `finalize_gold` → `publish_cosmos`.
+- Cosmos `canopy-db/trips`: `id=pipeline_test_trip_1`, `user_id=pipeline_test_user_1`, `status=ready`, `is_mock=true`.
+- Gold/Cosmos 직접 조회 대조: 구간 3개, 7000m, 0.778224 kgCO2e, 동일한 결과 해시.
+- Secret scope `canopy-trip-pipeline-test`는 실행 계정만 접근한다. 자동 실행 일정은 없다.
+- Weekly와 Baseline은 실행하지 않았다. 아래 테스트 Gold를 다음 파이프라인의 개발 입력으로 사용할 수 있다.
+
+```python
+trips = spark.read.format("delta").load(
+    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/pipeline_test/trip_finalization/final_trips/"
+)
+```
+
+기존 Weekly 코드의 `CANOPY_CONFIRMED_TRIPS_PATH` 입력 계약에 맞춘 열을 제공한다.
+이 데이터는 Mock이므로 운영 집계와 Baseline에는 섞지 않는다.
