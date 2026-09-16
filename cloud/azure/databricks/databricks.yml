@@ -1,0 +1,56 @@
+bundle:
+  name: canopy-gps-streaming
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - .
+
+variables:
+  catalog:
+    default: dbw_canopy_dev
+  bronze_schema:
+    default: bronze
+  silver_schema:
+    default: silver
+  gold_schema:
+    default: gold
+  ml_schema:
+    default: ml
+  bronze_events_table:
+    default: gps_events
+  observations_table:
+    default: gps_observations
+  quarantine_table:
+    default: gps_quarantine
+  features_table:
+    default: gps_features
+  segments_table:
+    default: mode_segments
+  predictions_table:
+    default: mode_segment_predictions
+  event_hubs_namespace:
+    default: evhns-canopy-dev
+  event_hubs_topic:
+    default: evh-canopy-gps-dev
+  event_hubs_consumer_group:
+    default: canopy-databricks
+  event_hubs_sas_policy_name:
+    default: canopy-databricks-listen
+  event_hubs_secret_scope:
+    default: canopy-dev
+  event_hubs_secret_key:
+    default: canopy-databricks-listen
+  model_uri:
+    default: models:/dbw_canopy_dev.ml.canopy_speedtransformer@champion
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405605578654524.4.azuredatabricks.net
+      profile: CANOPY_DEV
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
