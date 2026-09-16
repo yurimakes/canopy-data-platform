@@ -1,4 +1,4 @@
-"""Weekly mission assignment/retrieval routes for the existing Azure Function App."""
+"""Weekly mission offer, selection, assignment, and retrieval routes."""
 from __future__ import annotations
 
 import base64
@@ -13,7 +13,14 @@ import azure.functions as func
 from azure.cosmos import CosmosClient, exceptions as cosmos_exceptions
 from azure.identity import DefaultAzureCredential
 
-from mission_engine import assign_for_week, get_for_week, load_mission_policy
+from mission_engine import (
+    MissionSelectionError,
+    assignment_id,
+    get_week_state,
+    load_mission_policy,
+    offer_set_id,
+    select_mission,
+)
 
 bp = func.Blueprint()
 BASE_DIR = Path(__file__).resolve().parent
@@ -86,8 +93,7 @@ def _week_bounds(raw_week: str | None):
     try:
         ref = _parse_week_date(raw_week, tz_name)
         monday = ref - timedelta(days=ref.weekday())
-        week_end = monday + timedelta(days=7)
-        return monday.isoformat(), week_end.isoformat()
+        return monday.isoformat(), (monday + timedelta(days=7)).isoformat()
     except MissionApiError:
         raise
     except Exception as exc:
@@ -99,14 +105,15 @@ class CosmosMissionRepository:
         endpoint = os.environ.get("CANOPY_COSMOS_ENDPOINT") or os.environ.get("COSMOS_ENDPOINT")
         if not endpoint:
             raise RuntimeError("CANOPY_COSMOS_ENDPOINT or COSMOS_ENDPOINT is required")
-        credential = DefaultAzureCredential()
-        client = CosmosClient(endpoint, credential=credential)
+        client = CosmosClient(endpoint, credential=DefaultAzureCredential())
         database_name = os.environ.get("CANOPY_COSMOS_DATABASE") or os.environ.get("COSMOS_DATABASE", "canopy-db")
         database = client.get_database_client(database_name)
-        profile_name = os.environ.get("CANOPY_COSMOS_MISSION_PROFILE_CONTAINER", "mission-profiles")
-        assignment_name = os.environ.get("CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER", "mission-assignments")
-        self.profile_container = database.get_container_client(profile_name)
-        self.assignment_container = database.get_container_client(assignment_name)
+        self.profile_container = database.get_container_client(
+            os.environ.get("CANOPY_COSMOS_MISSION_PROFILE_CONTAINER", "mission-profiles")
+        )
+        self.mission_container = database.get_container_client(
+            os.environ.get("CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER", "mission-assignments")
+        )
 
     @staticmethod
     def pk(campaign_id: str, user_id: str) -> str:
@@ -120,84 +127,109 @@ class CosmosMissionRepository:
             return None
 
     def get_assignment(self, campaign_id: str, user_id: str, week_start: str):
-        from mission_engine import assignment_id
-
         aid = assignment_id(campaign_id, user_id, week_start)
         try:
-            return self.assignment_container.read_item(item=aid, partition_key=self.pk(campaign_id, user_id))
+            return self.mission_container.read_item(item=aid, partition_key=self.pk(campaign_id, user_id))
         except cosmos_exceptions.CosmosResourceNotFoundError:
             return None
 
+    def get_offer_set(self, campaign_id: str, user_id: str, week_start: str):
+        oid = offer_set_id(campaign_id, user_id, week_start)
+        try:
+            return self.mission_container.read_item(item=oid, partition_key=self.pk(campaign_id, user_id))
+        except cosmos_exceptions.CosmosResourceNotFoundError:
+            return None
+
+    def create_offer_set(self, item):
+        try:
+            return self.mission_container.create_item(item)
+        except cosmos_exceptions.CosmosResourceExistsError:
+            return self.mission_container.read_item(item=item["id"], partition_key=item["pk"])
+
     def create_assignment(self, item):
         try:
-            return self.assignment_container.create_item(item)
+            return self.mission_container.create_item(item)
         except cosmos_exceptions.CosmosResourceExistsError:
-            return self.assignment_container.read_item(item=item["id"], partition_key=item["pk"])
+            return self.mission_container.read_item(item=item["id"], partition_key=item["pk"])
+
+    def mark_offer_selected(self, offer, mission_template_id: str, selected_at: str):
+        latest = self.mission_container.read_item(item=offer["id"], partition_key=offer["pk"])
+        if latest.get("selected_mission_template_id"):
+            return latest
+        latest["selected_mission_template_id"] = mission_template_id
+        latest["selected_at"] = selected_at
+        return self.mission_container.replace_item(item=latest["id"], body=latest)
 
 
-def _assign(repo, *, user_id: str, campaign_id: str, week_start: str, week_end: str):
-    return assign_for_week(
-        repo,
-        MISSION_POLICY,
-        user_id=user_id,
-        campaign_id=campaign_id,
-        week_start=week_start,
-        week_end=week_end,
-        now_iso=datetime.now(timezone.utc).isoformat(),
-    )
+def _request_context(req: func.HttpRequest):
+    user_id = _principal_user_id(req.headers)
+    campaign_id = _campaign_id()
+    week_start, week_end = _week_bounds(req.params.get("week"))
+    return user_id, campaign_id, week_start, week_end, CosmosMissionRepository()
 
 
-def _handle(req: func.HttpRequest, *, assign: bool) -> func.HttpResponse:
+def _get(req: func.HttpRequest) -> func.HttpResponse:
     try:
-        user_id = _principal_user_id(req.headers)
-        campaign_id = _campaign_id()
-        week_start, week_end = _week_bounds(req.params.get("week"))
-        repo = CosmosMissionRepository()
-
-        if assign:
-            result = _assign(
-                repo,
-                user_id=user_id,
-                campaign_id=campaign_id,
-                week_start=week_start,
-                week_end=week_end,
-            )
-        else:
-            result = get_for_week(
-                repo,
-                user_id=user_id,
-                campaign_id=campaign_id,
-                week_start=week_start,
-                week_end=week_end,
-            )
-            # The iPhone can use one read endpoint. If the week's deterministic
-            # assignment has not been issued yet, first read performs an idempotent
-            # lazy issue from the immediately previous completed profile.
-            if result.get("status") == "collecting" and result.get("reason") == "assignment_not_issued":
-                result = _assign(
-                    repo,
-                    user_id=user_id,
-                    campaign_id=campaign_id,
-                    week_start=week_start,
-                    week_end=week_end,
-                )
-
-        return _response(result, 200)
+        user_id, campaign_id, week_start, week_end, repo = _request_context(req)
+        result = get_week_state(
+            repo,
+            MISSION_POLICY,
+            user_id=user_id,
+            campaign_id=campaign_id,
+            week_start=week_start,
+            week_end=week_end,
+            now_iso=datetime.now(timezone.utc).isoformat(),
+        )
+        return _response(result)
     except MissionApiError as exc:
         return _response({"status": "error", "code": exc.code, "message": str(exc)}, exc.status)
     except Exception as exc:
-        logging.exception("mission_api_failed error_type=%s", type(exc).__name__)
-        return _response(
-            {"status": "error", "code": "service_unavailable", "message": "Mission service unavailable"},
-            503,
+        logging.exception("mission_get_failed error_type=%s", type(exc).__name__)
+        return _response({"status": "error", "code": "service_unavailable"}, 503)
+
+
+def _select(req: func.HttpRequest) -> func.HttpResponse:
+    try:
+        user_id, campaign_id, week_start, week_end, repo = _request_context(req)
+        try:
+            body = req.get_json()
+        except ValueError as exc:
+            raise MissionApiError(400, "invalid_json", "body must be JSON") from exc
+        if not isinstance(body, dict):
+            raise MissionApiError(400, "invalid_json", "body must be a JSON object")
+        requested_offer_set_id = body.get("offer_set_id")
+        mission_template_id = body.get("mission_template_id")
+        if not isinstance(requested_offer_set_id, str) or not requested_offer_set_id:
+            raise MissionApiError(400, "invalid_offer_set_id", "offer_set_id is required")
+        if not isinstance(mission_template_id, str) or not mission_template_id:
+            raise MissionApiError(400, "invalid_mission_template_id", "mission_template_id is required")
+
+        result = select_mission(
+            repo,
+            MISSION_POLICY,
+            user_id=user_id,
+            campaign_id=campaign_id,
+            week_start=week_start,
+            week_end=week_end,
+            requested_offer_set_id=requested_offer_set_id,
+            mission_template_id=mission_template_id,
+            now_iso=datetime.now(timezone.utc).isoformat(),
         )
-
-
-@bp.route(route="users/me/missions/assign", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
-def mission_assign(req: func.HttpRequest) -> func.HttpResponse:
-    return _handle(req, assign=True)
+        return _response(result, 200)
+    except MissionSelectionError as exc:
+        return _response({"status": "error", "code": str(exc)}, 409)
+    except MissionApiError as exc:
+        return _response({"status": "error", "code": exc.code, "message": str(exc)}, exc.status)
+    except Exception as exc:
+        logging.exception("mission_select_failed error_type=%s", type(exc).__name__)
+        return _response({"status": "error", "code": "service_unavailable"}, 503)
 
 
 @bp.route(route="users/me/missions", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
 def mission_get(req: func.HttpRequest) -> func.HttpResponse:
-    return _handle(req, assign=False)
+    return _get(req)
+
+
+@bp.route(route="users/me/missions/select", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def mission_select(req: func.HttpRequest) -> func.HttpResponse:
+    return _select(req)
