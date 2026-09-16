@@ -19,12 +19,12 @@ def end_event(trip, occurred_at):
 
 class EventHubLifecyclePublisher:
     def publish(self, event):
-        from azure.eventhub import EventData, EventHubProducerClient, TransportType
+        from azure.eventhub import EventData, EventHubProducerClient
         from azure.identity import DefaultAzureCredential
         with DefaultAzureCredential() as credential:
             with EventHubProducerClient(fully_qualified_namespace=os.environ["EVENTHUB_FQDN"],
                     eventhub_name=os.environ["EVENTHUB_NAME"], credential=credential,
-                    transport_type=TransportType.AmqpOverWebsocket, retry_total=0,
+                    retry_total=0,
                     auth_timeout=5, socket_timeout=5) as producer:
                 batch = producer.create_batch(partition_key=event["trip_id"])
                 batch.add(EventData(json.dumps(event, ensure_ascii=False, allow_nan=False)))

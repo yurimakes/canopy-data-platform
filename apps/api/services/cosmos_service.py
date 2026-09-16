@@ -67,6 +67,11 @@ class CosmosTripStore:
         return list(self.container.query_items(query=f"SELECT TOP {int(limit)} * FROM c WHERE c.type='trip' "
                     "AND c.trip_end_outbox.status='pending' ORDER BY c._ts ASC", enable_cross_partition_query=True))
 
+    def pending_trip_dispatch(self, limit=20):
+        return list(self.container.query_items(query=f"SELECT TOP {int(limit)} * FROM c WHERE c.type='trip' "
+                    "AND c.status='processing' AND c.result_owner='databricks' ORDER BY c._ts ASC",
+                    enable_cross_partition_query=True))
+
 
 class SQLiteTripStore:
     """Durable local substitute implementing the same create/CAS contract."""
@@ -121,4 +126,10 @@ class SQLiteTripStore:
     def pending_trip_ends(self, limit=20):
         with self.connect() as db:
             rows = db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.trip_end_outbox.status')='pending' LIMIT ?", (limit,)).fetchall()
+        return [{**json.loads(payload), "_etag": str(version)} for version, payload in rows]
+
+    def pending_trip_dispatch(self, limit=20):
+        with self.connect() as db:
+            rows = db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.status')='processing' "
+                              "AND json_extract(payload,'$.result_owner')='databricks' LIMIT ?", (limit,)).fetchall()
         return [{**json.loads(payload), "_etag": str(version)} for version, payload in rows]
