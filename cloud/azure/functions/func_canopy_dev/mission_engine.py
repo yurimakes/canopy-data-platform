@@ -1,10 +1,15 @@
 """주간 미션 정책 엔진.
 
 사용자가 미션을 선택하지 않는다. 서버가 카테고리별 미션을 한 주에 함께 부여하고,
-실제 완료된 미션만 카테고리 성향의 긍정 신호로 사용한다.
+발급 시점의 완료 규칙까지 assignment에 스냅샷으로 고정한다.
+
+중요:
+- 이미 발급된 미션은 이후 policy 파일이 바뀌어도 판정 기준이 변하면 안 된다.
+- category preference는 인과적 '선호' 추정치가 아니라 완료 이력 기반 affinity 신호다.
 """
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import uuid
@@ -28,6 +33,11 @@ def load_mission_policy(path: str | Path) -> dict[str, Any]:
         raise MissionPolicyError("mission policy must contain policy_version")
     if not isinstance(policy.get("categories"), dict) or not isinstance(policy.get("catalog"), dict):
         raise MissionPolicyError("mission policy must contain categories and catalog")
+    for template_id, template in policy["catalog"].items():
+        if not isinstance(template, dict) or not isinstance(template.get("completion_rule"), dict):
+            raise MissionPolicyError(f"template {template_id} must contain completion_rule")
+        if not template["completion_rule"].get("metric"):
+            raise MissionPolicyError(f"template {template_id} completion_rule.metric is required")
     return policy
 
 
@@ -74,6 +84,8 @@ def _template_eligible(template: Mapping[str, Any], profile: Mapping[str, Any] |
         return False
     if "gte" in eligibility and not value >= float(eligibility["gte"]):
         return False
+    if "eq" in eligibility and not value == float(eligibility["eq"]):
+        return False
     return True
 
 
@@ -100,21 +112,58 @@ def _pick_template_for_category(
 
 
 def common_target_count(profile: Mapping[str, Any] | None, policy: Mapping[str, Any]) -> tuple[int, str]:
-    """같은 주의 카테고리 미션에 공통 적용할 난이도 목표 횟수를 계산한다."""
+    """같은 주 비교가능 미션에 적용할 공통 목표 횟수를 계산한다."""
     rule = policy["difficulty"]
     minimum = int(rule["minimum_target_count"])
+    maximum = int(rule.get("maximum_target_count", 7))
     first = int(rule["first_target_count"])
     state = (profile or {}).get("difficulty_state") or {}
     previous_target = state.get("last_common_target_count")
     comparable = state.get("last_comparable_mission_count")
     completed = state.get("last_completed_comparable_count")
     if not isinstance(previous_target, int) or previous_target <= 0 or not isinstance(comparable, int) or comparable <= 0 or not isinstance(completed, int):
-        return max(first, minimum), "first_or_missing_result"
+        return min(max(first, minimum), maximum), "first_or_missing_result"
     if completed >= comparable:
-        return max(minimum, previous_target + int(rule["completed_all_comparable_increment"])), "all_completed_increment"
+        target = previous_target + int(rule["completed_all_comparable_increment"])
+        return min(max(minimum, target), maximum), "all_completed_increment"
     if completed <= 0:
-        return max(minimum, previous_target - int(rule["completed_none_comparable_decrement"])), "none_completed_decrement"
-    return max(minimum, previous_target), "partial_completion_hold"
+        target = previous_target - int(rule["completed_none_comparable_decrement"])
+        return min(max(minimum, target), maximum), "none_completed_decrement"
+    return min(max(minimum, previous_target), maximum), "partial_completion_hold"
+
+
+def _resolved_target(template: Mapping[str, Any], profile: Mapping[str, Any] | None, policy: Mapping[str, Any], common_target: int) -> int:
+    minimum = int(policy["difficulty"]["minimum_target_count"])
+    fixed = template.get("fixed_target_count")
+    if isinstance(fixed, int) and not isinstance(fixed, bool) and fixed > 0:
+        return max(minimum, fixed)
+
+    target = common_target
+    opportunity_field = template.get("opportunity_field")
+    opportunity = (profile or {}).get(opportunity_field) if opportunity_field else None
+    if (
+        policy["difficulty"].get("opportunity_ceiling", True)
+        and isinstance(opportunity, int)
+        and not isinstance(opportunity, bool)
+        and opportunity > 0
+    ):
+        target = min(target, opportunity)
+    return max(minimum, int(target))
+
+
+def _render(text: str | None, *, target_count: int) -> str | None:
+    if not isinstance(text, str):
+        return None
+    return text.replace("{target_count}", str(target_count))
+
+
+def _snapshot_completion_rule(template: Mapping[str, Any], *, target_count: int) -> dict[str, Any]:
+    rule = copy.deepcopy(template["completion_rule"])
+    rule["target_count"] = target_count
+    rule.setdefault("dedupe_key", "trip_id")
+    rule.setdefault("time_window", "assignment_week")
+    rule.setdefault("source", "canonical_ready_trip")
+    return rule
 
 
 def build_bundle_missions(
@@ -130,29 +179,27 @@ def build_bundle_missions(
     missions: list[dict[str, Any]] = []
     for category_id, category in categories:
         template_id, template = _pick_template_for_category(category_id, profile, policy, week_start=week_start)
-        target = common_target
-        opportunity_field = template.get("opportunity_field")
-        opportunity = (profile or {}).get(opportunity_field) if opportunity_field else None
-        if (
-            policy["difficulty"].get("opportunity_ceiling", True)
-            and isinstance(opportunity, int)
-            and not isinstance(opportunity, bool)
-            and opportunity > 0
-        ):
-            target = min(target, opportunity)
-        target = max(int(policy["difficulty"]["minimum_target_count"]), int(target))
-        comparable = target == common_target and template.get("difficulty_band", "standard") == "standard"
+        target = _resolved_target(template, profile, policy, common_target)
+        comparable = (
+            target == common_target
+            and template.get("difficulty_band", "standard") == "standard"
+            and template.get("preference_comparable", True) is True
+        )
+        completion_rule = _snapshot_completion_rule(template, target_count=target)
         missions.append({
             "assignment_id": assignment_id(campaign_id, user_id, week_start, category_id),
             "category_id": category_id,
             "category_label": category["label"],
             "mission_template_id": template_id,
             "mission_family": template["family"],
-            "mission_name": template["title"],
+            "mission_name": _render(template["title"], target_count=target),
+            "mission_description": _render(template.get("description"), target_count=target),
+            "progress_unit": template.get("progress_unit", "회"),
             "difficulty_band": template.get("difficulty_band", "standard"),
             "common_target_count": common_target,
             "target_count": target,
             "preference_comparable": comparable,
+            "completion_rule": completion_rule,
             "progress_count": 0,
             "achievement_rate": 0.0,
             "completed": False,
@@ -165,7 +212,7 @@ def public_bundle(item: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if not item:
         return None
     keys = (
-        "bundle_id", "user_id", "campaign_id", "week_start", "week_end", "policy_version",
+        "bundle_id", "user_id", "campaign_id", "week_start", "week_end", "policy_version", "policy_hash",
         "profile_status_at_issue", "common_target_count", "difficulty_reason", "missions",
     )
     return {key: item.get(key) for key in keys}
