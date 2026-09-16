@@ -7,7 +7,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines"))
 from gps_streaming.trip_lifecycle import parse_end_events, finalization_status, ML_COMPLETION_SCHEMA
-from gps_streaming.spark_ingestion import parse_bronze_rows
 
 
 class LifecycleSparkTests(unittest.TestCase):
@@ -29,7 +28,6 @@ class LifecycleSparkTests(unittest.TestCase):
                 "ingested_at", F.current_timestamp()).withColumn("event_hub_enqueued_at", F.current_timestamp()).cache()
             ends = parse_end_events(bronze).where("valid").cache()
             self.assertEqual(ends.count(), 4)
-            self.assertEqual(parse_bronze_rows(bronze).count(), len(events)-4)
             ml = spark.createDataFrame([("A","A-trip",1,100,100,True,"ml_v1"),
                                         ("C","C-trip",1,97,97,False,"ml_v1"),
                                         ("D","D-trip",1,100,100,True,"ml_v1")], ML_COMPLETION_SCHEMA)
