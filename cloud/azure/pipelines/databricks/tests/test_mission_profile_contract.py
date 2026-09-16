@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import build_mission_profile as mod
 
 
@@ -105,3 +107,10 @@ def test_history_source_is_part_of_profile_hash_contract():
     a = mod.build_profile_from_weekly_summary(**base, mission_history_source="none")
     b = mod.build_profile_from_weekly_summary(**base, mission_history_source="mission_response_gold")
     assert a["profile_hash"] != b["profile_hash"]
+
+
+def test_weekly_primary_mode_contract_explicitly_rejects_null_mode():
+    weekly_path = Path(mod.__file__).with_name("build_weekly_summary.py")
+    source = weekly_path.read_text(encoding="utf-8")
+    assert 'F.col("effective_mode").isNull()' in source
+    assert 'F.col("distance_m").isNull()' in source
