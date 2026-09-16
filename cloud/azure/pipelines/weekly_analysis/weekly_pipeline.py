@@ -1,15 +1,16 @@
 """주간 분석 파이프라인 초기 뼈대.
 
-현재 모든 블록은 연결 관계만 표시하는 빈 데이터 반환. 실제 집계 및 저장 결과 없음.
+최종 Trip 입력 → 주간 집계 → weekly_gold 연결. 나머지 블록은 빈 결과 반환.
+현재 입력은 개발용 Final Trip 경로. 운영 출퇴근 데이터 연결 전 테스트 용도.
 각 블록의 pending(...) 부분을 담당자의 계산 코드와 결과 DataFrame 반환으로 교체.
 입력 테이블 조회 → 계산 → 결과 DataFrame 반환 순서로 작성.
 함수 내부에서 직접 저장, Cosmos 호출, 다른 Job 실행 제외.
 테이블 생성과 갱신은 파이프라인에서 처리. Cosmos 반영은 바깥 Job의 후속 작업.
-현재 컬럼은 뼈대 표시용. 실제 연결 시 단계별 출력 컬럼과 자료형 지정.
+SCAFFOLD 컬럼은 미구현 블록에서만 사용. 주간 결과는 기존 Weekly Gold 컬럼으로 반환.
 현재 연결선은 초기 구상 기준. 담당 코드 연결 시 필요한 입력 테이블 재확인.
 """
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession, Window, functions as F
 
 spark = SparkSession.builder.getOrCreate()
 SCAFFOLD_SCHEMA = "_scaffold_stage string, _implementation_status string"
@@ -18,32 +19,80 @@ SCAFFOLD_PROPERTIES = {"canopy.implementation_status": "scaffold"}
 
 def pending(stage, *parents):
     """실제 계산 없이 앞 단계와의 연결만 표시하는 빈 데이터 반환."""
-    frame = spark.read.table(parents[0])
-    for parent in parents[1:]:
-        frame = frame.unionByName(spark.read.table(parent))
-    return frame.limit(0).select(F.lit(stage).alias("_scaffold_stage"),
-                                 F.lit("not_implemented").alias("_implementation_status"))
+    frames = [spark.read.table(parent).limit(0).select(
+        F.lit(stage).alias("_scaffold_stage"),
+        F.lit("not_implemented").alias("_implementation_status"),
+    ) for parent in parents]
+    frame = frames[0]
+    for parent in frames[1:]:
+        frame = frame.unionByName(parent)
+    return frame
 
 
-@dp.temporary_view(comment="최종 Trip Gold 입력 위치")
+# 개발용 최종 Trip Delta 경로. 운영 입력은 별도 확인 후 변경
+FINAL_TRIP_PATH = "abfss://curated@stcanopydev5dt.dfs.core.windows.net/pipeline_test/trip_finalization/iphone_final_trips"
+MODES = ["walk", "bike", "car", "bus", "rail"]
+LOW_CARBON_MODES = ["walk", "bike", "bus", "rail"]
+TRANSIT_MODES = ["bus", "rail"]
+SHORT_CAR_MAX_DISTANCE_M = 2000.0
+
+
+@dp.temporary_view(comment="최종 Trip Delta 조회. 최신 완료 Trip 입력")
 def final_trip_gold_input():
-    # 여기에 최종 Trip Delta 테이블 또는 ADLS 경로 조회 코드 입력
-    # 캠페인과 집계 기간 조건 적용 후 결과 DataFrame 반환. Cosmos 조회 제외
-    return spark.createDataFrame([], SCAFFOLD_SCHEMA)
+    # 기존 개발용 Final Trip 저장 결과 입력. Cosmos 조회 제외
+    # 동일 사용자와 Trip의 최신 버전 선택 후 완료 상태 필터
+    # 전체 저장 이력을 주차별 집계. 이번 주는 진행 중 집계이며 마감 결과와 구분 필요
+    trips = spark.read.format("delta").load(FINAL_TRIP_PATH)
+    latest = Window.partitionBy("campaign_id", "user_id", "trip_id").orderBy(
+        F.to_timestamp("updated_at").desc())
+    return (trips.withColumn("_latest", F.row_number().over(latest))
+            .filter(F.col("_latest") == 1).drop("_latest")
+            .filter(F.col("status") == "ready"))
 
 
-@dp.temporary_view(comment="사용자별 주간 집계 코드 입력 위치")
+@dp.temporary_view(comment="한국시간 기준 사용자별 주간 거리와 탄소 집계")
 def weekly_summary():
-    # 최종 Trip 입력 → 캠페인, 사용자, 주차별 거리와 탄소 합계 계산 → 주간 집계 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return pending("weekly_summary", "final_trip_gold_input")
+    # 원본: build_weekly_summary.py, 5dt028 작성 / ManiaKCY 수정
+    # 입력: final_trip_gold_input / 출력: shared/schemas/baseline/weekly_user_gold.schema.json
+    # 거리 m, 탄소 kgCO2e. 저장된 탄소 합계 사용, 배출계수 재계산 제외
+    return calculate_weekly(spark.read.table("final_trip_gold_input"))
 
 
-@dp.materialized_view(comment="주간 집계 결과 테이블 저장 위치", table_properties=SCAFFOLD_PROPERTIES)
+def calculate_weekly(trips):
+    # 주차 경계는 한국시간 월요일. Spark 세션 시간대는 UTC 기준
+    if spark.conf.get("spark.sql.session.timeZone") not in {"UTC", "Etc/UTC"}:
+        raise ValueError("파이프라인 설정 spark.sql.session.timeZone=UTC 필요")
+    valid = (
+        F.col("trip_id").isNotNull() & F.col("user_id").isNotNull()
+        & F.col("campaign_id").isNotNull()
+        & F.to_timestamp("ended_at").isNotNull()
+        & (F.col("carbon.unit") == "kgCO2e")
+        & F.col("carbon.policy_version").isNotNull()
+        & F.col("carbon.factor_version").isNotNull()
+        & (F.col("carbon.kg_co2e") >= 0)
+        & (F.col("carbon.kg_co2e") < F.lit(float("inf")))
+        & (F.size("segments") > 0)
+        & F.forall("segments", lambda segment:
+            (segment.carbon_kg >= 0) & (segment.carbon_kg < F.lit(float("inf")))
+            & (segment.distance_m >= 0) & (segment.distance_m < F.lit(float("inf")))))
+    # 누락값이나 잘못된 탄소 단위 발견 시 집계 실패. 조용한 제외나 0 보정 금지
+    trips = trips.filter(F.when(F.coalesce(valid, F.lit(False)), F.lit(True)).otherwise(
+        F.raise_error("Final Trip 필수값, 거리, 탄소 단위 확인 필요").cast("boolean")))
+    local = trips.withColumn("ended_at", F.from_utc_timestamp(F.to_timestamp("ended_at"), "Asia/Seoul"))
+    weekly = assign_week(local)
+    window = Window.partitionBy("campaign_id", "week")
+    version = F.struct(F.col("carbon.policy_version"), F.col("carbon.factor_version"))
+    weekly = weekly.withColumn("_min_version", F.min(version).over(window)).withColumn(
+        "_max_version", F.max(version).over(window))
+    weekly = weekly.filter(F.when(F.col("_min_version") == F.col("_max_version"), F.lit(True)).otherwise(
+        F.raise_error("동일 캠페인과 주차 내 탄소 정책 버전 혼합").cast("boolean")))
+    return build_personal_weekly(weekly.drop("_min_version", "_max_version"))
+
+
+@dp.materialized_view(comment="개발용 주간 집계 결과. 사용자, 캠페인, 주차별 한 행")
 def weekly_gold():
-    # 주간 집계 입력 → 저장할 컬럼 선택 → 주간 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return pending("weekly_gold", "weekly_summary")
+    # 계산 결과 저장. 실제 출력 컬럼 유지
+    return spark.read.table("weekly_summary")
 
 
 @dp.temporary_view(comment="Baseline 계산 대상 판정 코드 입력 위치")
@@ -130,3 +179,65 @@ def weekly_outputs_gold():
     # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
     return pending("weekly_outputs_gold", "weekly_gold", "baseline_gold", "weekly_user_profile",
                    "next_week_missions", "ranking", "campaign_kpi")
+
+
+# 주간 집계 계산부. 기존 주간 집계 공식 재사용
+# 원본: cloud/azure/pipelines/databricks/build_weekly_summary.py
+# 기존 연동 코드에서 검증용 count/collect 제거, 0거리 나눗셈 처리
+# null mode는 invalid_segment 판정. 팀원 수정 d268a7d 기준. 원본 파일 변경 없음
+def assign_week(df):
+    trip_date = F.to_date('ended_at')
+    iso_day = F.pmod(F.dayofweek(trip_date) + F.lit(5), F.lit(7)) + F.lit(1)
+    iso_thursday = F.date_add(trip_date, F.lit(4) - iso_day)
+    return df.withColumn('trip_date', trip_date).withColumn('iso_year', F.year(iso_thursday)).withColumn('iso_week', F.weekofyear(trip_date)).withColumn('week', F.concat(F.col('iso_year').cast('string'), F.lit('-W'), F.lpad(F.col('iso_week').cast('string'), 2, '0')))
+
+def explode_segments(df):
+    exploded = df.select('trip_id', 'user_id', 'campaign_id', 'week', F.col('carbon.policy_version').alias('carbon_policy_version'), F.col('carbon.factor_version').alias('factor_version'), F.explode('segments').alias('segment'))
+    return exploded.withColumn('effective_mode', F.lower(F.col('segment.model_prediction'))).withColumn('distance_m', F.col('segment.distance_m').cast('double')).withColumn('segment_kg_co2e', F.col('segment.carbon_kg').cast('double'))
+
+def compute_mode_metrics(exploded_df):
+    per_mode = exploded_df.groupBy('user_id', 'campaign_id', 'week', 'effective_mode').agg(F.countDistinct('trip_id').alias('mode_trip_count'), F.sum('distance_m').alias('distance_m'), F.sum('segment_kg_co2e').alias('kg_co2e'))
+    totals = exploded_df.groupBy('user_id', 'campaign_id', 'week').agg(F.countDistinct('trip_id').alias('total_trip_count'), F.sum('distance_m').alias('total_distance_m'), F.sum('segment_kg_co2e').alias('total_segment_kg_co2e'))
+    joined = per_mode.join(totals, ['user_id', 'campaign_id', 'week'])
+    return joined.withColumn('mode_trip_ratio', F.col('mode_trip_count') / F.col('total_trip_count')).withColumn('mode_distance_ratio', F.try_divide(F.col('distance_m'), F.col('total_distance_m'))).withColumn('mode_carbon_ratio', F.when(F.col('total_segment_kg_co2e') > 0, F.col('kg_co2e') / F.col('total_segment_kg_co2e')).otherwise(F.lit(0.0)))
+
+def compute_trip_primary_facts(exploded_df):
+    keys = ['trip_id', 'user_id', 'campaign_id', 'week']
+    invalid_segment = F.col('effective_mode').isNull() | ~F.col('effective_mode').isin(MODES) | F.col('distance_m').isNull() | (F.col('distance_m') <= 0)
+    quality = exploded_df.groupBy(*keys).agg(F.sum(F.when(invalid_segment, 1).otherwise(0)).alias('invalid_segment_count'), F.sum(F.when(~invalid_segment, F.col('distance_m')).otherwise(F.lit(0.0))).alias('trip_distance_m'))
+    valid_segments = exploded_df.filter(~invalid_segment)
+    per_trip_mode = valid_segments.groupBy(*keys, 'effective_mode').agg(F.sum('distance_m').alias('mode_distance_m'))
+    w = Window.partitionBy('trip_id')
+    ranked = per_trip_mode.withColumn('max_mode_distance_m', F.max('mode_distance_m').over(w)).withColumn('is_primary_winner', F.when(F.abs(F.col('mode_distance_m') - F.col('max_mode_distance_m')) < F.lit(1e-09), F.lit(1)).otherwise(F.lit(0)))
+    mode_summary = ranked.groupBy(*keys).agg(F.sum('is_primary_winner').alias('primary_winner_count'), F.first(F.when(F.col('is_primary_winner') == 1, F.col('effective_mode')), ignorenulls=True).alias('primary_mode_candidate'))
+    result = quality.join(mode_summary, keys, 'left').fillna(0, subset=['primary_winner_count']).withColumn('primary_mode_invalid_reason', F.when(F.col('invalid_segment_count') > 0, F.lit('invalid_segment')).when(F.col('primary_winner_count') != 1, F.lit('primary_mode_tie'))).withColumn('primary_mode', F.when(F.col('primary_mode_invalid_reason').isNull(), F.col('primary_mode_candidate'))).withColumn('primary_mode_valid', F.col('primary_mode_invalid_reason').isNull()).drop('primary_mode_candidate')
+    return result
+
+def aggregate_primary_facts(primary_trip_df):
+    return primary_trip_df.groupBy('user_id', 'campaign_id', 'week').agg(F.sum(F.when(F.col('primary_mode_valid'), 1).otherwise(0)).cast('long').alias('valid_primary_trip_count'), F.sum(F.when(~F.col('primary_mode_valid'), 1).otherwise(0)).cast('long').alias('invalid_primary_trip_count'), F.sum(F.when(F.col('primary_mode_invalid_reason') == 'primary_mode_tie', 1).otherwise(0)).cast('long').alias('ambiguous_primary_trip_count'), F.sum(F.when(F.col('primary_mode_invalid_reason') == 'invalid_segment', 1).otherwise(0)).cast('long').alias('invalid_segment_primary_trip_count'), F.sum(F.when(F.col('primary_mode') == 'car', 1).otherwise(0)).cast('long').alias('car_primary_trip_count'), F.sum(F.when(F.col('primary_mode').isin(TRANSIT_MODES), 1).otherwise(0)).cast('long').alias('transit_primary_trip_count'), F.sum(F.when(F.col('primary_mode').isin(LOW_CARBON_MODES), 1).otherwise(0)).cast('long').alias('low_carbon_trip_count'), F.sum(F.when((F.col('primary_mode') == 'car') & (F.col('trip_distance_m') <= F.lit(SHORT_CAR_MAX_DISTANCE_M)), 1).otherwise(0)).cast('long').alias('short_car_trip_count')).withColumn('car_primary_ratio', F.when(F.col('valid_primary_trip_count') > 0, F.col('car_primary_trip_count') / F.col('valid_primary_trip_count'))).withColumn('short_car_share', F.when(F.col('car_primary_trip_count') > 0, F.col('short_car_trip_count') / F.col('car_primary_trip_count')))
+
+def _pivot_ratio(mode_metrics_df, ratio_col, prefix):
+    pivoted = mode_metrics_df.groupBy('user_id', 'campaign_id', 'week').pivot('effective_mode', MODES).agg(F.first(ratio_col))
+    for mode in MODES:
+        name = f'{prefix}_{mode}'
+        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
+    return pivoted
+
+def _pivot_mode_distance(mode_metrics_df):
+    pivoted = mode_metrics_df.groupBy('user_id', 'campaign_id', 'week').pivot('effective_mode', MODES).agg(F.first('distance_m'))
+    for mode in MODES:
+        name = f'{mode}_distance_m'
+        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
+    return pivoted
+
+def build_personal_weekly(ready_df):
+    exploded = explode_segments(ready_df)
+    mode_metrics = compute_mode_metrics(exploded)
+    mode_distance_pivot = _pivot_mode_distance(mode_metrics)
+    trip_ratio_pivot = _pivot_ratio(mode_metrics, 'mode_trip_ratio', 'mode_trip_ratio')
+    distance_ratio_pivot = _pivot_ratio(mode_metrics, 'mode_distance_ratio', 'mode_distance_ratio')
+    carbon_ratio_pivot = _pivot_ratio(mode_metrics, 'mode_carbon_ratio', 'mode_carbon_ratio')
+    primary_facts = aggregate_primary_facts(compute_trip_primary_facts(exploded))
+    trip_agg = ready_df.groupBy('user_id', 'campaign_id', 'week').agg(F.countDistinct('trip_id').alias('trip_count'), F.sum('carbon.kg_co2e').alias('total_kg_co2e'), F.first('carbon.policy_version').alias('carbon_policy_version'), F.first('carbon.factor_version').alias('factor_version'))
+    distance_agg = exploded.groupBy('user_id', 'campaign_id', 'week').agg(F.sum('distance_m').alias('total_distance_m'))
+    return trip_agg.join(distance_agg, ['user_id', 'campaign_id', 'week']).join(mode_distance_pivot, ['user_id', 'campaign_id', 'week']).join(trip_ratio_pivot, ['user_id', 'campaign_id', 'week']).join(distance_ratio_pivot, ['user_id', 'campaign_id', 'week']).join(carbon_ratio_pivot, ['user_id', 'campaign_id', 'week']).join(primary_facts, ['user_id', 'campaign_id', 'week'], 'left')
