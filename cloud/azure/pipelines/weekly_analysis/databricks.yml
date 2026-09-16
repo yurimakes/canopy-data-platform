@@ -16,7 +16,7 @@ variables:
 resources:
   pipelines:
     weekly_analysis_pipeline:
-      name: canopy-weekly-analysis-pipeline-${bundle.target}
+      name: "[dev 5dt024] canopy-weekly-analysis-pipeline-${bundle.target}"
       catalog: ${var.catalog}
       schema: ${var.schema}
       serverless: true
@@ -26,10 +26,11 @@ resources:
         - file:
             path: ${workspace.file_path}/weekly_pipeline.py
       tags:
+        dev: "5dt024"
         implementation: scaffold
   jobs:
     weekly_analysis_job:
-      name: canopy-weekly-analysis-${bundle.target}
+      name: "[dev 5dt024] canopy-weekly-analysis-${bundle.target}"
       # Manual only until team code and publication are connected. No schedule.
       max_concurrent_runs: 1
       timeout_seconds: 3600
@@ -37,6 +38,7 @@ resources:
         enabled: true
       performance_target: STANDARD
       tags:
+        dev: "5dt024"
         implementation: scaffold
       tasks:
         - task_key: run_weekly_pipeline
