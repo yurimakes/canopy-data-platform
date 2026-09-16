@@ -64,38 +64,48 @@ def test_01_02_03_04_cold_start_assigns_four_categories_without_user_choice():
     assert all(m["mission_template_id"].endswith("starter") for m in missions)
     assert common_target == 1
     assert all(m["target_count"] == 1 for m in missions)
-    assert all(m["preference_comparable"] is True for m in missions)
+    assert by_category(missions)["challenge"]["completion_rule"]["min_trip_distance_km"] == 2.0
+    assert by_category(missions)["habit"]["completion_rule"]["metric"] == "distinct_day_count"
+    assert by_category(missions)["easy_win"]["completion_rule"]["metric"] == "qualifying_trip_count"
+    assert by_category(missions)["explore"]["completion_rule"]["metric"] == "distinct_mode_count"
+    assert all(m["affinity_comparable"] is False for m in missions)
+    assert all(m["difficulty_comparable"] is False for m in missions)
+    assert all(m["preference_comparable"] is False for m in missions)
 
 
 def test_05_06_behavior_fit_changes_challenge_template():
-    short = by_category(mission_engine.build_bundle_missions(
-        profile(short_car_trip_count=3, car_primary_trip_count=5), POLICY,
+    car_user = by_category(mission_engine.build_bundle_missions(
+        profile(car_primary_trip_count=5, low_carbon_trip_count=2), POLICY,
         campaign_id="c1", user_id="u1", week_start=WEEK_START
     )[0])
-    assert short["challenge"]["mission_template_id"] == "challenge_short_car_to_active"
+    assert car_user["challenge"]["mission_template_id"] == "challenge_car_to_transit"
 
-    no_short = by_category(mission_engine.build_bundle_missions(
-        profile(short_car_trip_count=0, car_primary_trip_count=5), POLICY,
+    active_user = by_category(mission_engine.build_bundle_missions(
+        profile(car_primary_trip_count=0, short_car_trip_count=0, transit_primary_trip_count=0, low_carbon_trip_count=5), POLICY,
         campaign_id="c1", user_id="u1", week_start=WEEK_START
     )[0])
-    assert no_short["challenge"]["mission_template_id"] == "challenge_car_to_transit"
+    assert active_user["challenge"]["mission_template_id"] == "challenge_active_distance"
 
 
-def test_07_08_09_other_categories_use_behavior_fit_templates():
+def test_07_08_09_other_categories_use_distinct_behavior_goals():
     missions = by_category(mission_engine.build_bundle_missions(
-        profile(short_car_trip_count=2, car_primary_trip_count=4, low_carbon_trip_count=6),
+        profile(short_car_trip_count=2, car_primary_trip_count=4, transit_primary_trip_count=3, low_carbon_trip_count=6),
         POLICY, campaign_id="c1", user_id="u1", week_start=WEEK_START
     )[0])
-    assert missions["habit"]["mission_template_id"] == "habit_low_carbon_maintain"
+    assert missions["habit"]["mission_template_id"] == "habit_transit_repeat"
     assert missions["easy_win"]["mission_template_id"] == "easy_short_active"
     assert missions["explore"]["mission_template_id"] == "explore_active"
+    assert missions["challenge"]["completion_rule"]["metric"] == "qualifying_trip_count"
+    assert missions["habit"]["completion_rule"]["metric"] == "distinct_day_count"
+    assert missions["easy_win"]["completion_rule"]["max_trip_distance_km"] == 2.0
+    assert missions["explore"]["completion_rule"]["metric"] == "distinct_mode_count"
 
 
-def test_10_all_comparable_completed_raises_next_common_target():
+def test_10_all_difficulty_comparable_completed_raises_next_common_target():
     p = profile(difficulty_state={
         "last_common_target_count": 1,
-        "last_comparable_mission_count": 4,
-        "last_completed_comparable_count": 4,
+        "last_comparable_mission_count": 3,
+        "last_completed_comparable_count": 3,
     })
     target, reason = mission_engine.common_target_count(p, POLICY)
     assert target == 2
@@ -105,7 +115,7 @@ def test_10_all_comparable_completed_raises_next_common_target():
 def test_11_none_completed_decreases_but_never_below_one():
     p = profile(difficulty_state={
         "last_common_target_count": 1,
-        "last_comparable_mission_count": 4,
+        "last_comparable_mission_count": 3,
         "last_completed_comparable_count": 0,
     })
     assert mission_engine.common_target_count(p, POLICY)[0] == 1
@@ -114,19 +124,20 @@ def test_11_none_completed_decreases_but_never_below_one():
 def test_12_partial_completion_holds_common_target():
     p = profile(difficulty_state={
         "last_common_target_count": 2,
-        "last_comparable_mission_count": 4,
+        "last_comparable_mission_count": 3,
         "last_completed_comparable_count": 2,
     })
     assert mission_engine.common_target_count(p, POLICY)[0] == 2
 
 
-def test_13_opportunity_cap_makes_that_mission_noncomparable():
+def test_13_opportunity_cap_separates_affinity_and_difficulty_comparability():
     p = profile(
+        car_primary_trip_count=1,
         short_car_trip_count=1,
         difficulty_state={
             "last_common_target_count": 2,
-            "last_comparable_mission_count": 4,
-            "last_completed_comparable_count": 4,
+            "last_comparable_mission_count": 3,
+            "last_completed_comparable_count": 3,
         },
     )
     missions, common_target, _ = mission_engine.build_bundle_missions(
@@ -135,15 +146,18 @@ def test_13_opportunity_cap_makes_that_mission_noncomparable():
     challenge = by_category(missions)["challenge"]
     assert common_target == 3
     assert challenge["target_count"] == 1
+    assert challenge["affinity_comparable"] is False
+    assert challenge["difficulty_comparable"] is False
     assert challenge["preference_comparable"] is False
 
 
-def test_14_category_does_not_make_objective_difficulty_harder():
+def test_14_adaptive_missions_use_common_target_when_not_capped():
     missions, common_target, _ = mission_engine.build_bundle_missions(
-        profile(), POLICY, campaign_id="c1", user_id="u1", week_start=WEEK_START
+        profile(short_car_trip_count=4, car_primary_trip_count=4, transit_primary_trip_count=4, low_carbon_trip_count=6),
+        POLICY, campaign_id="c1", user_id="u1", week_start=WEEK_START
     )
-    comparable_targets = {m["target_count"] for m in missions if m["preference_comparable"]}
-    assert comparable_targets == {common_target}
+    difficulty_targets = {m["target_count"] for m in missions if m["difficulty_comparable"]}
+    assert difficulty_targets == {common_target}
 
 
 def test_15_assignment_ids_are_distinct_per_category():
@@ -162,6 +176,7 @@ def test_17_bundle_issue_is_idempotent_and_frozen():
     first = mission_engine.issue_weekly_bundle(
         repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END, now_iso=NOW
     )
+    repo.profile_doc["car_primary_trip_count"] = 0
     repo.profile_doc["short_car_trip_count"] = 0
     second = mission_engine.issue_weekly_bundle(
         repo, POLICY, user_id="u1", campaign_id="c1", week_start=WEEK_START, week_end=WEEK_END,
@@ -183,12 +198,12 @@ def test_18_no_profile_is_supported_instead_of_collecting_only():
 
 def test_19_inactive_template_is_not_assigned():
     changed = copy.deepcopy(POLICY)
-    changed["catalog"]["challenge_short_car_to_active"]["status"] = "retired"
+    changed["catalog"]["challenge_car_to_transit"]["status"] = "retired"
     missions = by_category(mission_engine.build_bundle_missions(
-        profile(short_car_trip_count=3, car_primary_trip_count=5), changed,
+        profile(car_primary_trip_count=5, low_carbon_trip_count=6), changed,
         campaign_id="c1", user_id="u1", week_start=WEEK_START
     )[0])
-    assert missions["challenge"]["mission_template_id"] == "challenge_car_to_transit"
+    assert missions["challenge"]["mission_template_id"] == "challenge_active_distance"
 
 
 def test_20_get_state_returns_same_weekly_bundle():

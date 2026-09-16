@@ -19,6 +19,9 @@ GOLD_WEEKLY_CAMPAIGN_PATH = os.environ.get(
 )
 
 MODES = ["walk", "bike", "car", "bus", "rail"]
+LOW_CARBON_MODES = ["walk", "bike", "bus", "rail"]
+TRANSIT_MODES = ["bus", "rail"]
+SHORT_CAR_MAX_DISTANCE_M = 2000.0
 
 
 def compute_last_iso_week(reference_date=None):
@@ -43,8 +46,6 @@ def read_confirmed_trips(spark, campaign_id, week_start, week_end):
 
 
 def dedupe_latest_confirmation(df):
-    # Keep the latest persisted version of each Trip. The historical function name is
-    # retained for compatibility; this is no longer a user-confirmation selection rule.
     w = Window.partitionBy("trip_id").orderBy(F.col("updated_at").desc())
     ranked = df.withColumn("_rn", F.row_number().over(w))
     return ranked.filter(F.col("_rn") == 1).drop("_rn")
@@ -103,7 +104,7 @@ def explode_segments(df):
         F.explode("segments").alias("segment"),
     )
     return (
-        exploded.withColumn("effective_mode", F.col("segment.model_prediction"))
+        exploded.withColumn("effective_mode", F.lower(F.col("segment.model_prediction")))
         .withColumn("distance_m", F.col("segment.distance_m").cast("double"))
         .withColumn("segment_kg_co2e", F.col("segment.carbon_kg").cast("double"))
     )
@@ -128,20 +129,118 @@ def compute_mode_metrics(exploded_df):
     )
 
     joined = per_mode.join(totals, ["user_id", "campaign_id", "week"])
-
     return (
-        joined.withColumn(
-            "mode_trip_ratio", F.col("mode_trip_count") / F.col("total_trip_count")
-        )
-        .withColumn(
-            "mode_distance_ratio", F.col("distance_m") / F.col("total_distance_m")
-        )
+        joined.withColumn("mode_trip_ratio", F.col("mode_trip_count") / F.col("total_trip_count"))
+        .withColumn("mode_distance_ratio", F.col("distance_m") / F.col("total_distance_m"))
         .withColumn(
             "mode_carbon_ratio",
             F.when(
                 F.col("total_segment_kg_co2e") > 0,
                 F.col("kg_co2e") / F.col("total_segment_kg_co2e"),
             ).otherwise(F.lit(0.0)),
+        )
+    )
+
+
+def compute_trip_primary_facts(exploded_df):
+    """Create one row per non-empty Trip with a strict primary-mode contract.
+
+    A Trip is valid only when every segment has a supported mode and a positive distance,
+    and exactly one mode has the maximum summed segment distance. Invalid segments are not
+    silently discarded because doing so would make Mission and Weekly Summary disagree.
+    """
+    keys = ["trip_id", "user_id", "campaign_id", "week"]
+    invalid_segment = (
+        ~F.col("effective_mode").isin(MODES)
+        | F.col("distance_m").isNull()
+        | (F.col("distance_m") <= 0)
+    )
+
+    quality = exploded_df.groupBy(*keys).agg(
+        F.sum(F.when(invalid_segment, 1).otherwise(0)).alias("invalid_segment_count"),
+        F.sum(
+            F.when(~invalid_segment, F.col("distance_m")).otherwise(F.lit(0.0))
+        ).alias("trip_distance_m"),
+    )
+
+    valid_segments = exploded_df.filter(~invalid_segment)
+    per_trip_mode = valid_segments.groupBy(*keys, "effective_mode").agg(
+        F.sum("distance_m").alias("mode_distance_m")
+    )
+
+    w = Window.partitionBy("trip_id")
+    ranked = (
+        per_trip_mode
+        .withColumn("max_mode_distance_m", F.max("mode_distance_m").over(w))
+        .withColumn(
+            "is_primary_winner",
+            F.when(
+                F.abs(F.col("mode_distance_m") - F.col("max_mode_distance_m")) < F.lit(1e-9),
+                F.lit(1),
+            ).otherwise(F.lit(0)),
+        )
+    )
+    mode_summary = ranked.groupBy(*keys).agg(
+        F.sum("is_primary_winner").alias("primary_winner_count"),
+        F.first(
+            F.when(F.col("is_primary_winner") == 1, F.col("effective_mode")),
+            ignorenulls=True,
+        ).alias("primary_mode_candidate"),
+    )
+
+    result = (
+        quality.join(mode_summary, keys, "left")
+        .fillna(0, subset=["primary_winner_count"])
+        .withColumn(
+            "primary_mode_invalid_reason",
+            F.when(F.col("invalid_segment_count") > 0, F.lit("invalid_segment"))
+            .when(F.col("primary_winner_count") != 1, F.lit("primary_mode_tie")),
+        )
+        .withColumn(
+            "primary_mode",
+            F.when(
+                F.col("primary_mode_invalid_reason").isNull(),
+                F.col("primary_mode_candidate"),
+            ),
+        )
+        .withColumn("primary_mode_valid", F.col("primary_mode_invalid_reason").isNull())
+        .drop("primary_mode_candidate")
+    )
+    return result
+
+
+def aggregate_primary_facts(primary_trip_df):
+    return (
+        primary_trip_df.groupBy("user_id", "campaign_id", "week")
+        .agg(
+            F.sum(F.when(F.col("primary_mode_valid"), 1).otherwise(0)).cast("long").alias("valid_primary_trip_count"),
+            F.sum(F.when(~F.col("primary_mode_valid"), 1).otherwise(0)).cast("long").alias("invalid_primary_trip_count"),
+            F.sum(F.when(F.col("primary_mode_invalid_reason") == "primary_mode_tie", 1).otherwise(0)).cast("long").alias("ambiguous_primary_trip_count"),
+            F.sum(F.when(F.col("primary_mode_invalid_reason") == "invalid_segment", 1).otherwise(0)).cast("long").alias("invalid_segment_primary_trip_count"),
+            F.sum(F.when(F.col("primary_mode") == "car", 1).otherwise(0)).cast("long").alias("car_primary_trip_count"),
+            F.sum(F.when(F.col("primary_mode").isin(TRANSIT_MODES), 1).otherwise(0)).cast("long").alias("transit_primary_trip_count"),
+            F.sum(F.when(F.col("primary_mode").isin(LOW_CARBON_MODES), 1).otherwise(0)).cast("long").alias("low_carbon_trip_count"),
+            F.sum(
+                F.when(
+                    (F.col("primary_mode") == "car")
+                    & (F.col("trip_distance_m") <= F.lit(SHORT_CAR_MAX_DISTANCE_M)),
+                    1,
+                ).otherwise(0)
+            ).cast("long").alias("short_car_trip_count"),
+        )
+        .withColumn(
+            "car_primary_ratio",
+            F.when(
+                F.col("valid_primary_trip_count") > 0,
+                F.col("car_primary_trip_count") / F.col("valid_primary_trip_count"),
+            ),
+        )
+        .withColumn(
+            "short_car_share",
+            F.when(
+                F.col("car_primary_trip_count") > 0,
+                F.col("short_car_trip_count") / F.col("car_primary_trip_count"),
+            ),
         )
     )
 
@@ -179,6 +278,7 @@ def build_personal_weekly(ready_df):
     trip_ratio_pivot = _pivot_ratio(mode_metrics, "mode_trip_ratio", "mode_trip_ratio")
     distance_ratio_pivot = _pivot_ratio(mode_metrics, "mode_distance_ratio", "mode_distance_ratio")
     carbon_ratio_pivot = _pivot_ratio(mode_metrics, "mode_carbon_ratio", "mode_carbon_ratio")
+    primary_facts = aggregate_primary_facts(compute_trip_primary_facts(exploded))
 
     trip_agg = ready_df.groupBy("user_id", "campaign_id", "week").agg(
         F.countDistinct("trip_id").alias("trip_count"),
@@ -196,17 +296,25 @@ def build_personal_weekly(ready_df):
         .join(trip_ratio_pivot, ["user_id", "campaign_id", "week"])
         .join(distance_ratio_pivot, ["user_id", "campaign_id", "week"])
         .join(carbon_ratio_pivot, ["user_id", "campaign_id", "week"])
+        .join(primary_facts, ["user_id", "campaign_id", "week"], "left")
     )
 
 
 def build_campaign_weekly(personal_weekly_df):
     ratio_prefixes = ["mode_trip_ratio", "mode_distance_ratio", "mode_carbon_ratio"]
-
     agg_exprs = [
         F.countDistinct("user_id").alias("participant_count"),
         F.sum("trip_count").alias("total_trip_count"),
         F.sum("total_distance_m").alias("total_distance_m"),
         F.sum("total_kg_co2e").alias("total_kg_co2e"),
+        F.sum("valid_primary_trip_count").alias("valid_primary_trip_count"),
+        F.sum("invalid_primary_trip_count").alias("invalid_primary_trip_count"),
+        F.sum("ambiguous_primary_trip_count").alias("ambiguous_primary_trip_count"),
+        F.sum("invalid_segment_primary_trip_count").alias("invalid_segment_primary_trip_count"),
+        F.sum("car_primary_trip_count").alias("car_primary_trip_count"),
+        F.sum("transit_primary_trip_count").alias("transit_primary_trip_count"),
+        F.sum("low_carbon_trip_count").alias("low_carbon_trip_count"),
+        F.sum("short_car_trip_count").alias("short_car_trip_count"),
         F.first("carbon_policy_version").alias("carbon_policy_version"),
         F.first("factor_version").alias("factor_version"),
     ]
@@ -225,6 +333,7 @@ def write_gold(df, path):
         df.write.format("delta")
         .mode("overwrite")
         .option("partitionOverwriteMode", "dynamic")
+        .option("mergeSchema", "true")
         .partitionBy("campaign_id", "week")
         .save(path)
     )

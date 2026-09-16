@@ -1,46 +1,54 @@
-policy_version: mission-policy-v3
+policy_version: mission-policy-v3.2
 
 week:
   start_day: monday
   interval: "[week_start, week_end)"
 
 principles:
-  # 사용자가 미션을 고르는 구조가 아니라 서버가 카테고리별 미션을 함께 부여한다.
   system_assigns_missions: true
   one_mission_per_category_in_mvp: true
   user_selection_required: false
-  completion_is_positive_preference_signal: true
-  noncompletion_is_not_negative_preference_signal: true
-  category_preference_is_separate_from_difficulty: true
-  equalize_difficulty_across_categories: true
+  completion_is_positive_affinity_signal: true
+  noncompletion_is_not_negative_affinity_signal: true
+  category_affinity_is_not_causal_preference: true
+  category_affinity_is_separate_from_difficulty: true
   first_week_without_profile_is_supported: true
+  cold_start_is_onboarding_not_learning: true
+  freeze_completion_rule_after_issue: true
+  one_trip_may_progress_multiple_distinct_metrics: true
+  avoid_duplicate_visible_goals_across_categories: true
 
 categories:
   challenge:
     label: "도전형"
-    description: "목표를 달성하는 재미와 도전감을 강조하는 제시 방식"
+    description: "평소보다 한 단계 더 적극적인 저탄소 이동을 시도하는 유형"
     sort_order: 10
   habit:
     label: "꾸준형"
-    description: "반복 가능한 습관과 지속성을 강조하는 제시 방식"
+    description: "한 번 많이 하기보다 여러 날 반복해 저탄소 이동 습관을 만드는 유형"
     sort_order: 20
   easy_win:
     label: "가벼운 실천형"
-    description: "부담이 작고 바로 실행 가능한 성취를 강조하는 제시 방식"
+    description: "짧고 부담이 작은 이동부터 성공 경험을 만드는 유형"
     sort_order: 30
   explore:
     label: "새로운 시도형"
-    description: "평소와 다른 이동 방식이나 새로운 실천을 강조하는 제시 방식"
+    description: "한 주에 한 가지 저탄소 이동 방식을 직접 경험하는 유형"
     sort_order: 40
 
 preference_learning:
   method: positive_completion_dirichlet
+  semantic_name: category_affinity
+  enabled_for_personalization: false
   prior_per_category: 1.0
   completed_comparable_mission_adds: 1.0
   noncompletion_adds: 0.0
   partial_progress_adds: 0.0
-  only_preference_comparable_missions_update: true
-  note: "완료는 해당 성향의 긍정 신호로만 사용한다. 미완료 원인은 난이도·기회 부족·무관심을 구분하기 어려우므로 선호 감점으로 해석하지 않는다."
+  only_affinity_comparable_missions_update: true
+  backward_compatibility_alias: preference_comparable
+  use_as_causal_preference: false
+  activation_gate: empirical_template_calibration_required
+  note: "동시에 네 미션을 부여하고 category별 metric이 다르므로 완료만으로 심리적 선호를 인과 추정하지 않는다. 현재 값은 분석용 affinity 신호로 저장하되 실제 배정 우선순위에는 사용하지 않는다. cold-start starter는 온보딩/행동 수집용이므로 affinity evidence에서 제외한다. 충분한 운영 데이터로 template별 난이도를 보정한 뒤 별도 policy version에서 personalization 사용 여부를 결정한다."
 
 profile:
   short_car_max_distance_km: 2.0
@@ -48,26 +56,37 @@ profile:
   transit_modes: [bus, rail]
   primary_mode_rule: unique_max_segment_distance
   ambiguous_primary_mode_status: exclude_trip_and_record_reason
+  invalid_segment_primary_mode_status: exclude_trip_and_record_reason
   zero_car_short_share: null
 
 difficulty:
-  # 같은 주에 비교되는 카테고리 미션은 가능한 한 동일한 난이도 단위를 사용한다.
-  common_target_across_categories: true
+  common_target_across_count_based_categories: true
   first_target_count: 1
   completed_all_comparable_increment: 1
   completed_none_comparable_decrement: 1
   partial_completion_strategy: hold
   minimum_target_count: 1
+  maximum_target_count: 5
   opportunity_ceiling: true
   comparable_when_target_matches_common_target: true
-  note: "카테고리 성향과 난이도를 섞지 않는다. 도전형이라고 객관적 난이도를 더 높이지 않는다."
+  cold_start_updates_difficulty: false
+  note: "공통 target은 숫자 자체를 공유하지만 metric이 다른 category 간 객관적 난이도가 같다고 가정하지 않는다. cold-start starter와 fixed target은 다음 주 adaptive target 비교에서 제외한다. affinity personalization은 calibration 전 비활성화한다."
+
+progress_policy:
+  canonical_trip_status: ready
+  dedupe_key: trip_id
+  week_boundary: assignment_week
+  late_trip_update_strategy: recompute_assignment_idempotently
+  allow_multi_mission_progress: true
+  note: "한 Trip이 서로 다른 metric의 미션을 동시에 진척시키는 것은 허용한다. 동일 assignment에서는 trip_id를 중복 집계하지 않는다."
 
 catalog_health:
   enabled: true
-  comparison_scope: same_category_and_difficulty_band
+  comparison_scope: same_template_family_and_difficulty_band
   metrics:
     - assigned_user_count
-    - comparable_assignment_count
+    - affinity_comparable_assignment_count
+    - difficulty_comparable_assignment_count
     - completed_user_count
     - completion_rate
     - average_progress_rate
@@ -76,157 +95,225 @@ catalog_health:
   consecutive_underperforming_weeks: null
   underperformance_margin: null
   action_when_threshold_met: review_candidate
-  note: "표본 기준과 교체 임계값은 팀 합의 전 임의로 넣지 않는다. 성과가 낮은 미션은 자동 삭제하지 않고 검토 후보로 올린 뒤 새 템플릿으로 교체한다."
+  note: "실서비스 데이터가 쌓이기 전 최소 표본·교체 임계값을 임의로 정하지 않는다. 낮은 성과는 자동 삭제가 아니라 검토 후보로 올린다."
 
 catalog:
-  challenge_short_car_to_active:
-    status: active
-    category_id: challenge
-    family: short_car_to_active
-    difficulty_band: standard
-    title: "가까운 자동차 이동을 걷기·자전거로 바꿔 보기"
-    accepted_modes: [walk, bike]
-    max_distance_km: 2.0
-    eligibility:
-      field: short_car_trip_count
-      gt: 0
-    opportunity_field: short_car_trip_count
-    priority: 10
-
   challenge_car_to_transit:
     status: active
     category_id: challenge
-    family: car_to_transit
+    family: transit_challenge
     difficulty_band: standard
-    title: "자동차 이동을 대중교통으로 바꿔 보기"
-    accepted_modes: [bus, rail]
+    title: "3km 이상 대중교통 이동 {target_count}번 도전"
+    description: "이번 주에는 3km 이상 버스·철도 이동을 {target_count}번 기록해 보세요. 자동차 이용이 잦은 사용자에게 우선 제안합니다."
+    progress_unit: "회"
     eligibility:
       field: car_primary_trip_count
       gt: 0
     opportunity_field: car_primary_trip_count
-    priority: 20
+    priority: 10
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [bus, rail]
+      min_trip_distance_km: 3.0
 
-  challenge_starter:
+  challenge_active_distance:
     status: active
     category_id: challenge
-    family: low_carbon_action
+    family: active_distance_challenge
     difficulty_band: standard
-    title: "이번 주 친환경 이동 목표 달성하기"
-    accepted_modes: [walk, bike, bus, rail]
-    cold_start: true
-    priority: 100
-
-  habit_low_carbon_maintain:
-    status: active
-    category_id: habit
-    family: low_carbon_maintain
-    difficulty_band: standard
-    title: "친환경 이동 습관 꾸준히 이어가기"
-    accepted_modes: [walk, bike, bus, rail]
+    title: "2km 이상 걷기·자전거 이동 {target_count}번 도전"
+    description: "가벼운 산책보다 한 단계 더 길게, 2km 이상 걷기 또는 자전거 이동을 {target_count}번 기록해 보세요."
+    progress_unit: "회"
     eligibility:
       field: low_carbon_trip_count
       gt: 0
     opportunity_field: low_carbon_trip_count
-    priority: 10
+    priority: 20
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [walk, bike]
+      min_trip_distance_km: 2.0
+
+  challenge_starter:
+    status: active
+    category_id: challenge
+    family: low_carbon_challenge
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
+    title: "2km 이상 친환경 이동 {target_count}번 도전"
+    description: "걷기·자전거·버스·철도 중 편한 방법으로 2km 이상 친환경 이동을 {target_count}번 기록해 보세요."
+    progress_unit: "회"
+    cold_start: true
+    priority: 100
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [walk, bike, bus, rail]
+      min_trip_distance_km: 2.0
 
   habit_transit_repeat:
     status: active
     category_id: habit
-    family: transit_habit
+    family: transit_days
     difficulty_band: standard
-    title: "대중교통 이용 습관 이어가기"
-    accepted_modes: [bus, rail]
+    title: "서로 다른 {target_count}일에 대중교통 이용하기"
+    description: "버스 또는 철도를 한 번에 몰아서 타기보다 여러 날에 나누어 이용해 보세요."
+    progress_unit: "일"
     eligibility:
       field: transit_primary_trip_count
       gt: 0
-    opportunity_field: transit_primary_trip_count
+    priority: 10
+    completion_rule:
+      metric: distinct_day_count
+      accepted_primary_modes: [bus, rail]
+      date_field: ended_at
+
+  habit_low_carbon_maintain:
+    status: active
+    category_id: habit
+    family: low_carbon_days
+    difficulty_band: standard
+    title: "서로 다른 {target_count}일에 친환경 이동하기"
+    description: "한날에 몰아서 하기보다 서로 다른 날에 걷기·자전거·버스·철도 이동을 기록해 보세요."
+    progress_unit: "일"
+    eligibility:
+      field: low_carbon_trip_count
+      gt: 0
     priority: 20
+    completion_rule:
+      metric: distinct_day_count
+      accepted_primary_modes: [walk, bike, bus, rail]
+      date_field: ended_at
 
   habit_starter:
     status: active
     category_id: habit
-    family: low_carbon_habit
-    difficulty_band: standard
-    title: "이번 주 친환경 이동 습관 만들기"
-    accepted_modes: [walk, bike, bus, rail]
+    family: low_carbon_days
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
+    title: "서로 다른 {target_count}일에 친환경 이동 시작하기"
+    description: "이번 주에는 서로 다른 날에 친환경 이동을 한 번씩 기록해 보세요."
+    progress_unit: "일"
     cold_start: true
     priority: 100
+    completion_rule:
+      metric: distinct_day_count
+      accepted_primary_modes: [walk, bike, bus, rail]
+      date_field: ended_at
 
   easy_short_active:
     status: active
     category_id: easy_win
-    family: short_car_to_active
+    family: short_active_easy
     difficulty_band: standard
-    title: "가까운 거리 가볍게 걷기·자전거로 이동하기"
-    accepted_modes: [walk, bike]
-    max_distance_km: 2.0
+    title: "2km 이하 걷기·자전거 {target_count}번"
+    description: "짧은 이동부터 가볍게 시작합니다. 2km 이하 걷기 또는 자전거 이동을 {target_count}번 기록해 보세요."
+    progress_unit: "회"
     eligibility:
       field: short_car_trip_count
       gt: 0
     opportunity_field: short_car_trip_count
     priority: 10
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [walk, bike]
+      max_trip_distance_km: 2.0
 
-  easy_transit:
+  easy_low_carbon_once:
     status: active
     category_id: easy_win
-    family: car_to_transit
-    difficulty_band: standard
-    title: "자동차 대신 대중교통 이용하기"
-    accepted_modes: [bus, rail]
+    family: low_carbon_easy
+    difficulty_band: easy
+    affinity_comparable: false
+    difficulty_adaptive: false
+    fixed_target_count: 1
+    title: "가장 편한 친환경 이동 1번"
+    description: "걷기·자전거·버스·철도 중 오늘 가장 편한 방법으로 친환경 이동을 한 번 기록해 보세요."
+    progress_unit: "회"
     eligibility:
-      field: car_primary_trip_count
+      field: valid_trip_count
       gt: 0
-    opportunity_field: car_primary_trip_count
     priority: 20
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [walk, bike, bus, rail]
 
   easy_starter:
     status: active
     category_id: easy_win
-    family: low_carbon_action
-    difficulty_band: standard
-    title: "부담 없이 친환경 이동 실천하기"
-    accepted_modes: [walk, bike, bus, rail]
+    family: low_carbon_easy
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
+    fixed_target_count: 1
+    title: "가장 편한 친환경 이동 1번"
+    description: "걷기·자전거·버스·철도 중 가장 편한 방법으로 한 번만 실천해 보세요."
+    progress_unit: "회"
     cold_start: true
     priority: 100
+    completion_rule:
+      metric: qualifying_trip_count
+      accepted_primary_modes: [walk, bike, bus, rail]
 
   explore_active:
     status: active
     category_id: explore
-    family: explore_active
-    difficulty_band: standard
-    title: "걷기·자전거 이동을 새롭게 시도하기"
-    accepted_modes: [walk, bike]
+    family: active_mode_explore
+    difficulty_band: exploration
+    affinity_comparable: false
+    difficulty_adaptive: false
+    fixed_target_count: 1
+    title: "걷기·자전거 중 한 가지 방식으로 이동해 보기"
+    description: "이번 주에는 걷기나 자전거 중 한 가지 이동 방식을 실제로 기록해 보세요."
+    progress_unit: "종류"
     eligibility:
       field: short_car_trip_count
       gt: 0
-    opportunity_field: short_car_trip_count
     priority: 10
+    completion_rule:
+      metric: distinct_mode_count
+      accepted_primary_modes: [walk, bike]
 
   explore_transit:
     status: active
     category_id: explore
-    family: explore_transit
-    difficulty_band: standard
-    title: "대중교통 이동을 새롭게 시도하기"
-    accepted_modes: [bus, rail]
+    family: transit_mode_explore
+    difficulty_band: exploration
+    affinity_comparable: false
+    difficulty_adaptive: false
+    fixed_target_count: 1
+    title: "버스·철도 중 한 가지 방식으로 이동해 보기"
+    description: "이번 주에는 버스나 철도 중 한 가지 대중교통 방식을 실제로 기록해 보세요."
+    progress_unit: "종류"
     eligibility:
       field: car_primary_trip_count
       gt: 0
-    opportunity_field: car_primary_trip_count
     priority: 20
+    completion_rule:
+      metric: distinct_mode_count
+      accepted_primary_modes: [bus, rail]
 
   explore_starter:
     status: active
     category_id: explore
-    family: explore_low_carbon
-    difficulty_band: standard
-    title: "평소와 다른 친환경 이동 한 번 시도하기"
-    accepted_modes: [walk, bike, bus, rail]
+    family: low_carbon_mode_explore
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
+    fixed_target_count: 1
+    title: "친환경 이동수단 한 가지 직접 이용해 보기"
+    description: "걷기·자전거·버스·철도 중 한 가지를 골라 실제 이동으로 기록해 보세요."
+    progress_unit: "종류"
     cold_start: true
     priority: 100
+    completion_rule:
+      metric: distinct_mode_count
+      accepted_primary_modes: [walk, bike, bus, rail]
 
 assignment:
   weekly_bundle_unique_key: campaign_id + user_id + week_start
   mission_assignment_unique_key: campaign_id + user_id + week_start + category_id
   freeze_bundle_after_issue: true
+  freeze_completion_rule_after_issue: true
   replace_only_next_week: true

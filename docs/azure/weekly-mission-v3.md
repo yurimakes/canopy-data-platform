@@ -1,181 +1,330 @@
 # 주간 미션 v3 배포 계약
 
 작성일: 2026-09-16
-정책 버전: `mission-policy-v3`
+정책 버전: `mission-policy-v3.2`
 프로필 버전: `mission-profile-v3`
+데이터 계약: `shared/schemas/mission/mission_data_contract_v1.yaml`
 
-## 실행 흐름
+## 최종 실행 흐름
 
 ```text
 canonical ready Trip
+  → Databricks build_weekly_summary.py
+  → ADLS Gold weekly_summary_user
   → Databricks build_mission_profile.py
-  → ADLS Gold mission_profile 이력
-  → Cosmos mission-profiles 최신 스냅샷
+      + ADLS Gold mission_response_weekly 우선
+      + Cosmos mission bundle history는 명시적 전환기 fallback
+  → ADLS Gold mission_profile history
+  → Cosmos mission-profiles latest projection
   → mission_policy.yaml + mission_engine.py
   → Azure Functions mission_assignment_api.py
-  → Cosmos mission-assignments의 mission_bundle
+  → Cosmos mission-assignments current mission_bundle
   → GET /api/users/me/missions?week=YYYY-MM-DD
+  → Mission Progress
+  → ADLS Gold mission_response_weekly
+  → 다음 주 Mission Profile
 ```
 
-클라이언트 GET은 lazy/idempotent 방식이다. 해당 주의 `mission_bundle`이 없으면 API가 최신 profile과 정책을 읽어 카테고리별 미션을 함께 생성하고 저장한다. 이미 존재하면 같은 bundle을 그대로 반환한다.
+Behavior Change는 이 흐름의 입력도 출력도 아니다.
 
-사용자가 미션을 고르는 단계는 없으며 `POST /api/users/me/missions/select`는 사용하지 않는다.
+## Cosmos와 ADLS 역할
 
-## 필요한 Azure 설정
+Cosmos를 데이터 파이프라인에서 무조건 배제하지 않는다.
 
-Function App 설정:
+Mission에서는 `mission_bundle`이 API 호출 시 Cosmos에서 최초 생성되는 운영 상태의 원본이다. 따라서 현재 주 미션 조회, 동시 요청 중복 방지, 저지연 진행 상태 조회에는 Cosmos가 적절하다.
 
-- `CANOPY_COSMOS_ENDPOINT` 또는 기존 `COSMOS_ENDPOINT`
-- `CANOPY_COSMOS_DATABASE` 또는 기존 `COSMOS_DATABASE` (기본값 `canopy-db`)
-- `CANOPY_COSMOS_MISSION_PROFILE_CONTAINER` (기본값 `mission-profiles`)
-- `CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER` (기본값 `mission-assignments`)
-- `CANOPY_CAMPAIGN_ID`
-- `CANOPY_CAMPAIGN_TIMEZONE` (현재 MVP 기본값 `Asia/Seoul`)
-- 운영 환경에서는 `CANOPY_ALLOW_DEV_USER_HEADER=false`
+반면 다음 주 학습과 장기 분석은 과거 상태가 변하지 않아야 하고 재현 가능해야 한다. 따라서 주 마감 후에는 `mission_response_weekly`를 ADLS Gold에 고정하고 Mission Profile이 이를 우선 읽는다.
 
-Databricks 추가 설정:
+전환기 fallback 정책:
 
-- `CANOPY_CONFIRMED_TRIPS_PATH`
-- `CANOPY_GOLD_MISSION_PROFILE_PATH`
-- `CANOPY_GOLD_WEEKLY_USER_PATH`
+- `CANOPY_GOLD_MISSION_RESPONSE_PATH`를 정상 조회하면 ADLS Gold를 사용한다.
+- Response Gold가 아직 준비되지 않았고 `CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK=true`인 경우에만 Cosmos bundle history를 사용한다.
+- fallback 기본값은 `false`다.
+- 실제 사용한 source는 profile의 `mission_history_source`에 기록한다.
+
+즉 Cosmos 사용 자체가 문제가 아니라 `현재 운영 상태`와 `마감된 분석 이력`의 역할을 구분하는 것이 핵심이다.
+
+## Weekly Gold 공통 행동 fact
+
+Mission Profile은 canonical Trip을 다시 집계하지 않는다. `build_weekly_summary.py`가 대표 이동수단 관련 사실을 한 번 계산해 Gold에 저장한다.
+
+필수 컬럼:
+
+- `valid_primary_trip_count`
+- `invalid_primary_trip_count`
+- `ambiguous_primary_trip_count`
+- `invalid_segment_primary_trip_count`
+- `car_primary_trip_count`
+- `transit_primary_trip_count`
+- `low_carbon_trip_count`
+- `short_car_trip_count`
+- `car_primary_ratio`
+- `short_car_share`
+
+대표 이동수단 규칙:
+
+1. Trip의 segment를 mode별로 묶는다.
+2. mode별 segment distance 합을 계산한다.
+3. 유일한 최대 mode만 Trip primary mode로 인정한다.
+4. 최대값 동률은 `ambiguous_primary_trip_count`로 기록하고 valid 분모에서 제외한다.
+5. 지원하지 않는 mode, distance 누락, distance <= 0 segment가 하나라도 있으면 그 Trip의 primary mode를 무효 처리하고 `invalid_segment_primary_trip_count`로 기록한다.
+6. `invalid_primary_trip_count = ambiguous_primary_trip_count + invalid_segment_primary_trip_count`를 만족해야 한다.
+7. `short_car_trip_count`는 valid car-primary Trip 중 전체 Trip distance가 2km 이하인 건수다.
+
+## Mission Profile
+
+입력:
+
+```text
+직전 완료 주 Weekly User Gold
++ 과거 Mission Response history
+```
+
+출력:
+
+- ADLS Gold `mission_profile` 이력
+- Cosmos `mission-profiles` latest serving projection
+
+핵심 값:
+
+- car / short-car / transit / low-carbon 행동 fact
+- 탄소 변화율
+- category affinity (`category_preferences` 필드명은 하위 호환 때문에 유지)
+- difficulty state
+- family capability
+- source/effective week
+- mission history source
+- profile hash
+
+`category_preferences`는 심리적 선호를 인과 추정하는 값이 아니다. 네 미션을 동시에 부여하고 metric도 다르므로 현재는 `이 유형의 미션과 잘 맞았던 정도`를 나타내는 descriptive affinity로만 저장한다.
+
+`mission-policy-v3.2`에서는 affinity를 실제 배정 우선순위에 사용하지 않는다.
+
+```text
+preference_learning.enabled_for_personalization = false
+activation_gate = empirical_template_calibration_required
+```
+
+실제 사용자 데이터가 충분히 쌓여 template별 기본 난이도 차이를 보정한 뒤 별도 policy version에서 개인화 사용 여부를 결정한다.
+
+## 주간 미션 카테고리
+
+사용자는 미션을 직접 고르지 않는다. 서버가 매주 네 카테고리에서 하나씩 총 4개를 부여한다.
+
+- `challenge`: 평소보다 한 단계 더 적극적인 이동
+- `habit`: 서로 다른 날짜에 반복
+- `easy_win`: 짧고 부담이 작은 성공 경험
+- `explore`: 새로운 저탄소 이동수단 한 가지 경험
+
+현재 대표 template:
+
+### Challenge
+
+- 자동차 이력이 있으면: `3km 이상 대중교통 이동 {target_count}번 도전`
+- 저탄소 이동 이력이 있으면: `2km 이상 걷기·자전거 이동 {target_count}번 도전`
+- cold start: `2km 이상 친환경 이동 {target_count}번 도전`
+
+### Habit
+
+- 대중교통 이력이 있으면: `서로 다른 {target_count}일에 대중교통 이용하기`
+- 그 외 저탄소 이력이 있으면: `서로 다른 {target_count}일에 친환경 이동하기`
+- cold start: `서로 다른 {target_count}일에 친환경 이동 시작하기`
+
+### Easy Win
+
+- short-car 기회가 있으면: `2km 이하 걷기·자전거 {target_count}번`
+- 그 외: `가장 편한 친환경 이동 1번`
+- cold start: `가장 편한 친환경 이동 1번`
+
+### Explore
+
+- short-car 기회가 있으면: `걷기·자전거 중 한 가지 방식으로 이동해 보기`
+- 자동차 이력이 있으면: `버스·철도 중 한 가지 방식으로 이동해 보기`
+- cold start: `친환경 이동수단 한 가지 직접 이용해 보기`
+
+카테고리 이름만 다르고 실제 행동이 같은 미션이 동시에 노출되지 않도록 metric과 거리 조건을 분리한다.
+
+## 완료 규칙 snapshot
+
+이미 발급한 미션은 이후 policy가 바뀌어도 판정 기준이 바뀌면 안 된다. 따라서 bundle 발급 순간 각 assignment 안에 `completion_rule`을 복사해 고정한다.
+
+예:
+
+```json
+{
+  "assignment_id": "assign_...",
+  "mission_template_id": "easy_short_active",
+  "mission_name": "2km 이하 걷기·자전거 2번",
+  "target_count": 2,
+  "completion_rule": {
+    "metric": "qualifying_trip_count",
+    "accepted_primary_modes": ["walk", "bike"],
+    "max_trip_distance_km": 2.0,
+    "target_count": 2,
+    "dedupe_key": "trip_id",
+    "time_window": "assignment_week",
+    "source": "canonical_ready_trip"
+  }
+}
+```
+
+Mission Progress는 최신 `mission_policy.yaml`을 다시 해석하지 않고 발급된 assignment의 snapshot만 사용한다.
+
+## 지원 progress metric
+
+### `qualifying_trip_count`
+조건에 맞는 distinct Trip 수.
+
+사용 예:
+- 3km 이상 대중교통
+- 2km 이상 걷기/자전거
+- 2km 이하 걷기/자전거
+
+### `distinct_day_count`
+조건에 맞는 Trip이 존재한 서로 다른 날짜 수.
+
+사용 예:
+- 서로 다른 N일에 친환경 이동
+- 서로 다른 N일에 대중교통 이용
+
+### `distinct_mode_count`
+조건에 맞는 서로 다른 primary mode 종류 수.
+
+사용 예:
+- 걷기/자전거 중 한 방식 경험
+- 버스/철도 중 한 방식 경험
+
+거리 조건은 `min_trip_distance_km`와 `max_trip_distance_km`를 snapshot에서 읽는다.
+
+## affinity와 difficulty comparability 분리
+
+기존 `preference_comparable` 하나가 affinity 학습과 난이도 조정 두 역할을 동시에 하던 문제를 제거했다.
+
+- `affinity_comparable`: descriptive affinity evidence에 포함할 수 있는지
+- `difficulty_comparable`: 다음 주 adaptive common target 조정에 포함할 수 있는지
+- `preference_comparable`: 기존 bundle 하위 호환을 위해 `affinity_comparable` alias로만 유지
+
+fixed target 또는 기회 ceiling 때문에 common target과 다른 assignment는 다음 주 difficulty 조정에서 제외할 수 있다.
+
+## adaptive 난이도
+
+다음 주 adaptive mission의 `common_target_count`는 다음 규칙을 사용한다.
+
+```text
+첫 주/이력 없음               → 1
+직전 difficulty-comparable 전부 완료 → +1
+일부 완료                     → 유지
+전부 미완료                   → -1
+최소                           → 1
+최대                           → 5
+```
+
+Explore 및 일부 Easy Win처럼 metric 특성상 고정 목표가 적절한 미션은 `fixed_target_count=1`을 사용하고 adaptive difficulty 비교에서 제외한다.
+
+## 중복 progress 원칙
+
+- 동일 assignment 안에서는 같은 `trip_id`를 중복 집계하지 않는다.
+- 같은 Trip이 서로 다른 metric의 여러 assignment를 동시에 진척시키는 것은 허용한다.
+- late Trip update가 들어오면 assignment를 idempotent하게 재계산할 수 있어야 한다.
+- 완료 후 같은 Trip이 재처리되어도 completion event가 중복 생성되면 안 된다.
 
 ## Cosmos 컨테이너
 
-현재 계약에서는 다음 두 컨테이너를 사용한다.
+현재 계약:
 
 1. `mission-profiles`
 2. `mission-assignments`
 
-두 컨테이너 모두 partition key는 `/pk`이며 다음 규칙을 사용한다.
+partition key:
 
 ```text
+/pk
 pk = campaign_id + ':' + user_id
 ```
 
-최신 mission profile ID:
+latest profile id:
 
 ```text
 mission-profile-latest:{campaign_id}:{user_id}
 ```
 
-주간 mission bundle ID는 다음 값으로 결정적 UUIDv5를 만든다.
+bundle id seed:
 
 ```text
 campaign_id + user_id + week_start
 ```
 
-bundle 안의 각 카테고리 assignment ID는 다음 키로 만든다.
+assignment id seed:
 
 ```text
 campaign_id + user_id + week_start + category_id
 ```
 
-반복 또는 동시 요청이 들어와도 같은 사용자·캠페인·주차에는 하나의 bundle로 수렴하도록 `create_item`을 사용하고, 이미 존재하는 경우 기존 문서를 읽는다. 같은 주의 미션을 profile 재계산으로 자동 덮어쓰지 않는다.
+같은 사용자·캠페인·주차의 반복 또는 동시 GET은 하나의 bundle로 수렴해야 한다.
 
 ## 인증
 
-운영 API는 Azure Easy Auth의 `x-ms-client-principal` 헤더에서 인증 사용자를 읽는다.
+운영 API는 Azure Easy Auth의 `x-ms-client-principal`에서 user id를 읽는다.
 
-`X-Canopy-User-Id` 직접 입력은 `CANOPY_ALLOW_DEV_USER_HEADER=true`일 때만 허용하며 로컬/통합 테스트 용도다.
+`X-Canopy-User-Id`는 `CANOPY_ALLOW_DEV_USER_HEADER=true`일 때만 통합 테스트용으로 허용한다.
 
-Azure Functions 자체 auth level은 `FUNCTION`을 사용하고, 사용자별 소유권은 Easy Auth principal claim으로 판단한다.
+HTTP trigger auth level은 `FUNCTION`이다. 직접 curl/Postman 검증 시 Function key가 필요하며 query parameter `code=<FUNCTION_KEY>` 또는 `x-functions-key` header를 사용한다.
 
-## 주간 경계
+Azure 자원 접근은 `DefaultAzureCredential` + Managed Identity/RBAC을 유지한다.
 
-캠페인 로컬 시간 기준으로 월요일 00:00 이상, 다음 월요일 00:00 미만을 한 주로 본다.
+## 필요한 환경 설정
 
-API의 `week=YYYY-MM-DD`는 해당 주의 월요일로 정규화하고, Databricks는 이 로컬 경계를 UTC로 변환한 뒤 canonical Trip을 필터링한다.
+Function App:
 
-`Asia/Seoul` 예시:
+- `CANOPY_COSMOS_ENDPOINT` 또는 `COSMOS_ENDPOINT`
+- `CANOPY_COSMOS_DATABASE` 또는 `COSMOS_DATABASE`
+- `CANOPY_COSMOS_MISSION_PROFILE_CONTAINER`
+- `CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER`
+- `CANOPY_CAMPAIGN_ID`
+- `CANOPY_CAMPAIGN_TIMEZONE`
+- `CANOPY_ALLOW_DEV_USER_HEADER`
 
-```text
-2026-09-07 00:00 KST → 2026-09-06 15:00 UTC
-2026-09-14 00:00 KST → 2026-09-13 15:00 UTC
-```
+Databricks:
 
-## 데이터가 전혀 없는 신규 사용자
+- `CANOPY_GOLD_WEEKLY_USER_PATH`
+- `CANOPY_GOLD_MISSION_PROFILE_PATH`
+- `CANOPY_GOLD_MISSION_RESPONSE_PATH`
+- `CANOPY_COSMOS_ENDPOINT`
+- `CANOPY_COSMOS_DATABASE`
+- `CANOPY_COSMOS_MISSION_PROFILE_CONTAINER`
+- `CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER`
+- `CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK` (기본 `false`)
+- `CANOPY_CAMPAIGN_TIMEZONE`
 
-신규 사용자는 mission profile 문서가 없어도 미션을 받을 수 있다.
+## 스키마
 
-API가 `cold_start`로 판단해 각 카테고리 starter 미션을 1개씩 총 4개 부여한다.
+- `shared/schemas/mission/mission_profile.schema.json`
+- `shared/schemas/mission/mission_bundle.schema.json`
+- `shared/schemas/mission/mission_progress.schema.json`
+- `shared/schemas/mission/mission_response_weekly.schema.json`
+- `shared/schemas/mission/mission_data_contract_v1.yaml`
+- `shared/schemas/baseline/weekly_user_gold.schema.json`
 
-첫 주에는:
-
-- `common_target_count=1`
-- 모든 카테고리 동일 난이도 band
-- 사용자 선택 단계 없음
-- 여러 미션 동시 수행 가능
-
-완전 신규 사용자의 profile 행을 억지로 0 값으로 만들 필요는 없다. 최초 bundle 발급 후 수행 결과가 쌓이면 다음 주 profile 생성에서 history가 반영된다.
-
-## 대표 이동수단 규칙
-
-현재 canonical Trip에는 영구적인 Trip-level primary mode가 없으므로 mission profile은 세그먼트별 `model_prediction`과 `distance_m`를 사용한다.
-
-각 Trip에서 이동수단별 세그먼트 거리 합을 계산하고, 합이 유일하게 가장 큰 mode를 대표 이동수단으로 사용한다.
-
-정확한 동률이나 유효하지 않은 거리값은 임의로 결정하지 않고 valid 분모에서 제외하며 `invalid_trip_reasons`에 사유를 남긴다.
-
-향후 canonical Trip 계약에 primary mode가 추가되면 version을 올려 이 파생 규칙을 교체한다.
-
-## 성향과 난이도 데이터 계약
-
-성향은 사용자의 선택이 아니라 **실제 완료 결과**에서 계산한다.
-
-- 완료 + `preference_comparable=true` → 해당 카테고리 positive evidence +1
-- 미완료 → 감점 없음
-- 난이도 불균형으로 `preference_comparable=false` → 성향 계산에서 제외
-
-난이도는 사용자별 공통 목표량을 사용한다.
-
-```text
-이전 주 비교가능 미션 전체 완료 → +1
-일부 완료 → 유지
-모두 미완료 → -1
-최소 1
-```
-
-특정 미션의 행동 기회가 적어 target이 공통 목표보다 낮아지면 성향 비교 대상에서 제외한다.
-
-## 미션 템플릿 건강도
-
-지속적으로 수행되지 않는 템플릿은 사용자 성향과 별도로 분석한다.
-
-집계 항목:
-
-- 부여 사용자 수
-- 비교가능 부여 수
-- 완료 사용자 수
-- 완료율
-- 평균 진행률
-
-비교는 같은 카테고리와 같은 난이도 band 안에서 수행한다.
-
-낮은 성과가 반복되면 `review_candidate`로 올려 문구, 행동 적합 조건, 완료 조건을 검토한다. 자동 삭제하지 않고 새 템플릿이 필요하면 policy version을 증가시키며 과거 bundle은 기존 버전을 유지한다.
-
-최소 표본 수·연속 주차·교체 임계값은 팀 합의 전이므로 현재 코드에 임의 숫자를 넣지 않는다.
-
-## WBS 완료 전 검증 게이트
+## WBS 완료 게이트
 
 코드 게이트:
 
-- mission-policy-v3 테스트 통과
-- mission-profile-v3 집계 테스트 통과
-- Function App 및 미션 모듈 컴파일 통과
-- 사용자 선택 API가 존재하지 않음
-- 신규 사용자 GET에서 4카테고리 bundle 생성
-- 동일 주 반복 GET이 동일 bundle 반환
-- 완료된 비교가능 미션만 성향 점수에 반영
+- Mission policy + service contract tests PASS
+- Mission Profile tests PASS
+- Function/Databricks modules compile PASS
+- schema JSON/YAML parse PASS
 
-Azure 통합 게이트:
+실환경 게이트:
 
-- Cosmos 두 컨테이너가 `/pk` partition key로 존재
-- Function Managed Identity가 필요한 Cosmos 데이터 권한 보유
-- Databricks job이 Gold profile과 Cosmos 최신 profile 저장
-- 신규 사용자 GET으로 4개 미션 bundle 생성 확인
-- 반복 GET으로 같은 `bundle_id` 반환 확인
-- 실제 Trip 진행률/완료 판정이 bundle 각 mission에 연결
-- 다음 주 profile에서 완료 카테고리 positive evidence 반영 확인
-- iPhone 미션 화면이 같은 bundle을 조회
+- 실제 Weekly Gold primary behavior fact 검산
+- Profile ADLS write + Cosmos latest projection read-back
+- cold start GET 4개 starter bundle
+- warm start template 적합성
+- same-week 및 concurrent GET idempotency
+- completion_rule freeze
+- Progress가 snapshot contract만 사용
+- mission_response_weekly Gold 생성
+- 다음 주 Profile이 Response Gold를 우선 읽음
+- affinity/difficulty가 각 comparability flag에 맞게 업데이트
 
-Azure 통합 게이트 PASS 증거가 없으면 WBS API/profile 작업을 최종 완료로 표시하지 않는다.
+실환경 게이트가 끝나기 전까지 Profile/API WBS를 최종 완료로 표시하지 않는다.
