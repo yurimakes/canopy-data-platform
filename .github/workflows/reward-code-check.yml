@@ -1,0 +1,39 @@
+permissions:
+  contents: read
+
+name: Reward code execution check
+
+on:
+  pull_request:
+    paths:
+      - "cloud/azure/pipelines/databricks/calculate_reward.py"
+      - "cloud/azure/pipelines/databricks/reward_ledger.py"
+      - "cloud/azure/pipelines/databricks/reward_policy.yaml"
+      - "cloud/azure/pipelines/databricks/reward_policy_classifier.py"
+      - "cloud/azure/pipelines/databricks/tests/test_reward_contract.py"
+      - "docs/architecture/weekly-data-contract-v1.md"
+      - "shared/schemas/canopy_weekly_data_contract_v1.yaml"
+      - ".github/workflows/reward-code-check.yml"
+  workflow_dispatch:
+
+jobs:
+  reward-code-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install reward test dependencies
+        run: python -m pip install "pytest>=8,<9" "pyyaml>=6,<7" "azure-cosmos>=4.9,<5"
+      - name: Compile reward modules
+        run: >-
+          python -m py_compile
+          cloud/azure/pipelines/databricks/reward_policy_classifier.py
+          cloud/azure/pipelines/databricks/reward_ledger.py
+          cloud/azure/pipelines/databricks/calculate_reward.py
+      - name: Run reward contract tests
+        working-directory: cloud/azure/pipelines/databricks
+        run: python -m pytest -q tests/test_reward_contract.py
