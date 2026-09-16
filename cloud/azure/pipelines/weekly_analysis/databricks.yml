@@ -27,7 +27,6 @@ resources:
             path: ${workspace.file_path}/weekly_pipeline.py
       tags:
         dev: "5dt024"
-        implementation: scaffold
   jobs:
     weekly_analysis_job:
       name: "[dev 5dt024] canopy-weekly-analysis-${bundle.target}"
@@ -39,7 +38,6 @@ resources:
       performance_target: STANDARD
       tags:
         dev: "5dt024"
-        implementation: scaffold
       tasks:
         - task_key: run_weekly_pipeline
           pipeline_task:
