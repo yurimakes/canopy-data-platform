@@ -6,7 +6,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PIPELINES = "cloud/azure/pipelines/databricks/"
-FILES = [PIPELINES + "finalize_trip_pipeline.py", PIPELINES + "build_weekly_summary.py",
+FILES = [PIPELINES + "finalize_trip_pipeline.py",
          "cloud/azure/functions/func_canopy_dev/carbon_calculator.py",
          "cloud/azure/functions/func_canopy_dev/carbon_policy.yaml",
          *["apps/api/services/" + name for name in
@@ -43,11 +43,7 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
            "environments": [{"environment_key": "trip_env", "spec": {"environment_version": "4",
                "dependencies": ["PyYAML==6.0.3", "azure-cosmos==4.17.0", "azure-identity==1.25.3"]}}],
            "tasks": [task("finalize_gold", ["finalize", "--gold-path", gold, "--input", workspace_root + "/sample_input.json"]),
-                     task("publish_cosmos", publish, ["finalize_gold"]),
-                     task("verify_weekly_from_gold", ["weekly", "--gold-path", gold,
-                         "--campaign-id", campaign, "--week-start", "2026-09-14", "--week-end", "2026-09-21",
-                         "--weekly-user-path", gold_root + "/weekly_user",
-                         "--weekly-campaign-path", gold_root + "/weekly_campaign"], ["finalize_gold"])]}
+                     task("publish_cosmos", publish, ["finalize_gold"])]}
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:

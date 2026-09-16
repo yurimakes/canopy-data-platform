@@ -166,17 +166,12 @@ class ProjectionStore(CosmosTripStore):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=("finalize", "publish", "weekly"))
+    parser.add_argument("phase", choices=("finalize", "publish"))
     parser.add_argument("--gold-path", required=True)
     parser.add_argument("--input", help="one JSON envelope in an accessible Workspace file")
     parser.add_argument("--trip-id")
     parser.add_argument("--user-id")
     parser.add_argument("--allow-test-create", action="store_true")
-    parser.add_argument("--campaign-id")
-    parser.add_argument("--week-start")
-    parser.add_argument("--week-end")
-    parser.add_argument("--weekly-user-path")
-    parser.add_argument("--weekly-campaign-path")
     parser.add_argument("--cosmos-endpoint", default=os.environ.get("COSMOS_ENDPOINT"))
     parser.add_argument("--cosmos-database", default=os.environ.get("COSMOS_TRIPS_DATABASE", "canopy-db"))
     parser.add_argument("--cosmos-container", default=os.environ.get("COSMOS_TRIPS_CONTAINER", "trips"))
@@ -205,18 +200,7 @@ def main():
             credential = DefaultAzureCredential()
         store = ProjectionStore(args.cosmos_endpoint, args.cosmos_database, args.cosmos_container, credential)
         print(publish_cosmos(store, document, args.allow_test_create))
-    else:
-        if not all((args.campaign_id, args.week_start, args.week_end, args.weekly_user_path, args.weekly_campaign_path)):
-            raise ValueError("Weekly requires campaign, time range and both output paths")
-        # This test adapter intentionally cannot feed Mock into production Weekly.
-        if not args.campaign_id.startswith("pipeline_test_") or any("/pipeline_test/" not in path for path in
-            (args.gold_path, args.weekly_user_path, args.weekly_campaign_path)):
-            raise ValueError("Weekly smoke test requires isolated pipeline_test paths and campaign")
-        import build_weekly_summary as weekly
-        weekly.CONFIRMED_TRIPS_PATH = args.gold_path
-        weekly.GOLD_WEEKLY_USER_PATH = args.weekly_user_path
-        weekly.GOLD_WEEKLY_CAMPAIGN_PATH = args.weekly_campaign_path
-        weekly.run(args.campaign_id, args.week_start, args.week_end)
+
 
 
 if __name__ == "__main__":

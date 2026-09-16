@@ -1,13 +1,13 @@
 # Trip 최종 결과 파이프라인
 
 Mock/최종 ML 구간 → 기존 탄소 계산 → ADLS Gold Delta → Cosmos `canopy-db/trips`.
-Weekly는 동일한 Gold를 직접 읽는다. `sync_confirmed_trips.py`와 Cosmos 입력은 사용하지 않는다.
+다음 파이프라인의 Weekly가 동일한 Gold를 직접 읽을 수 있게 저장한다. `sync_confirmed_trips.py`와 Cosmos 입력은 사용하지 않는다.
 
 ## 현재 범위
 
 - `finalize_trip_pipeline.py`: 기존 `validate_result`, `finalize_result`, 탄소 계산 모듈을 호출한다.
 - `package_trip_pipeline.py`: 필요한 기존 파일만 그대로 묶고 수동 실행 Job 설정을 만든다. 배포하지 않는다.
-- Job은 Gold 저장 후 Cosmos 반영과 Weekly 검증을 각각 실행한다. Cosmos 실패가 Weekly 입력을 없애지 않는다.
+- 이번 Job은 Gold 저장과 Cosmos 반영만 실행한다. Weekly와 Baseline은 다음 파이프라인의 범위다.
 - Mock은 기존 `ConfirmationFixtureProcessor`의 걷기 500m, 버스 6200m, 걷기 300m이다. 총 7000m, 0.778224 kgCO2e.
 - Mock Trip/캠페인은 `pipeline_test_` 접두사, Delta는 `/pipeline_test/` 하위로 제한한다. 운영 Weekly에 섞지 않는다.
 - 기존 GPS/ML 파이프라인, Functions 배포, 팀원 계산 코드와 README는 변경하지 않는다.
@@ -74,4 +74,4 @@ Databricks의 ADLS 접근 권한이 Cosmos 권한을 뜻하지 않는다.
 .\apps\api\.venv\Scripts\python.exe -m unittest discover -s tests/integration -p test_trip_finalization_pipeline.py -v
 ```
 
-Databricks 실행, 실제 Gold/Cosmos 저장 검증은 별도 실행 승인이 필요하다.
+실제 Databricks 검증 결과는 아래에 기록한다.

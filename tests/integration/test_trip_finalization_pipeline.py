@@ -118,7 +118,7 @@ class PipelineTests(unittest.TestCase):
         pipeline.publish_cosmos(store, self.document)
         self.assertEqual(store.read(trip["id"], trip["user_id"])["feedback_id"], "arrived_during_publish")
 
-    def test_package_reuses_sources_and_weekly_depends_only_on_gold(self):
+    def test_package_contains_only_second_pipeline_tasks(self):
         import json
         import zipfile
         sys.path.insert(0, str(ROOT / "tools/azure"))
@@ -130,8 +130,9 @@ class PipelineTests(unittest.TestCase):
             for name in FILES:
                 self.assertEqual(archive.read(name), (ROOT / name).read_bytes())
             job = json.loads(archive.read("trip_finalization_job.json"))
-            weekly = next(t for t in job["tasks"] if t["task_key"] == "verify_weekly_from_gold")
-            self.assertEqual(weekly["depends_on"], [{"task_key": "finalize_gold"}])
+            self.assertEqual([t["task_key"] for t in job["tasks"]], ["finalize_gold", "publish_cosmos"])
+            self.assertEqual(job["tasks"][1]["depends_on"], [{"task_key": "finalize_gold"}])
+            self.assertNotIn("cloud/azure/pipelines/databricks/build_weekly_summary.py", archive.namelist())
             self.assertNotIn("schedule", job)
             self.assertEqual(job["max_concurrent_runs"], 1)
 
