@@ -1,6 +1,6 @@
 contract_version: baseline-data-contract-v1
 status: active
-scope: "Trip baseline input -> Weekly Gold -> Eligibility -> Personal -> Global -> Cosmos latest"
+scope: "Trip baseline input -> Weekly Gold -> Eligibility -> Personal/Global Gold -> {operational serving: Cosmos latest, downstream processing: ADLS Gold}"
 
 principles:
   - "All automatic Baseline input Trips are finalized system results with status=ready."
@@ -8,7 +8,20 @@ principles:
   - "The upstream Trip set consumed by this pipeline is commute-only. Therefore weekly trip_count means accepted commute Trip count."
   - "A weekly Baseline snapshot is frozen for Trip-level Reward evaluation during that week. Current-week Trips affect the next evaluation week's Baseline only."
   - "Population Baseline is used when Personal is not eligible/ready."
+  - "ADLS Gold is the canonical processing source for downstream Reward, Ranking, Behavior Change, and other analytical jobs."
+  - "Cosmos DB is an operational serving store only. Downstream batch/data-processing jobs MUST NOT use Cosmos Baseline latest as an intermediate processing source."
   - "Azure-to-Azure authentication uses Managed Identity/RBAC; this contract contains no account keys or connection strings."
+
+flow_split:
+  processing_branch:
+    source_of_truth: "ADLS Gold Personal/Global Baseline history"
+    consumers: [reward_processing, ranking_processing, behavior_change_processing]
+    rule: "All analytical/batch consumers read Baseline from ADLS Gold, not Cosmos DB."
+  operational_branch:
+    source: "ADLS Gold Personal/Global Baseline history"
+    materialized_store: "Cosmos DB Baseline latest"
+    consumers: [baseline_api, app_read_models, dashboard]
+    rule: "Cosmos keeps latest operational snapshots for low-latency application/API reads only."
 
 stages:
   trip_baseline_input:
@@ -148,7 +161,9 @@ stages:
     state_rules:
       ready: "method=personal_cumulative and value is finite/non-negative"
       collecting: "method=population_fallback; Reward uses Population baseline from the separate Population source"
-    consumers: [global_baseline, cosmos_personal_latest, reward_context]
+    consumers:
+      processing_via_adls: [global_baseline, reward_processing, ranking_processing, behavior_change_processing]
+      operational_materialization: [cosmos_personal_latest]
 
   global_baseline:
     producer: build_global_baseline.py
@@ -173,9 +188,12 @@ stages:
     state_rules:
       ready: "eligible Personal participants >= policy minimum"
       collecting: "Global value remains null until eligibility is satisfied"
-    consumers: [cosmos_global_latest, reward_context, ranking_behavior_change]
+    consumers:
+      processing_via_adls: [reward_processing, ranking_processing, behavior_change_processing]
+      operational_materialization: [cosmos_global_latest]
 
   cosmos_personal_latest:
+    role: "operational serving projection only"
     producer: baseline_integration/publish_baseline_snapshots.py
     source: personal_baseline
     container: "runtime setting CANOPY_COSMOS_PERSONAL_BASELINE_CONTAINER"
@@ -200,9 +218,11 @@ stages:
       observation_source: {type: [string, null]}
       eligibility_reason: {type: [string, null]}
       primary_baseline: {type: [string, null]}
-    consumers: [baseline_api, reward_service]
+    consumers: [baseline_api, app_read_models, dashboard]
+    forbidden_as_source_for: [reward_processing, ranking_processing, behavior_change_processing]
 
   cosmos_global_latest:
+    role: "operational serving projection only"
     producer: baseline_integration/publish_baseline_snapshots.py
     source: global_baseline
     container: "runtime setting CANOPY_COSMOS_GLOBAL_BASELINE_CONTAINER"
@@ -221,12 +241,14 @@ stages:
       method: {type: string}
       policy_version: {type: string}
       eligibility_policy_version: {type: string}
-    consumers: [baseline_api, reward_service, ranking_behavior_change]
+    consumers: [baseline_api, app_read_models, dashboard]
+    forbidden_as_source_for: [reward_processing, ranking_processing, behavior_change_processing]
 
 compatibility_notes:
   - "shared/schemas/confirmed_trip.schema.json is a legacy confirmation-oriented contract and is NOT the Baseline v1 upstream contract. Baseline v1 consumes status=ready Trip results through sync_confirmed_trips.py."
   - "shared/schemas/trip.schema.json still contains confirmation-oriented descriptions in some fields. Do not use those descriptions to auto-apply user feedback to Baseline/Reward."
   - "Cosmos container names and partition keys are intentionally runtime-owned until the canonical Cosmos Baseline container contract is finalized."
+  - "Reward/Ranking/Behavior Change must use ADLS Gold Baseline outputs. Cosmos latest exists only as an operational materialized view."
 
 change_control:
   breaking_change_examples:
@@ -235,4 +257,5 @@ change_control:
     - "change key/grain/partition semantics"
     - "change ready/collecting meaning"
     - "change Personal or Global formula"
+    - "change the processing source from ADLS Gold to an operational store"
   rule: "Breaking changes require a new contract_version and coordinated producer/consumer update."
