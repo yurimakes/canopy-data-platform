@@ -1,0 +1,1 @@
+Baseline data contract is documented in baseline_data_contract_v1.yaml and README.md.
