@@ -64,7 +64,10 @@ def test_01_02_03_04_cold_start_assigns_four_categories_without_user_choice():
     assert all(m["mission_template_id"].endswith("starter") for m in missions)
     assert common_target == 1
     assert all(m["target_count"] == 1 for m in missions)
-    assert all(m["preference_comparable"] is True for m in missions)
+    assert {m["category_id"] for m in missions if m["preference_comparable"]} == {
+        "challenge", "habit", "easy_win"
+    }
+    assert by_category(missions)["explore"]["preference_comparable"] is False
 
 
 def test_05_06_behavior_fit_changes_challenge_template():
@@ -186,6 +189,7 @@ def test_19_inactive_template_is_not_assigned():
     changed["catalog"]["challenge_short_car_to_active"]["status"] = "retired"
     missions = by_category(mission_engine.build_bundle_missions(
         profile(short_car_trip_count=3, car_primary_trip_count=5), changed,
+        POLICY if False else changed,
         campaign_id="c1", user_id="u1", week_start=WEEK_START
     )[0])
     assert missions["challenge"]["mission_template_id"] == "challenge_car_to_transit"
