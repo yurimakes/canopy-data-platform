@@ -1,0 +1,42 @@
+permissions:
+  contents: read
+
+name: Mission code execution check
+
+on:
+  pull_request:
+    paths:
+      - "cloud/azure/functions/func_canopy_dev/mission_*.py"
+      - "cloud/azure/functions/func_canopy_dev/mission_policy.yaml"
+      - "cloud/azure/functions/func_canopy_dev/function_app.py"
+      - "cloud/azure/functions/func_canopy_dev/tests/test_mission_policy.py"
+      - "cloud/azure/pipelines/databricks/build_mission_profile.py"
+      - "cloud/azure/pipelines/databricks/tests/test_build_mission_profile.py"
+      - ".github/workflows/mission-code-check.yml"
+  workflow_dispatch:
+
+jobs:
+  mission-code-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mission test dependencies
+        run: python -m pip install "pytest>=8,<9" "pyyaml>=6,<7"
+      - name: Compile mission modules and Function App
+        run: >-
+          python -m py_compile
+          cloud/azure/functions/func_canopy_dev/function_app.py
+          cloud/azure/functions/func_canopy_dev/mission_engine.py
+          cloud/azure/functions/func_canopy_dev/mission_assignment_api.py
+          cloud/azure/pipelines/databricks/build_mission_profile.py
+      - name: Run policy tests
+        working-directory: cloud/azure/functions/func_canopy_dev
+        run: python -m pytest -q tests/test_mission_policy.py
+      - name: Run profile tests
+        working-directory: cloud/azure/pipelines/databricks
+        run: python -m pytest -q tests/test_build_mission_profile.py
