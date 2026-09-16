@@ -13,6 +13,7 @@ principles:
   category_affinity_is_not_causal_preference: true
   category_affinity_is_separate_from_difficulty: true
   first_week_without_profile_is_supported: true
+  cold_start_is_onboarding_not_learning: true
   freeze_completion_rule_after_issue: true
   one_trip_may_progress_multiple_distinct_metrics: true
   avoid_duplicate_visible_goals_across_categories: true
@@ -43,10 +44,11 @@ preference_learning:
   completed_comparable_mission_adds: 1.0
   noncompletion_adds: 0.0
   partial_progress_adds: 0.0
-  only_preference_comparable_missions_update: true
+  only_affinity_comparable_missions_update: true
+  backward_compatibility_alias: preference_comparable
   use_as_causal_preference: false
   activation_gate: empirical_template_calibration_required
-  note: "동시에 네 미션을 부여하고 category별 metric이 다르므로 완료만으로 심리적 선호를 인과 추정하지 않는다. 현재 값은 분석용 affinity 신호로 저장하되 실제 배정 우선순위에는 사용하지 않는다. 충분한 운영 데이터로 template별 난이도를 보정한 뒤 별도 policy version에서 personalization 사용 여부를 결정한다."
+  note: "동시에 네 미션을 부여하고 category별 metric이 다르므로 완료만으로 심리적 선호를 인과 추정하지 않는다. 현재 값은 분석용 affinity 신호로 저장하되 실제 배정 우선순위에는 사용하지 않는다. cold-start starter는 온보딩/행동 수집용이므로 affinity evidence에서 제외한다. 충분한 운영 데이터로 template별 난이도를 보정한 뒤 별도 policy version에서 personalization 사용 여부를 결정한다."
 
 profile:
   short_car_max_distance_km: 2.0
@@ -54,6 +56,7 @@ profile:
   transit_modes: [bus, rail]
   primary_mode_rule: unique_max_segment_distance
   ambiguous_primary_mode_status: exclude_trip_and_record_reason
+  invalid_segment_primary_mode_status: exclude_trip_and_record_reason
   zero_car_short_share: null
 
 difficulty:
@@ -66,7 +69,8 @@ difficulty:
   maximum_target_count: 5
   opportunity_ceiling: true
   comparable_when_target_matches_common_target: true
-  note: "공통 target은 숫자 자체를 공유하지만 metric이 다른 category 간 객관적 난이도가 같다고 가정하지 않는다. affinity personalization은 calibration 전 비활성화한다. Explore는 fixed target 1을 사용한다."
+  cold_start_updates_difficulty: false
+  note: "공통 target은 숫자 자체를 공유하지만 metric이 다른 category 간 객관적 난이도가 같다고 가정하지 않는다. cold-start starter와 fixed target은 다음 주 adaptive target 비교에서 제외한다. affinity personalization은 calibration 전 비활성화한다."
 
 progress_policy:
   canonical_trip_status: ready
@@ -81,7 +85,8 @@ catalog_health:
   comparison_scope: same_template_family_and_difficulty_band
   metrics:
     - assigned_user_count
-    - comparable_assignment_count
+    - affinity_comparable_assignment_count
+    - difficulty_comparable_assignment_count
     - completed_user_count
     - completion_rate
     - average_progress_rate
@@ -133,7 +138,9 @@ catalog:
     status: active
     category_id: challenge
     family: low_carbon_challenge
-    difficulty_band: standard
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
     title: "2km 이상 친환경 이동 {target_count}번 도전"
     description: "걷기·자전거·버스·철도 중 편한 방법으로 2km 이상 친환경 이동을 {target_count}번 기록해 보세요."
     progress_unit: "회"
@@ -143,23 +150,6 @@ catalog:
       metric: qualifying_trip_count
       accepted_primary_modes: [walk, bike, bus, rail]
       min_trip_distance_km: 2.0
-
-  habit_low_carbon_maintain:
-    status: active
-    category_id: habit
-    family: low_carbon_days
-    difficulty_band: standard
-    title: "서로 다른 {target_count}일에 친환경 이동하기"
-    description: "한날에 몰아서 하기보다 서로 다른 날에 걷기·자전거·버스·철도 이동을 기록해 보세요."
-    progress_unit: "일"
-    eligibility:
-      field: low_carbon_trip_count
-      gt: 0
-    priority: 20
-    completion_rule:
-      metric: distinct_day_count
-      accepted_primary_modes: [walk, bike, bus, rail]
-      date_field: ended_at
 
   habit_transit_repeat:
     status: active
@@ -178,11 +168,30 @@ catalog:
       accepted_primary_modes: [bus, rail]
       date_field: ended_at
 
-  habit_starter:
+  habit_low_carbon_maintain:
     status: active
     category_id: habit
     family: low_carbon_days
     difficulty_band: standard
+    title: "서로 다른 {target_count}일에 친환경 이동하기"
+    description: "한날에 몰아서 하기보다 서로 다른 날에 걷기·자전거·버스·철도 이동을 기록해 보세요."
+    progress_unit: "일"
+    eligibility:
+      field: low_carbon_trip_count
+      gt: 0
+    priority: 20
+    completion_rule:
+      metric: distinct_day_count
+      accepted_primary_modes: [walk, bike, bus, rail]
+      date_field: ended_at
+
+  habit_starter:
+    status: active
+    category_id: habit
+    family: low_carbon_days
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
     title: "서로 다른 {target_count}일에 친환경 이동 시작하기"
     description: "이번 주에는 서로 다른 날에 친환경 이동을 한 번씩 기록해 보세요."
     progress_unit: "일"
@@ -216,7 +225,8 @@ catalog:
     category_id: easy_win
     family: low_carbon_easy
     difficulty_band: easy
-    preference_comparable: false
+    affinity_comparable: false
+    difficulty_adaptive: false
     fixed_target_count: 1
     title: "가장 편한 친환경 이동 1번"
     description: "걷기·자전거·버스·철도 중 오늘 가장 편한 방법으로 친환경 이동을 한 번 기록해 보세요."
@@ -233,8 +243,9 @@ catalog:
     status: active
     category_id: easy_win
     family: low_carbon_easy
-    difficulty_band: easy
-    preference_comparable: false
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
     fixed_target_count: 1
     title: "가장 편한 친환경 이동 1번"
     description: "걷기·자전거·버스·철도 중 가장 편한 방법으로 한 번만 실천해 보세요."
@@ -250,7 +261,8 @@ catalog:
     category_id: explore
     family: active_mode_explore
     difficulty_band: exploration
-    preference_comparable: false
+    affinity_comparable: false
+    difficulty_adaptive: false
     fixed_target_count: 1
     title: "걷기·자전거 중 한 가지 방식으로 이동해 보기"
     description: "이번 주에는 걷기나 자전거 중 한 가지 이동 방식을 실제로 기록해 보세요."
@@ -268,7 +280,8 @@ catalog:
     category_id: explore
     family: transit_mode_explore
     difficulty_band: exploration
-    preference_comparable: false
+    affinity_comparable: false
+    difficulty_adaptive: false
     fixed_target_count: 1
     title: "버스·철도 중 한 가지 방식으로 이동해 보기"
     description: "이번 주에는 버스나 철도 중 한 가지 대중교통 방식을 실제로 기록해 보세요."
@@ -285,8 +298,9 @@ catalog:
     status: active
     category_id: explore
     family: low_carbon_mode_explore
-    difficulty_band: exploration
-    preference_comparable: false
+    difficulty_band: onboarding
+    affinity_comparable: false
+    difficulty_adaptive: false
     fixed_target_count: 1
     title: "친환경 이동수단 한 가지 직접 이용해 보기"
     description: "걷기·자전거·버스·철도 중 한 가지를 골라 실제 이동으로 기록해 보세요."
