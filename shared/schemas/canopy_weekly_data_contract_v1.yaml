@@ -10,7 +10,8 @@ scope:
 principles:
   - "Weekly Summary is the shared weekly behavior fact layer."
   - "Baseline and Mission Profile are parallel downstream branches of Weekly Summary."
-  - "Behavior Change is downstream of Mission execution/response; it is not an input prerequisite for Mission Profile."
+  - "Mission and Behavior Change are independent domains: Mission data is not an input prerequisite for Behavior Change, and Behavior Change is not an input prerequisite for Mission Profile/Bundle/Progress/Response."
+  - "Behavior Change policy, formula, dataset grain, and implementation are teammate-owned and intentionally not defined by the Mission contract."
   - "Personal Baseline for evaluation week W excludes week W Trips and uses prior completed weeks only."
   - "Global Baseline for week W is the equal-weight mean of ready Personal Baselines for week W."
   - "The Baseline snapshot used for Reward is frozen for the whole evaluation week."
@@ -31,9 +32,10 @@ weekly_cycle_example:
     - "W39 ready Trip -> Trip Reward using frozen W39 Baseline snapshot"
     - "W39 ready Trip -> Mission Progress for all eligible assignments"
     - "W39 Mission outcomes -> Mission Response W39"
-    - "Mission Response + before/after behavior -> Behavior Change"
+    - "Mission Response/history -> next Mission Profile preference/difficulty inputs"
+    - "Behavior Change is calculated independently in the teammate-owned weekly behavior branch; Mission outputs are not required inputs."
     - "Reward Ledger -> Ranking Snapshot"
-    - "Weekly/Mission/Behavior/Global outputs -> Campaign KPI"
+    - "Weekly/Mission/Behavior/Global outputs may independently feed Campaign KPI"
 
 dependencies:
   canonical_trip:
@@ -49,11 +51,11 @@ dependencies:
 
   personal_baseline:
     depends_on: [weekly_user_gold, baseline_eligibility, baseline_policy]
-    produces: [global_baseline, reward_calculation, behavior_change]
+    produces: [global_baseline, reward_calculation]
 
   global_baseline:
     depends_on: [personal_baseline, baseline_eligibility, baseline_policy]
-    produces: [reward_calculation, behavior_change, campaign_kpi]
+    produces: [reward_calculation, campaign_kpi]
 
   mission_profile:
     depends_on: [weekly_user_gold, mission_bundle_history, mission_policy]
@@ -62,10 +64,12 @@ dependencies:
 
   mission_bundle:
     depends_on: [mission_profile, mission_policy]
+    explicitly_not_dependent_on: [behavior_change]
     produces: [mission_progress, mission_response]
 
   mission_progress:
     depends_on: [mission_bundle, canonical_trip]
+    explicitly_not_dependent_on: [behavior_change]
     produces: [mission_response, next_mission_profile_history]
 
   reward_calculation:
@@ -79,10 +83,13 @@ dependencies:
 
   mission_response:
     depends_on: [mission_bundle, mission_progress, mission_events, canonical_trip]
-    produces: [behavior_change, next_mission_profile_history, campaign_kpi]
+    explicitly_not_dependent_on: [behavior_change]
+    produces: [next_mission_profile_history, mission_kpi, campaign_kpi]
 
   behavior_change:
-    depends_on: [mission_response, weekly_user_gold, personal_baseline, behavior_change_policy]
+    ownership: teammate_owned
+    mission_dependency: none
+    contract_boundary: "Mission artifacts (profile, bundle, progress, response, assignment) are neither required inputs nor outputs of Behavior Change. Its formula/input contract is maintained by the teammate-owned Behavior Change workstream."
     produces: [campaign_kpi]
 
   ranking_snapshot:
@@ -90,6 +97,7 @@ dependencies:
 
   campaign_kpi:
     depends_on: [weekly_user_gold, mission_response, behavior_change, global_baseline]
+    note: "Mission KPI and Behavior Change KPI may coexist in the campaign aggregate, but neither is a prerequisite for calculating the other."
 
 datasets:
   weekly_user_gold:
@@ -153,6 +161,8 @@ datasets:
     inputs:
       - weekly_user_gold
       - Cosmos mission_bundle history
+    explicitly_not_inputs:
+      - behavior_change
     important_fields:
       - source_week_start
       - source_week_end
@@ -178,6 +188,8 @@ datasets:
     immutable_issue_contract: true
     assignment_key: [campaign_id, user_id, week_start, category_id]
     mvp_categories: [challenge, habit, easy_win, explore]
+    explicitly_not_inputs:
+      - behavior_change
     assignment_fields:
       - assignment_id
       - category_id
@@ -229,6 +241,8 @@ datasets:
     storage: ".../gold/mission_response_weekly/"
     grain: "assignment_id + week"
     key: [campaign_id, user_id, assignment_id, week]
+    consumers: [next_mission_profile_history, mission_kpi, campaign_kpi]
+    explicitly_not_consumed_by: [behavior_change]
     important_fields:
       - bundle_id
       - assignment_id
@@ -242,15 +256,9 @@ datasets:
       - mission_completed_count
 
   behavior_change_weekly:
-    producer: build_behavior_change.py
-    storage: ".../gold/behavior_change/"
-    grain: "user + intervention/assignment + evaluation window"
-    important_fields:
-      - before_behavior
-      - after_behavior
-      - shift_flag
-      - reason
-      - policy_version
+    ownership: teammate_owned
+    mission_dependency: none
+    schema_contract: "Intentionally not defined here; maintained by the teammate-owned Behavior Change workstream."
 
 storage_roles:
   ADLS_Gold:
@@ -276,3 +284,6 @@ change_log:
       - "points=null is never written as paid; calculation remains auditable but payable=false."
     weekly_summary_extension:
       - "Added primary-mode and short-car facts so Mission Profile can use Weekly Gold rather than rescanning canonical Trips."
+    mission_behavior_boundary:
+      - "Removed Mission Response -> Behavior Change dependency after team agreement."
+      - "Behavior Change calculation/policy/schema remain teammate-owned; Mission work only records that the two domains are independent."
