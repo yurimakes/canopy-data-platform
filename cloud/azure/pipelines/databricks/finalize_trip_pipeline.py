@@ -2,12 +2,14 @@
 import argparse
 from copy import deepcopy
 import hashlib
+import inspect
 import json
 import os
 from pathlib import Path
 import sys
 
-ROOT = Path(__file__).resolve().parents[4]
+# Serverless script tasks execute compiled source without defining __file__.
+ROOT = Path(inspect.currentframe().f_code.co_filename).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "apps/api"))
 from services.trip_carbon import finalize_result
 from services.trip_processor import timestamp, validate_result

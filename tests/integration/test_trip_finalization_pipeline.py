@@ -34,6 +34,12 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.document["carbon"]["unit"], "kgCO2e")
         self.assertEqual(len(self.document["segments"]), 3)
 
+    def test_serverless_exec_without_file_global(self):
+        path = ROOT / "cloud/azure/pipelines/databricks/finalize_trip_pipeline.py"
+        namespace = {"__name__": "serverless_test"}
+        exec(compile(path.read_bytes(), str(path), "exec"), namespace)
+        self.assertEqual(namespace["ROOT"], ROOT)
+
     def test_external_result_uses_exact_same_boundary(self):
         value = envelope()
         value["provider"] = "external"
