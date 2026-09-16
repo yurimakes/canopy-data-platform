@@ -11,9 +11,9 @@
     "mode_trip_ratio_walk", "mode_trip_ratio_bike", "mode_trip_ratio_car", "mode_trip_ratio_bus", "mode_trip_ratio_rail",
     "mode_distance_ratio_walk", "mode_distance_ratio_bike", "mode_distance_ratio_car", "mode_distance_ratio_bus", "mode_distance_ratio_rail",
     "mode_carbon_ratio_walk", "mode_carbon_ratio_bike", "mode_carbon_ratio_car", "mode_carbon_ratio_bus", "mode_carbon_ratio_rail",
-    "valid_primary_trip_count", "ambiguous_primary_trip_count", "car_primary_trip_count",
-    "transit_primary_trip_count", "low_carbon_trip_count", "short_car_trip_count",
-    "car_primary_ratio", "short_car_share"
+    "valid_primary_trip_count", "invalid_primary_trip_count", "ambiguous_primary_trip_count",
+    "invalid_segment_primary_trip_count", "car_primary_trip_count", "transit_primary_trip_count",
+    "low_carbon_trip_count", "short_car_trip_count", "car_primary_ratio", "short_car_share"
   ],
   "properties": {
     "user_id": {"type": "string", "minLength": 1},
@@ -45,11 +45,13 @@
     "mode_carbon_ratio_bus": {"type": "number", "minimum": 0},
     "mode_carbon_ratio_rail": {"type": "number", "minimum": 0},
     "valid_primary_trip_count": {"type": "integer", "minimum": 0},
-    "ambiguous_primary_trip_count": {"type": "integer", "minimum": 0},
+    "invalid_primary_trip_count": {"type": "integer", "minimum": 0, "description": "Trip count excluded from primary-mode facts because of a tie or invalid segment."},
+    "ambiguous_primary_trip_count": {"type": "integer", "minimum": 0, "description": "Primary-mode exact-tie Trip count."},
+    "invalid_segment_primary_trip_count": {"type": "integer", "minimum": 0, "description": "Trip count with unsupported/missing/non-positive segment mode-distance input."},
     "car_primary_trip_count": {"type": "integer", "minimum": 0},
     "transit_primary_trip_count": {"type": "integer", "minimum": 0},
     "low_carbon_trip_count": {"type": "integer", "minimum": 0},
-    "short_car_trip_count": {"type": "integer", "minimum": 0, "description": "Car-primary Trip with total Trip distance <= 2000m."},
+    "short_car_trip_count": {"type": "integer", "minimum": 0, "description": "Valid car-primary Trip with total Trip distance <= 2000m."},
     "car_primary_ratio": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
     "short_car_share": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
   },
