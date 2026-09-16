@@ -151,7 +151,8 @@ def compute_trip_primary_facts(exploded_df):
     """
     keys = ["trip_id", "user_id", "campaign_id", "week"]
     invalid_segment = (
-        ~F.col("effective_mode").isin(MODES)
+        F.col("effective_mode").isNull()
+        | ~F.col("effective_mode").isin(MODES)
         | F.col("distance_m").isNull()
         | (F.col("distance_m") <= 0)
     )
