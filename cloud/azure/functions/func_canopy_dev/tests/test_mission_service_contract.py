@@ -48,8 +48,22 @@ def test_issued_assignment_contains_frozen_completion_rule_and_rendered_copy():
     assert challenge["completion_rule"]["dedupe_key"] == "trip_id"
     assert challenge["completion_rule"]["time_window"] == "assignment_week"
     assert challenge["completion_rule"]["source"] == "canonical_ready_trip"
+    assert challenge["affinity_comparable"] == challenge["preference_comparable"]
+    assert isinstance(challenge["difficulty_comparable"], bool)
     assert "{target_count}" not in challenge["mission_name"]
     assert "{target_count}" not in challenge["mission_description"]
+
+
+def test_visible_categories_have_distinct_service_intents():
+    missions, _, _ = mission_engine.build_bundle_missions(
+        ready_profile(), POLICY, campaign_id="c1", user_id="u1", week_start=WEEK_START
+    )
+    categories = by_category(missions)
+    assert categories["challenge"]["completion_rule"]["min_trip_distance_km"] == 3.0
+    assert categories["habit"]["completion_rule"]["metric"] == "distinct_day_count"
+    assert categories["easy_win"]["completion_rule"]["max_trip_distance_km"] == 2.0
+    assert categories["explore"]["completion_rule"]["metric"] == "distinct_mode_count"
+    assert len({m["mission_name"] for m in missions}) == 4
 
 
 def test_habit_uses_distinct_days_not_raw_trip_count():
@@ -61,7 +75,7 @@ def test_habit_uses_distinct_days_not_raw_trip_count():
     assert habit["progress_unit"] == "일"
 
 
-def test_explore_is_fixed_one_distinct_mode_and_not_preference_comparable_after_difficulty_rises():
+def test_explore_is_fixed_one_distinct_mode_and_not_affinity_or_difficulty_comparable():
     p = ready_profile(difficulty_state={
         "last_common_target_count": 1,
         "last_comparable_mission_count": 3,
@@ -74,7 +88,15 @@ def test_explore_is_fixed_one_distinct_mode_and_not_preference_comparable_after_
     assert common_target == 2
     assert explore["target_count"] == 1
     assert explore["completion_rule"]["metric"] == "distinct_mode_count"
+    assert explore["affinity_comparable"] is False
+    assert explore["difficulty_comparable"] is False
     assert explore["preference_comparable"] is False
+
+
+def test_affinity_personalization_is_disabled_until_empirical_calibration():
+    learning = POLICY["preference_learning"]
+    assert learning["enabled_for_personalization"] is False
+    assert learning["activation_gate"] == "empirical_template_calibration_required"
 
 
 def test_common_target_has_service_safety_cap():
