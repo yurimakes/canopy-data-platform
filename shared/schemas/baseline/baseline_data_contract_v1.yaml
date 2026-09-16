@@ -1,1 +1,238 @@
-x
+contract_version: baseline-data-contract-v1
+status: active
+scope: "Trip baseline input -> Weekly Gold -> Eligibility -> Personal -> Global -> Cosmos latest"
+
+principles:
+  - "All automatic Baseline input Trips are finalized system results with status=ready."
+  - "User issue feedback is a separate support workflow and never auto-overrides carbon, Baseline, or Reward input."
+  - "The upstream Trip set consumed by this pipeline is commute-only. Therefore weekly trip_count means accepted commute Trip count."
+  - "A weekly Baseline snapshot is frozen for Trip-level Reward evaluation during that week. Current-week Trips affect the next evaluation week's Baseline only."
+  - "Population Baseline is used when Personal is not eligible/ready."
+  - "Azure-to-Azure authentication uses Managed Identity/RBAC; this contract contains no account keys or connection strings."
+
+stages:
+  trip_baseline_input:
+    producer: "Cosmos canopy-db/trips -> sync_confirmed_trips.py"
+    storage: "abfss://curated@stcanopydev5dt.dfs.core.windows.net/confirmed_trips/"
+    partition_by: [campaign_id]
+    primary_identity: [user_id, trip_id]
+    selection:
+      status: ready
+      trip_scope: commute_only
+      latest_revision_rule: "weekly aggregation keeps latest updated_at per trip_id"
+    required_fields:
+      trip_id: {type: string}
+      user_id: {type: string}
+      campaign_id: {type: string}
+      status: {type: string, const: ready}
+      started_at: {type: timestamp}
+      ended_at: {type: timestamp}
+      updated_at: {type: timestamp}
+      segments:
+        type: array
+        items:
+          required_fields:
+            segment_id: {type: string}
+            model_prediction: {type: string, enum: [walk, bike, car, bus, rail]}
+            distance_m: {type: double, unit: m, minimum: 0}
+            carbon_kg: {type: double, unit: kgCO2e, minimum: 0}
+      carbon:
+        type: object
+        required_fields:
+          kg_co2e: {type: double, unit: kgCO2e, minimum: 0}
+          policy_version: {type: string}
+          factor_version: {type: string}
+          unit: {type: string, const: kgCO2e}
+          mode_source: {type: string}
+          user_confirmation_applied: {type: boolean, const: false}
+    consumers: [weekly_user_gold]
+
+  weekly_user_gold:
+    producer: build_weekly_summary.py
+    storage: "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/weekly_summary_user/"
+    partition_by: [campaign_id, week]
+    grain: "1 row per user_id + campaign_id + ISO week"
+    key: [user_id, campaign_id, week]
+    required_fields:
+      user_id: {type: string}
+      campaign_id: {type: string}
+      week: {type: string, format: "YYYY-Www"}
+      trip_count: {type: long, semantic: "accepted commute Trip count", minimum: 0}
+      total_distance_m: {type: double, unit: m, minimum: 0}
+      total_kg_co2e: {type: double, unit: kgCO2e, minimum: 0}
+      carbon_policy_version: {type: string}
+      factor_version: {type: string}
+      walk_distance_m: {type: double, unit: m, minimum: 0}
+      bike_distance_m: {type: double, unit: m, minimum: 0}
+      car_distance_m: {type: double, unit: m, minimum: 0}
+      bus_distance_m: {type: double, unit: m, minimum: 0}
+      rail_distance_m: {type: double, unit: m, minimum: 0}
+      mode_trip_ratio_walk: {type: double, minimum: 0}
+      mode_trip_ratio_bike: {type: double, minimum: 0}
+      mode_trip_ratio_car: {type: double, minimum: 0}
+      mode_trip_ratio_bus: {type: double, minimum: 0}
+      mode_trip_ratio_rail: {type: double, minimum: 0}
+      mode_distance_ratio_walk: {type: double, minimum: 0}
+      mode_distance_ratio_bike: {type: double, minimum: 0}
+      mode_distance_ratio_car: {type: double, minimum: 0}
+      mode_distance_ratio_bus: {type: double, minimum: 0}
+      mode_distance_ratio_rail: {type: double, minimum: 0}
+      mode_carbon_ratio_walk: {type: double, minimum: 0}
+      mode_carbon_ratio_bike: {type: double, minimum: 0}
+      mode_carbon_ratio_car: {type: double, minimum: 0}
+      mode_carbon_ratio_bus: {type: double, minimum: 0}
+      mode_carbon_ratio_rail: {type: double, minimum: 0}
+    invariants:
+      - "No carbon factor is recalculated here; canonical upstream carbon values are summed."
+      - "A campaign/week may contain only one carbon_policy_version + factor_version pair."
+      - "mode_trip_ratio uses countDistinct(trip_id), not segment count."
+    consumers: [personal_baseline]
+
+  eligibility_policy:
+    producer: "Eligibility teammate / baseline_eligibility.py"
+    git_schema: shared/configs/baseline_eligibility.yaml
+    adls_path: "abfss://curated@stcanopydev5dt.dfs.core.windows.net/config/baseline/eligibility-v1/baseline_eligibility.yaml"
+    runtime_setting: CANOPY_BASELINE_ELIGIBILITY_PATH
+    policy_version: eligibility-v1
+    personal_rules:
+      minimum_observation_days: 7
+      minimum_confirmed_commute_trips: 6
+      require_positive_total_distance: true
+      require_valid_total_carbon: true
+      before_eligible_status: collecting
+      eligible_status: ready
+      cold_start_primary_baseline: population
+    global_rules:
+      require_personal_status: ready
+      minimum_eligible_participants: 6
+      below_minimum_status: collecting
+      eligible_status: ready
+    identity_inputs:
+      campaign_membership:
+        source: "Cosmos campaign_memberships"
+        required_fields: [user_id, campaign_id, joined_at]
+      user:
+        source: "Cosmos users"
+        required_fields: [user_id, created_at]
+    runtime_invariant:
+      CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED: "true"
+    note: "This flag is valid because the upstream Trip set is already commute-only."
+
+  personal_baseline:
+    producer: build_personal_baseline.py
+    input: weekly_user_gold
+    storage: "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/personal_baseline_history/"
+    partition_by: [campaign_id]
+    grain: "1 row per user_id + campaign_id + evaluation week"
+    key: [user_id, campaign_id, week]
+    formula: "sum(prior completed weeks total_kg_co2e * 1000) / sum(prior completed weeks total_distance_m / 1000)"
+    unit: gCO2e_per_km
+    leakage_rule: "evaluation week itself is excluded from the Personal calculation"
+    required_fields:
+      user_id: {type: string}
+      campaign_id: {type: string}
+      week: {type: string}
+      cumulative_g_co2e: {type: [double, null], unit: gCO2e}
+      cumulative_distance_km: {type: [double, null], unit: km}
+      baseline_g_co2e_per_km: {type: [double, null], unit: gCO2e_per_km}
+      method: {type: string, enum: [personal_cumulative, population_fallback]}
+      policy_version: {type: string}
+      status: {type: string, enum: [collecting, ready]}
+      value: {type: [double, null], unit: gCO2e_per_km}
+      eligibility_policy_version: {type: string}
+      observation_days: {type: [long, null]}
+      confirmed_trip_count: {type: [long, null], semantic: "prior accepted commute Trips"}
+      observation_source: {type: [string, null]}
+      eligibility_reason: {type: [string, null]}
+      primary_baseline: {type: [string, null], enum: [population, null]}
+    state_rules:
+      ready: "method=personal_cumulative and value is finite/non-negative"
+      collecting: "method=population_fallback; Reward uses Population baseline from the separate Population source"
+    consumers: [global_baseline, cosmos_personal_latest, reward_context]
+
+  global_baseline:
+    producer: build_global_baseline.py
+    input: personal_baseline
+    storage: "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/global_baseline_history/"
+    partition_by: [campaign_id]
+    grain: "1 row per campaign_id + evaluation week"
+    key: [campaign_id, week]
+    formula: "arithmetic mean of ready Personal baseline_g_co2e_per_km values; equal weight per eligible user"
+    unit: gCO2e_per_km
+    required_fields:
+      campaign_id: {type: string}
+      week: {type: string}
+      valid_participant_count: {type: long, minimum: 0}
+      baseline_g_co2e_per_km: {type: [double, null], unit: gCO2e_per_km}
+      method: {type: string, enum: [global_average_of_personal_baseline, insufficient_data]}
+      policy_version: {type: string}
+      status: {type: string, enum: [collecting, ready]}
+      value: {type: [double, null], unit: gCO2e_per_km}
+      eligible_participant_count: {type: long, minimum: 0}
+      eligibility_policy_version: {type: string}
+    state_rules:
+      ready: "eligible Personal participants >= policy minimum"
+      collecting: "Global value remains null until eligibility is satisfied"
+    consumers: [cosmos_global_latest, reward_context, ranking_behavior_change]
+
+  cosmos_personal_latest:
+    producer: baseline_integration/publish_baseline_snapshots.py
+    source: personal_baseline
+    container: "runtime setting CANOPY_COSMOS_PERSONAL_BASELINE_CONTAINER"
+    item_id: "baseline:personal:{campaign_id}:{user_id}"
+    partition_key: "TBD by canonical Cosmos container contract; document always includes campaign_id and user_id"
+    overwrite_semantics: ItemOverwrite
+    required_fields:
+      id: {type: string}
+      document_type: {type: string, const: personal_baseline_latest}
+      campaign_id: {type: string}
+      user_id: {type: string}
+      week: {type: string}
+      status: {type: string, enum: [collecting, ready]}
+      value_gco2e_per_km: {type: [double, null]}
+      cumulative_g_co2e: {type: [double, null]}
+      cumulative_distance_km: {type: [double, null]}
+      method: {type: string}
+      policy_version: {type: string}
+      eligibility_policy_version: {type: string}
+      observation_days: {type: [long, null]}
+      confirmed_trip_count: {type: [long, null]}
+      observation_source: {type: [string, null]}
+      eligibility_reason: {type: [string, null]}
+      primary_baseline: {type: [string, null]}
+    consumers: [baseline_api, reward_service]
+
+  cosmos_global_latest:
+    producer: baseline_integration/publish_baseline_snapshots.py
+    source: global_baseline
+    container: "runtime setting CANOPY_COSMOS_GLOBAL_BASELINE_CONTAINER"
+    item_id: "baseline:global:{campaign_id}"
+    partition_key: "TBD by canonical Cosmos container contract; document always includes campaign_id"
+    overwrite_semantics: ItemOverwrite
+    required_fields:
+      id: {type: string}
+      document_type: {type: string, const: global_baseline_latest}
+      campaign_id: {type: string}
+      week: {type: string}
+      status: {type: string, enum: [collecting, ready]}
+      value_gco2e_per_km: {type: [double, null]}
+      valid_participant_count: {type: long, minimum: 0}
+      eligible_participant_count: {type: long, minimum: 0}
+      method: {type: string}
+      policy_version: {type: string}
+      eligibility_policy_version: {type: string}
+    consumers: [baseline_api, reward_service, ranking_behavior_change]
+
+compatibility_notes:
+  - "shared/schemas/confirmed_trip.schema.json is a legacy confirmation-oriented contract and is NOT the Baseline v1 upstream contract. Baseline v1 consumes status=ready Trip results through sync_confirmed_trips.py."
+  - "shared/schemas/trip.schema.json still contains confirmation-oriented descriptions in some fields. Do not use those descriptions to auto-apply user feedback to Baseline/Reward."
+  - "Cosmos container names and partition keys are intentionally runtime-owned until the canonical Cosmos Baseline container contract is finalized."
+
+change_control:
+  breaking_change_examples:
+    - "rename/remove a required field"
+    - "change a field unit"
+    - "change key/grain/partition semantics"
+    - "change ready/collecting meaning"
+    - "change Personal or Global formula"
+  rule: "Breaking changes require a new contract_version and coordinated producer/consumer update."
