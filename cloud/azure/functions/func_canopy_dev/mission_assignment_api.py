@@ -68,7 +68,9 @@ def _principal_user_id(headers) -> str:
 
 
 def _campaign_id() -> str:
-    value = os.environ.get("CANOPY_CAMPAIGN_ID")
+    # Mission과 Trip이 같은 campaign boundary를 사용한다. 기존 Function App에
+    # TRIP_CAMPAIGN_ID가 이미 있으면 별도 CANOPY_CAMPAIGN_ID를 중복 설정하지 않아도 된다.
+    value = os.environ.get("CANOPY_CAMPAIGN_ID") or os.environ.get("TRIP_CAMPAIGN_ID")
     if value:
         return value
     if os.environ.get("CANOPY_ALLOW_DEV_USER_HEADER", "false").lower() == "true":
