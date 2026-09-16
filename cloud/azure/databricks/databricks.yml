@@ -15,22 +15,15 @@ variables:
     default: bronze
   silver_schema:
     default: silver
-  gold_schema:
-    default: gold
-  ml_schema:
-    default: ml
   bronze_events_table:
     default: gps_events
   observations_table:
     default: gps_observations
   quarantine_table:
     default: gps_quarantine
-  features_table:
-    default: gps_features
-  segments_table:
-    default: mode_segments
-  predictions_table:
-    default: mode_segment_predictions
+  deduplication_watermark:
+    description: Development default for bounded event_id deduplication state; tune per environment.
+    default: 7 days
   event_hubs_namespace:
     default: evhns-canopy-dev
   event_hubs_topic:
@@ -43,8 +36,6 @@ variables:
     default: canopy-dev
   event_hubs_secret_key:
     default: canopy-databricks-listen
-  model_uri:
-    default: models:/dbw_canopy_dev.ml.canopy_speedtransformer@champion
 
 targets:
   dev:

@@ -13,6 +13,12 @@ def normalized_policy_key(value: str) -> str:
 
 def connection_string(namespace: str, policy_name: str, policy_key: str) -> str:
     """Build the namespace-level Event Hubs connection string used by Kafka."""
+    namespace = namespace.strip()
+    policy_name = policy_name.strip()
+    if not namespace:
+        raise ValueError("Event Hubs namespace is empty")
+    if not policy_name:
+        raise ValueError("Event Hubs SAS policy name is empty")
     return (
         f"Endpoint=sb://{namespace}.servicebus.windows.net/;"
         f"SharedAccessKeyName={policy_name};"
