@@ -34,6 +34,20 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(self.document["carbon"]["unit"], "kgCO2e")
         self.assertEqual(len(self.document["segments"]), 3)
 
+    def test_wait_timeout_preserves_results_and_retries_idempotently(self):
+        doc = {**self.document, "status": "processing", "result_owner": "databricks"}
+        self.store.create(doc)
+        wait = {"user_id": doc["user_id"], "trip_id": doc["trip_id"],
+                "processing_generation": doc["processing_generation"], "status": "timed_out",
+                "reason": "waiting_for_prediction_coverage"}
+        self.assertEqual(pipeline.publish_wait_failure(self.store, wait), "published")
+        self.assertEqual(pipeline.publish_wait_failure(self.store, wait), "already_published")
+        saved = self.store.read(doc["trip_id"], doc["user_id"])
+        self.assertEqual(saved["status"], "failed")
+        self.assertEqual(saved["failed_step"], "wait_for_ml")
+        self.assertEqual(saved["segments"], doc["segments"])
+        self.assertEqual(pipeline.publish_wait_failure(self.store, {**wait, "processing_generation": 99}), "stale_wait")
+
     def test_serverless_exec_without_file_global(self):
         path = ROOT / "cloud/azure/pipelines/databricks/finalize_trip_pipeline.py"
         namespace = {"__name__": "serverless_test"}

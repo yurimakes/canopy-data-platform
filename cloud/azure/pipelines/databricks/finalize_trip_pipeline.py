@@ -166,11 +166,35 @@ class ProjectionStore(CosmosTripStore):
             raise ValueError("Trip container must use /user_id")
 
 
+def publish_wait_failure(store, wait):
+    """Expose bounded wait failure using the existing app 'failed' status."""
+    if wait["status"] not in ("timed_out", "failed"):
+        raise ValueError("only a terminal wait failure can be projected")
+    for _ in range(5):
+        current = store.read(wait["trip_id"], wait["user_id"])
+        if current is None or current.get("processing_generation") != wait["processing_generation"]:
+            return "stale_wait"
+        if current.get("status") == "failed" and current.get("failed_step") == "wait_for_ml":
+            return "already_published"
+        if current.get("status") != "processing" or current.get("result_owner") != "databricks":
+            return "not_owned"
+        current.update(status="failed", failed_step="wait_for_ml",
+                       error_message="Prediction results are delayed or incomplete. Retry after checking the source.",
+                       wait_reason=wait["reason"], lease_until="", process_after="")
+        try:
+            store.replace(current)
+            return "published"
+        except Conflict:
+            continue
+    raise RuntimeError("wait failure projection conflicted; retry")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("phase", choices=("finalize", "publish"))
-    parser.add_argument("--gold-path", required=True)
+    parser.add_argument("phase", choices=("finalize", "publish", "publish-wait-failure"))
+    parser.add_argument("--gold-path")
     parser.add_argument("--input", help="one JSON envelope in an accessible Workspace file")
+    parser.add_argument("--ready-path", help="Delta wait queue containing a frozen ready envelope")
     parser.add_argument("--trip-id")
     parser.add_argument("--user-id")
     parser.add_argument("--allow-test-create", action="store_true")
@@ -180,16 +204,31 @@ def main():
     parser.add_argument("--cosmos-secret-scope")
     parser.add_argument("--cosmos-secret-key")
     args = parser.parse_args()
+    if args.phase != "publish-wait-failure" and not args.gold_path:
+        parser.error("--gold-path is required")
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate()
     if args.phase == "finalize":
-        document = build_final_trip(json.loads(Path(args.input).read_text(encoding="utf-8")))
+        if bool(args.input) == bool(args.ready_path):
+            parser.error("choose exactly one of --input or --ready-path")
+        if args.ready_path:
+            if not args.trip_id or not args.user_id:
+                parser.error("--ready-path requires --trip-id and --user-id")
+            from pyspark.sql import functions as F
+            rows = spark.read.format("delta").load(args.ready_path).where(
+                (F.col("trip_id") == args.trip_id) & (F.col("user_id") == args.user_id)
+            ).orderBy(F.col("processing_generation").desc()).select("status", "envelope_json").limit(1).collect()
+            if not rows or rows[0].status != "ready" or not rows[0].envelope_json:
+                raise ValueError("latest Trip generation is not ready; do not calculate carbon")
+            envelope = json.loads(rows[0].envelope_json)
+        else:
+            envelope = json.loads(Path(args.input).read_text(encoding="utf-8"))
+        document = build_final_trip(envelope)
         if document["is_mock"] and "/pipeline_test/" not in args.gold_path:
             raise ValueError("Mock Gold must be stored under /pipeline_test/")
         save_gold(spark, args.gold_path, document)
         print(canonical({"trip_id": document["trip_id"], "phase": "gold_saved", "hash": document["finalization_hash"]}))
-    elif args.phase == "publish":
-        document = read_gold(spark, args.gold_path, args.trip_id, args.user_id)
+    elif args.phase in ("publish", "publish-wait-failure"):
         if not args.cosmos_endpoint:
             raise ValueError("Cosmos endpoint is required")
         if args.cosmos_secret_scope and args.cosmos_secret_key:
@@ -201,7 +240,19 @@ def main():
             from azure.identity import DefaultAzureCredential
             credential = DefaultAzureCredential()
         store = ProjectionStore(args.cosmos_endpoint, args.cosmos_database, args.cosmos_container, credential)
-        print(publish_cosmos(store, document, args.allow_test_create))
+        if args.phase == "publish-wait-failure":
+            if not args.ready_path or not args.trip_id or not args.user_id:
+                parser.error("--ready-path, --trip-id and --user-id are required")
+            from pyspark.sql import functions as F
+            rows = spark.read.format("delta").load(args.ready_path).where(
+                (F.col("trip_id") == args.trip_id) & (F.col("user_id") == args.user_id)
+            ).orderBy(F.col("processing_generation").desc()).limit(1).collect()
+            if not rows:
+                raise ValueError("Trip wait record not found")
+            print(publish_wait_failure(store, rows[0].asDict()))
+        else:
+            document = read_gold(spark, args.gold_path, args.trip_id, args.user_id)
+            print(publish_cosmos(store, document, args.allow_test_create))
 
 
 
