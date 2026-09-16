@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "canopy.cosmos-global-baseline-latest.v1",
   "title": "Canopy Cosmos Global Baseline Latest",
-  "description": "Latest Global Baseline document for fast API/Reward/Behavior Change lookup. Written from Global Baseline Gold with deterministic ItemOverwrite semantics.",
+  "description": "Operational serving projection of the latest Global Baseline for low-latency API/App/Dashboard reads. Written from Global Baseline Gold with deterministic ItemOverwrite semantics. It is not a canonical processing source for Reward, Ranking, or Behavior Change; those consumers must read ADLS Gold.",
   "type": "object",
   "required": [
     "id", "document_type", "campaign_id", "week", "status", "value_gco2e_per_km",
