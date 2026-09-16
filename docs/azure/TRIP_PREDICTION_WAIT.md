@@ -50,7 +50,7 @@ publish-wait-failure --ready-path <대기열 경로> --user-id <ID> --trip-id <I
 4. `trip_dispatch.py`: 종료 event_id를 Databricks idempotency token으로 사용해 기존 Job을 호출한다. 호출 응답이 유실돼도 같은 실행으로 재시도한다. 동시 실행은 최대 3건이며 나머지는 Job 대기열에 들어간다.
 5. `trip_job.py`: 결과를 Gold에 먼저 저장하고 다시 읽어 확인한 뒤 기존 Cosmos `canopy-db/trips`에 반영한다. 앱은 같은 Trip ID를 조회해 결과를 표시한다.
 
-현재 `TRIP_DATABRICKS_INPUT=mock`이다. 실제 GPS는 Raw까지 전송하지만 이동수단과 거리는 기존 테스트 예시(걷기 500m, 버스 6200m, 걷기 300m)다. 결과에 `is_mock=true`를 남기며 앱에도 표시한다.
+초기 연결 검증은 `TRIP_DATABRICKS_INPUT=mock`으로 수행했다. 현재 서버 설정은 `ml`로 변경했다. 아래 Mock 결과는 초기 검증에만 해당한다. 실제 GPS는 Raw까지 전송하지만 이동수단과 거리는 기존 테스트 예시(걷기 500m, 버스 6200m, 걷기 300m)다. 결과에 `is_mock=true`를 남기며 앱에도 표시한다.
 
 ML 연결은 `TRIP_DATABRICKS_INPUT=ml`로 바꾸면 위의 실제 테이블 대기 경로를 사용한다. 팀 테이블에 앱 데이터와 마지막 예측이 있어야 성공한다. 없는 상태를 완료로 처리하지 않는다.
 
@@ -78,3 +78,5 @@ Job 시작/호출 실패도 종료 후 30분을 넘겨 기다리지 않는다. M
 - 실제 API 자동 연결 검증: 사용자용/개발자용 합성 Trip 두 건 모두 성공. Databricks Run `326666064137519`, `194034142443718`.
 - GPS 4건과 종료 이벤트 2건을 Raw에서 원본 그대로 확인했다. GPS 재전송 중복도 보존했다. 두 결과 모두 Gold 재조회 후 Cosmos `ready` 및 API 응답까지 확인했다.
 - 실행 준비를 포함한 Job 소요 시간은 각각 약 6분 28초, 9분 14초였다. 즉시 결과를 반환하는 운영 성능 검증은 아니다.
+
+현재 연결 조건: 후속 Job 계정의 두 입력 테이블 조회 권한은 확인했다. 실제 iPhone Trip `da52c6cd-63dd-59bb-a81c-c6b5eea036ac`는 두 테이블 모두 0건이다. 팀 수집 Job은 PAUSED이며 배포된 수신 코드는 v0.1만 허용한다. 팀 코드 수정 없이 이 입력 문제를 해결한 것으로 처리하지 않는다. ML 모드에서는 기존 고정 Mock Gold 결과를 재사용하지 않는다.

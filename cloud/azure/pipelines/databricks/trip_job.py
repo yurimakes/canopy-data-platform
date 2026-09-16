@@ -41,6 +41,8 @@ def main():
         if DeltaTable.isDeltaTable(spark, args.gold_path) and spark.read.format("delta").load(args.gold_path).where(
                 key & (F.col("processing_generation") == event["processing_generation"])).limit(1).count():
             document = read_gold(spark, args.gold_path, event["trip_id"], event["user_id"])
+            if args.input_mode == "ml" and document.get("is_mock"):
+                raise ValueError("ML mode cannot reuse a fixed Mock result")
         elif args.input_mode == "mock":
             if "/pipeline_test/" not in args.gold_path or not event["campaign_id"].startswith("pipeline_test_"):
                 raise ValueError("Mock requires the isolated test campaign and Gold path")
@@ -50,6 +52,12 @@ def main():
             document = build_final_trip(envelope, allow_test_trip=True)
             save_gold(spark, args.gold_path, document)
         else:
+            # Fail before entering the wait loop when the Job cannot read its inputs.
+            # Missing permissions are not late ML predictions.
+            print(json.dumps({"trip_id": event["trip_id"], "stage": "checking_ml_inputs",
+                              "gps_table": args.gps_table, "prediction_table": args.prediction_table}), flush=True)
+            spark.table(args.gps_table).select("user_id", "trip_id", "sequence", "event_time", "distance_m", "transition_valid").limit(1).collect()
+            spark.table(args.prediction_table).select("user_id", "trip_id", "segment_id", "strong_mode", "inference_status").limit(1).collect()
             fields = ["user_id", "trip_id", "processing_generation", "event_id", "campaign_id", "started_at",
                       "ended_at", "expected_last_sequence", "result_owner"]
             schema = "user_id string, trip_id string, processing_generation long, event_id string, campaign_id string, started_at timestamp, ended_at timestamp, expected_last_sequence long, result_owner string"
