@@ -6,6 +6,7 @@
 중요:
 - 이미 발급된 미션은 이후 policy 파일이 바뀌어도 판정 기준이 변하면 안 된다.
 - category preference는 인과적 '선호' 추정치가 아니라 완료 이력 기반 affinity 신호다.
+- affinity 비교 가능성과 다음 주 난이도 조정 가능성은 서로 다른 계약이다.
 """
 from __future__ import annotations
 
@@ -112,7 +113,7 @@ def _pick_template_for_category(
 
 
 def common_target_count(profile: Mapping[str, Any] | None, policy: Mapping[str, Any]) -> tuple[int, str]:
-    """같은 주 비교가능 미션에 적용할 공통 목표 횟수를 계산한다."""
+    """다음 주 adaptive 미션에 적용할 공통 목표 숫자를 계산한다."""
     rule = policy["difficulty"]
     minimum = int(rule["minimum_target_count"])
     maximum = int(rule.get("maximum_target_count", 7))
@@ -180,10 +181,16 @@ def build_bundle_missions(
     for category_id, category in categories:
         template_id, template = _pick_template_for_category(category_id, profile, policy, week_start=week_start)
         target = _resolved_target(template, profile, policy, common_target)
-        comparable = (
+        uses_fixed_target = isinstance(template.get("fixed_target_count"), int) and not isinstance(template.get("fixed_target_count"), bool)
+        affinity_comparable = (
             target == common_target
             and template.get("difficulty_band", "standard") == "standard"
-            and template.get("preference_comparable", True) is True
+            and template.get("affinity_comparable", template.get("preference_comparable", True)) is True
+        )
+        difficulty_comparable = (
+            not uses_fixed_target
+            and target == common_target
+            and template.get("difficulty_adaptive", True) is True
         )
         completion_rule = _snapshot_completion_rule(template, target_count=target)
         missions.append({
@@ -198,7 +205,9 @@ def build_bundle_missions(
             "difficulty_band": template.get("difficulty_band", "standard"),
             "common_target_count": common_target,
             "target_count": target,
-            "preference_comparable": comparable,
+            "affinity_comparable": affinity_comparable,
+            "difficulty_comparable": difficulty_comparable,
+            "preference_comparable": affinity_comparable,
             "completion_rule": completion_rule,
             "progress_count": 0,
             "achievement_rate": 0.0,
