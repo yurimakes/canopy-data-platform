@@ -1,0 +1,118 @@
+contract_version: mission-data-contract-v1
+updated_at: 2026-09-16
+
+principles:
+  mission_and_behavior_change_are_independent: true
+  user_does_not_select_mission: true
+  issued_bundle_is_frozen_for_week: true
+  issued_completion_rule_is_frozen: true
+  category_preference_field_semantics: descriptive_affinity_not_causal_preference
+  cosmos_role:
+    current_bundle_and_progress: operational_source_of_truth
+    latest_profile: serving_projection
+  adls_role:
+    weekly_summary: canonical_weekly_behavior_facts
+    mission_profile_history: analytical_history
+    mission_response_weekly: immutable_weekly_mission_history
+  note: >-
+    Cosmos를 데이터 파이프라인에서 무조건 배제하지 않는다. Mission bundle은 API가 Cosmos에서 최초 생성하는
+    운영 원본이므로 현재 상태 조회에는 적절하다. 다만 다음 주 학습과 장기 분석은 재현성과 감사 가능성을 위해
+    주간 마감된 mission_response_weekly Gold를 우선 사용한다. Mission Response가 준비되기 전 MVP에서는
+    Cosmos bundle history를 명시적 fallback으로 사용할 수 있다.
+
+datasets:
+  weekly_user_gold:
+    grain: campaign_id + user_id + ISO_week
+    owner: shared_weekly_summary
+    required_for_mission_profile:
+      - trip_count
+      - total_kg_co2e
+      - valid_primary_trip_count
+      - ambiguous_primary_trip_count
+      - car_primary_trip_count
+      - transit_primary_trip_count
+      - low_carbon_trip_count
+      - short_car_trip_count
+      - car_primary_ratio
+      - short_car_share
+    produces: mission_profile
+
+  mission_profile:
+    grain: campaign_id + user_id + effective_week_start
+    schema: shared/schemas/mission/mission_profile.schema.json
+    inputs:
+      - weekly_user_gold_previous_completed_week
+      - mission_response_weekly_history
+    fallback_input:
+      - cosmos_mission_bundle_history_when_response_gold_unavailable
+    explicitly_not_dependent_on:
+      - behavior_change
+    outputs:
+      analytical_history: ADLS Gold mission_profile
+      latest_serving_projection: Cosmos mission-profiles
+
+  mission_bundle:
+    grain: campaign_id + user_id + week_start
+    schema: shared/schemas/mission/mission_bundle.schema.json
+    created_by: mission_assignment_api
+    stored_in: Cosmos mission-assignments
+    rules:
+      assignments_per_bundle: 4
+      categories: [challenge, habit, easy_win, explore]
+      same_week_idempotent: true
+      frozen_after_issue: true
+      completion_rule_snapshot_required: true
+    explicitly_not_dependent_on:
+      - behavior_change
+
+  mission_progress:
+    grain: campaign_id + user_id + assignment_id + week_start
+    schema: shared/schemas/mission/mission_progress.schema.json
+    inputs:
+      - mission_bundle.assignment.completion_rule
+      - canonical_ready_trip
+    requirements:
+      dedupe_by_trip_id: true
+      use_rule_snapshot_not_current_policy: true
+      idempotent_recompute_supported: true
+    explicitly_not_dependent_on:
+      - behavior_change
+
+  mission_response_weekly:
+    grain: campaign_id + user_id + assignment_id + week_start
+    schema: shared/schemas/mission/mission_response_weekly.schema.json
+    inputs:
+      - mission_bundle
+      - mission_progress
+      - optional_mission_ui_events
+    consumers:
+      - next_mission_profile
+      - mission_kpi
+      - campaign_kpi_mission_section
+    explicitly_not_consumed_by:
+      - behavior_change
+
+flow:
+  - weekly_user_gold -> mission_profile
+  - mission_profile -> mission_bundle
+  - mission_bundle -> mission_progress
+  - mission_progress -> mission_response_weekly
+  - mission_response_weekly -> next_mission_profile
+
+storage_flow:
+  operational:
+    - mission_profile_latest -> Cosmos mission-profiles
+    - mission_bundle_current -> Cosmos mission-assignments
+    - mission_progress_current -> Cosmos mission-assignments or dedicated progress container
+  analytical:
+    - mission_profile_history -> ADLS Gold
+    - mission_response_weekly -> ADLS Gold
+
+versioning:
+  policy_change:
+    rule: increment policy_version
+    historical_bundle_effect: none
+  completion_rule_change:
+    rule: only new bundle receives new snapshot
+  schema_breaking_change:
+    rule: increment schema id/version and preserve old reader during migration
