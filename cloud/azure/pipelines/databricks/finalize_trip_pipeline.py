@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 # Serverless script tasks execute compiled source without defining __file__.
 ROOT = Path(inspect.currentframe().f_code.co_filename).resolve().parents[4]
@@ -21,7 +22,7 @@ def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def build_final_trip(envelope):
+def build_final_trip(envelope, allow_test_trip=False):
     """The envelope supplies lifecycle context; result uses existing ProcessorResult."""
     trip = deepcopy(envelope["trip"])
     for key in ("trip_id", "user_id", "campaign_id", "started_at", "ended_at"):
@@ -37,7 +38,7 @@ def build_final_trip(envelope):
         raise ValueError("completed_at precedes Trip end")
     provider = envelope["provider"]
     if provider == "mock":
-        if not trip["trip_id"].startswith("pipeline_test_") or not trip["campaign_id"].startswith("pipeline_test_"):
+        if not (trip["trip_id"].startswith("pipeline_test_") or allow_test_trip) or not trip["campaign_id"].startswith("pipeline_test_"):
             raise ValueError("Mock is restricted to pipeline_test_ identities")
         result = ConfirmationFixtureProcessor().process_trip(trip)
     elif provider == "external":
@@ -88,13 +89,30 @@ def gold_frame(spark, document):
 
 
 def save_gold(spark, path, document):
+    # Different phone Trips can reach the same Delta table concurrently.
+    # Retry only transaction conflicts, with the same immutable result.
+    for attempt in range(5):
+        try:
+            return _save_gold(spark, path, document)
+        except Exception as exc:
+            conflict = any(code in str(exc) for code in (
+                "DELTA_CONCURRENT", "DELTA_PROTOCOL_CHANGED", "DELTA_METADATA_CHANGED",
+                "ConcurrentAppendException", "ProtocolChangedException", "MetadataChangedException"))
+            if not conflict or attempt == 4:
+                raise
+            time.sleep(min(8, 2 ** attempt))
+
+
+def _save_gold(spark, path, document):
     from delta.tables import DeltaTable
     from pyspark.sql import functions as F
     verify_document(document)
     frame = gold_frame(spark, document)
     if not DeltaTable.isDeltaTable(spark, path):
-        frame.write.format("delta").mode("error").save(path)
-    else:
+        frame.write.format("delta").mode("ignore").save(path)
+        # Another Trip may have initialized the table while we were creating it.
+        # Continue through MERGE so this Trip is never silently skipped.
+    if DeltaTable.isDeltaTable(spark, path):
         table = DeltaTable.forPath(spark, path)
         rows = table.toDF().filter((F.col("trip_id") == document["trip_id"]) &
                                   (F.col("user_id") == document["user_id"])).select(

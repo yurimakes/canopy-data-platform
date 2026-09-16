@@ -72,6 +72,14 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline.build_final_trip(value)
 
+    def test_phone_mock_requires_explicit_test_campaign(self):
+        value = envelope()
+        value["trip"]["trip_id"] = "phone-server-generated-uuid"
+        self.assertTrue(pipeline.build_final_trip(value, allow_test_trip=True)["is_mock"])
+        value["trip"]["campaign_id"] = "production_campaign"
+        with self.assertRaises(ValueError):
+            pipeline.build_final_trip(value, allow_test_trip=True)
+
     def test_repeated_projection_preserves_feedback(self):
         pipeline.publish_cosmos(self.store, self.document, True)
         saved = self.store.read(self.document["id"], self.document["user_id"])
@@ -120,6 +128,17 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline.publish_cosmos(self.store, self.document, True)
 
+    def test_gold_transaction_conflicts_retry_same_document_only(self):
+        from unittest.mock import patch
+        with patch.object(pipeline, "_save_gold", side_effect=[RuntimeError("[DELTA_CONCURRENT_APPEND]"), self.document]) as write:
+            with patch.object(pipeline.time, "sleep"):
+                self.assertEqual(pipeline.save_gold(None, "test-path", self.document), self.document)
+            self.assertEqual(write.call_args_list[0], write.call_args_list[1])
+        with patch.object(pipeline, "_save_gold", side_effect=ValueError("bad schema")) as write:
+            with self.assertRaises(ValueError):
+                pipeline.save_gold(None, "test-path", self.document)
+            self.assertEqual(write.call_count, 1)
+
     def test_concurrent_feedback_is_preserved_after_cas_retry(self):
         trip = {**envelope()["trip"], "id": self.document["id"], "result_owner": "databricks"}
         self.store.create(trip)
@@ -155,6 +174,38 @@ class PipelineTests(unittest.TestCase):
             self.assertNotIn("cloud/azure/pipelines/databricks/build_weekly_summary.py", archive.namelist())
             self.assertNotIn("schedule", job)
             self.assertEqual(job["max_concurrent_runs"], 1)
+
+    def test_phone_job_package_connects_end_to_existing_runner(self):
+        import json
+        import zipfile
+        sys.path.insert(0, str(ROOT / "tools/azure"))
+        from package_trip_pipeline import package
+        path = package(Path(self.temp.name) / "phone.zip", "/Workspace/Users/test/pipeline",
+                       "abfss://curated@example.dfs.core.windows.net/pipeline_test/run1",
+                       "https://example.documents.azure.com", "existing-scope", "cosmos-key", iphone=True)
+        with zipfile.ZipFile(path) as archive:
+            job = json.loads(archive.read("trip_finalization_job.json"))
+            self.assertEqual(len(job["tasks"]), 1)
+            task = job["tasks"][0]["spark_python_task"]
+            self.assertTrue(task["python_file"].endswith("/trip_job.py"))
+            self.assertIn("{{job.parameters.end_event}}", task["parameters"])
+            self.assertEqual(job["max_concurrent_runs"], 3)
+            self.assertNotIn("schedule", job)
+
+    def test_deployed_patch_preserves_team_bytes_and_worker_permissions(self):
+        import zipfile
+        sys.path.insert(0, str(ROOT / "tools/azure"))
+        from package_trip_api import patch_deployed
+        source, target = (Path(self.temp.name) / n for n in ("live.zip", "updated.zip"))
+        with zipfile.ZipFile(source, "w") as archive:
+            archive.writestr("function_app.py", b"# existing team entrypoint\n")
+            archive.writestr("services/runtime.py", b"# old module\n")
+        patch_deployed(source, target, ROOT)
+        with zipfile.ZipFile(target) as archive:
+            self.assertEqual(archive.read("function_app.py"), b"# existing team entrypoint\n")
+            for info in archive.infolist():
+                if info.filename != "function_app.py":
+                    self.assertEqual((info.external_attr >> 16) & 0o777, 0o644)
 
 
 @unittest.skipUnless(os.environ.get("CANOPY_TEST_SPARK") == "1", "set CANOPY_TEST_SPARK=1 with a full JDK")

@@ -40,13 +40,41 @@ publish-wait-failure --ready-path <대기열 경로> --user-id <ID> --trip-id <I
 
 `register` 입력은 기존 종료 이벤트 계약의 ID, 사용자, 캠페인, 시작/종료 시각, 마지막 sequence, 처리 세대, `result_owner`를 포함한다. 시작/종료 시각은 timestamp 타입이다. 대기열은 Cosmos가 아닌 Delta에 저장한다.
 
-## 배포 범위
+## 아이폰 자동 연결 (2026-09-16)
 
-새 파이프라인은 만들지 않았다. 코드와 테스트를 본인 Databricks 테스트 영역에 올려 검증한다. 앱 종료부터 자동 실행하려면 기존 수신 분기에서 `register` 입력을 연결하고, 본인 Job에서 `poll`과 후속 성공/실패 처리를 호출해야 한다. 현재 자동 실행은 설정하지 않았다. 실제 ML의 마지막 예측을 포함한 휴대폰 E2E는 완료로 처리하지 않는다.
+기존 `func-canopy-dev`와 본인 Job `136906075485874`를 연결했다. 새 파이프라인은 만들지 않았다.
 
-## 확인 결과 (2026-09-16)
+1. 앱 종료: 수집을 멈추고 남은 GPS 전송을 마친 뒤 마지막 sequence를 Stop API로 보낸다.
+2. API: Trip과 종료 outbox를 함께 저장하고 같은 Event Hub에 `trip_ended`를 보낸다. 실패하면 같은 event_id로 재전송한다.
+3. `trip_end_received`: 별도 consumer group `canopy-trip-finalization`에서 종료 이벤트만 처리한다. 인증된 Stop에 저장된 원본 이벤트와 일치해야 한다.
+4. `trip_dispatch.py`: 종료 event_id를 Databricks idempotency token으로 사용해 기존 Job을 호출한다. 호출 응답이 유실돼도 같은 실행으로 재시도한다. 동시 실행은 최대 3건이며 나머지는 Job 대기열에 들어간다.
+5. `trip_job.py`: 결과를 Gold에 먼저 저장하고 다시 읽어 확인한 뒤 기존 Cosmos `canopy-db/trips`에 반영한다. 앱은 같은 Trip ID를 조회해 결과를 표시한다.
 
-- 로컬 Spark: 정상 입력을 기존 탄소 계산에 연결, 마지막 예측 누락, 중간 GPS 누락, 미완료 추론, 사용자 분리, 경계 거리 중복 방지, 시간 초과 확인.
-- 기존 API 테스트 29개 통과. 기존 후속 처리 테스트는 14개 중 13개 통과, 선택 검증 1개 제외.
-- Databricks 수동 검증 성공: Run `304357990371636`. Delta 대기열 저장, 종료 재전송 시 원래 기한 유지, 조회 실패 재시도, 확인 시각 전 건너뛰기, 시간 초과, 명시적 재시도, 동일 재시도 요청의 기한 연장 방지, 종료 정보 충돌 확인.
-- 테스트는 합성 데이터와 `curated/pipeline_test/trip_finalization/` 하위 전용 경로만 사용했다. 실제 사용자 결과는 쓰지 않았다. 자동 실행 Job이나 새 파이프라인은 생성하지 않았다.
+현재 `TRIP_DATABRICKS_INPUT=mock`이다. 실제 GPS는 Raw까지 전송하지만 이동수단과 거리는 기존 테스트 예시(걷기 500m, 버스 6200m, 걷기 300m)다. 결과에 `is_mock=true`를 남기며 앱에도 표시한다.
+
+ML 연결은 `TRIP_DATABRICKS_INPUT=ml`로 바꾸면 위의 실제 테이블 대기 경로를 사용한다. 팀 테이블에 앱 데이터와 마지막 예측이 있어야 성공한다. 없는 상태를 완료로 처리하지 않는다.
+
+Gold: `abfss://curated@stcanopydev5dt.dfs.core.windows.net/pipeline_test/trip_finalization/iphone_final_trips`
+
+ML 대기열: 같은 경로의 `iphone_wait`. Weekly 입력은 Gold를 읽으며 Cosmos를 중간 입력으로 사용하지 않는다.
+
+Job 시작/호출 실패도 종료 후 30분을 넘겨 기다리지 않는다. ML 입력 대기는 별도로 600초/12회 한도다. 실패하면 앱에 실패 상태를 표시하고 기존 재시도 버튼으로 새 처리 세대를 시작한다.
+
+## 설정과 확인
+
+- Functions: `.env.example`의 `TRIP_DATABRICKS_*`, `TRIP_EVENTHUB_*`, `TRIP_RESULT_OWNER=databricks`, `TRIP_END_EVENTS_ENABLED=true`. 비밀 값은 커밋하지 않는다.
+- Functions 관리 ID: 해당 Event Hub Data Sender/Data Receiver, Databricks workspace 접근 및 본인 Job의 CAN_MANAGE_RUN 권한. Cosmos 키는 기존 Databricks Secret scope를 사용한다.
+- `tools/azure/package_trip_pipeline.py --iphone`은 같은 Job 설정과 필요한 기존 모듈을 묶는다. 생성한 설정은 기존 Job에 적용하며 새 Job을 만들 필요가 없다.
+- `tools/azure/package_trip_api.py`의 `patch_deployed()`는 배포된 팀 파일을 보존하고 본인 Trip 모듈만 교체한다. Linux 실행 권한도 검사한다.
+- `tools/azure/check_trip_e2e.py --send-test`는 합성 Trip 두 건을 실제 API에 보낸다. 재확인은 `--send-test` 없이 실행하면 새 데이터를 보내지 않는다. GPS와 종료 이벤트의 Raw 원본, Cosmos 결과, Databricks run_id를 확인한다.
+
+## 검증
+
+- API 43개, 앱 14개, TypeScript 검사 통과.
+- 후속 처리 17개 통과. 별도 JDK가 필요한 Weekly Spark 검증 1개는 이번 일반 검사에서 제외했다.
+- 이전 Databricks 대기열 검증 Run `304357990371636`: 중복 종료, 조회 실패 재시도, 시간 초과, 명시적 재시도, 이벤트 충돌 확인.
+- 실제 휴대폰 조작은 사용자가 새 QR로 앱을 열고 시작/종료해 확인한다. 데스크톱 합성 요청을 실제 iPhone 시험으로 기록하지 않는다.
+
+- 실제 API 자동 연결 검증: 사용자용/개발자용 합성 Trip 두 건 모두 성공. Databricks Run `326666064137519`, `194034142443718`.
+- GPS 4건과 종료 이벤트 2건을 Raw에서 원본 그대로 확인했다. GPS 재전송 중복도 보존했다. 두 결과 모두 Gold 재조회 후 Cosmos `ready` 및 API 응답까지 확인했다.
+- 실행 준비를 포함한 Job 소요 시간은 각각 약 6분 28초, 9분 14초였다. 즉시 결과를 반환하는 운영 성능 검증은 아니다.
