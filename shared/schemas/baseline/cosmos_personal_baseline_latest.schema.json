@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "canopy.cosmos-personal-baseline-latest.v1",
   "title": "Canopy Cosmos Personal Baseline Latest",
-  "description": "Latest Personal Baseline document for fast API/Reward lookup. Written from Personal Baseline Gold with deterministic ItemOverwrite semantics.",
+  "description": "Operational serving projection of the latest Personal Baseline for low-latency API/App/Dashboard reads. Written from Personal Baseline Gold with deterministic ItemOverwrite semantics. It is not a canonical processing source for Reward, Ranking, or Behavior Change; those consumers must read ADLS Gold.",
   "type": "object",
   "required": [
     "id", "document_type", "campaign_id", "user_id", "week", "status",

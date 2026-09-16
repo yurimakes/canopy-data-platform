@@ -11,9 +11,19 @@ Cosmos trips (status=ready, commute-only)
   -> Eligibility v1
   -> Personal Baseline History
   -> Global Baseline History
+
+[운영 조회 branch]
+Personal / Global Baseline
   -> Cosmos Personal/Global latest
-  -> Baseline API / Reward / Behavior Change / Ranking
+  -> Baseline API / App / Dashboard
+
+[데이터 처리 branch]
+Personal / Global Baseline
+  -> ADLS Gold
+  -> Reward / Ranking / Behavior Change
 ```
+
+**핵심 원칙:** Cosmos DB는 운영용 serving DB입니다. Reward, Ranking, Behavior Change 같은 데이터 처리 단계는 Cosmos Baseline latest를 중간 입력으로 사용하지 않고 **ADLS Gold의 Personal/Global Baseline 결과를 직접 읽습니다.**
 
 ## 인터페이스 요약
 
@@ -22,9 +32,23 @@ Cosmos trips (status=ready, commute-only)
 | Trip Baseline Input | `sync_confirmed_trips.py` | Cosmos `trips`, `status=ready` | `curated/confirmed_trips/` | latest `user_id + trip_id` | Weekly Gold |
 | Weekly User Gold | `build_weekly_summary.py` | finalized commute Trips | `gold/weekly_summary_user/` | `user_id + campaign_id + week` | Eligibility / Personal |
 | Eligibility | `baseline_eligibility.py` | Weekly history + membership/user joined time + YAML | status/metadata embedded into Personal/Global output | policy `eligibility-v1` | Personal / Global |
-| Personal Baseline | `build_personal_baseline.py` | prior completed Weekly Gold | `gold/personal_baseline_history/` | `user_id + campaign_id + week` | Global / Cosmos / Reward |
-| Global Baseline | `build_global_baseline.py` | same-week Personal snapshots | `gold/global_baseline_history/` | `campaign_id + week` | Cosmos / Reward / Behavior Change |
-| Cosmos latest | `publish_baseline_snapshots.py` | Personal/Global Gold | runtime-configured Cosmos containers | deterministic latest IDs | Baseline API / Reward |
+| Personal Baseline | `build_personal_baseline.py` | prior completed Weekly Gold | `gold/personal_baseline_history/` | `user_id + campaign_id + week` | Global / Reward / Ranking / Behavior Change + Cosmos materialization |
+| Global Baseline | `build_global_baseline.py` | same-week Personal snapshots | `gold/global_baseline_history/` | `campaign_id + week` | Reward / Ranking / Behavior Change + Cosmos materialization |
+| Cosmos latest | `publish_baseline_snapshots.py` | Personal/Global Gold | runtime-configured Cosmos containers | deterministic latest IDs | Baseline API / App / Dashboard |
+
+## 저장소 역할 구분
+
+### ADLS Gold
+- Baseline 계산 이력과 정책/Eligibility 메타데이터의 canonical processing source
+- Reward / Ranking / Behavior Change 등 downstream data job의 입력
+- 주간 snapshot과 과거 이력 보존
+- 재처리·감사·검증 기준
+
+### Cosmos DB
+- 앱과 API가 빠르게 읽기 위한 **최신 운영 snapshot**
+- ADLS Gold 결과를 materialize한 serving copy
+- downstream batch/분석 파이프라인의 중간 저장소로 사용하지 않음
+- Cosmos 장애/지연이 Reward·Ranking 계산의 canonical 결과를 바꾸면 안 됨
 
 ## 중요한 의미 계약
 
@@ -36,6 +60,7 @@ Cosmos trips (status=ready, commute-only)
 - Personal이 Eligibility를 만족하지 않으면 `population_fallback`이며, Population 실제 값은 별도 Population source가 제공합니다.
 - Global은 `ready` Personal 사용자들의 gCO2e/km를 사용자 동일가중 산술평균합니다.
 - Global은 `eligibility-v1` 기준 ready 사용자가 6명 미만이면 `collecting` + null을 유지합니다.
+- Reward / Ranking은 **Cosmos latest가 아니라 ADLS Gold Baseline**을 입력으로 사용합니다.
 
 ## Eligibility 운영 경로
 
@@ -57,6 +82,7 @@ ENV:  CANOPY_BASELINE_ELIGIBILITY_PATH
 - grain/key 변경
 - `ready` / `collecting` 의미 변경
 - Personal/Global 공식 변경
+- downstream processing source를 ADLS Gold가 아닌 운영용 저장소로 변경
 
 새 필드 추가처럼 기존 consumer가 무시할 수 있는 변경은 같은 버전에서 additive change로 처리할 수 있습니다.
 
@@ -70,4 +96,4 @@ ENV:  CANOPY_BASELINE_ELIGIBILITY_PATH
 2. `baseline_data_contract_v1.yaml` 또는 새 버전 계약 수정
 3. 회귀 테스트 수정/추가
 4. Consumer 담당자에게 breaking 여부 전달
-5. 실제 ADLS/Cosmos/API 통합 검증
+5. 실제 `ADLS Gold -> Reward/Ranking`과 `ADLS Gold -> Cosmos -> API` 두 branch를 각각 검증
