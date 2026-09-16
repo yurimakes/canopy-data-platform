@@ -189,6 +189,9 @@ def parse_bronze_rows(bronze_events: Any) -> Any:
     """Parse JSON and attach one deterministic rejection reason per row."""
     from pyspark.sql import functions as F
 
+    # Lifecycle records remain in Bronze/Capture and have their own Silver branch.
+    bronze_events = bronze_events.where(F.coalesce(F.get_json_object("body", "$.event_type"), F.lit("gps")) != "trip_ended")
+
     parsed = F.from_json(
         F.col("body"),
         gps_payload_schema(),

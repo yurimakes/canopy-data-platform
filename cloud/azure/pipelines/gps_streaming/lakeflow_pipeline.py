@@ -138,6 +138,31 @@ def gps_quarantine():
     return quarantine_rows(parsed)
 
 
+@dp.table(name=f"{TABLES.catalog}.{TABLES.silver_schema}.trip_end_events",
+          comment="Explicit Trip end events; repeated delivery is retained and deduplicated by the readiness view.")
+def trip_end_events():
+    from gps_streaming.trip_lifecycle import parse_end_events
+    return parse_end_events(_spark().readStream.table(TABLES.bronze_table)).where("valid").drop("valid")
+
+
+@dp.table(name=f"{TABLES.catalog}.{TABLES.silver_schema}.trip_end_quarantine",
+          comment="Invalid lifecycle messages; never treated as GPS or finalization permission.")
+def trip_end_quarantine():
+    from gps_streaming.trip_lifecycle import parse_end_events
+    return parse_end_events(_spark().readStream.table(TABLES.bronze_table)).where("NOT valid")
+
+
+@dp.materialized_view(name=f"{TABLES.catalog}.{TABLES.silver_schema}.trip_finalization_status",
+                      comment="Trip-scoped GPS and explicit ML completion gate. Missing ML acknowledgements block finalization.")
+def trip_finalization_status():
+    from gps_streaming.trip_lifecycle import ML_COMPLETION_SCHEMA, finalization_status
+    session = _spark()
+    completion_table = session.conf.get("canopy.trip_lifecycle.segment_completions_table", "")
+    completed = session.read.table(completion_table) if completion_table else session.createDataFrame([], ML_COMPLETION_SCHEMA)
+    return finalization_status(session.read.table(f"{TABLES.catalog}.{TABLES.silver_schema}.trip_end_events"),
+                               session.read.table(TABLES.bronze_table), completed)
+
+
 @dp.table(
     name=_STATEFUL_OUTPUT_TABLE,
     private=True,
