@@ -1,7 +1,11 @@
-"""주간 미션 프로필 생성: 이동행동 + 성향 + 공통 난이도.
+"""주간 미션 프로필 생성.
 
-성향은 사용자가 완료한 비교가능 미션만 양의 증거로 누적한다.
-미완료는 난이도·기회 부족·비선호를 구분하기 어려우므로 감점하지 않는다.
+Runtime은 공통 Weekly Gold 행동 사실을 읽고, 완료된 미션 이력을 결합한다.
+미션 이력은 ADLS Gold `mission_response_weekly`를 우선 사용하고, 아직 해당
+파이프라인이 준비되지 않은 환경에서는 Cosmos mission bundle을 명시적 fallback으로
+사용한다. Cosmos fallback 사용 여부는 profile의 `mission_history_source`에 남긴다.
+
+테스트/계약 검증을 위한 순수 Trip helper는 유지한다.
 """
 from __future__ import annotations
 
@@ -22,10 +26,6 @@ SHORT_CAR_MAX_DISTANCE_M = 2000.0
 PROFILE_VERSION = "mission-profile-v3"
 PREFERENCE_PRIOR = 1.0
 
-CONFIRMED_TRIPS_PATH = os.environ.get(
-    "CANOPY_CONFIRMED_TRIPS_PATH",
-    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/confirmed_trips/",
-)
 GOLD_MISSION_PROFILE_PATH = os.environ.get(
     "CANOPY_GOLD_MISSION_PROFILE_PATH",
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_profile/",
@@ -34,6 +34,14 @@ GOLD_WEEKLY_USER_PATH = os.environ.get(
     "CANOPY_GOLD_WEEKLY_USER_PATH",
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/weekly_summary_user/",
 )
+GOLD_MISSION_RESPONSE_PATH = os.environ.get(
+    "CANOPY_GOLD_MISSION_RESPONSE_PATH",
+    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
+)
+ALLOW_COSMOS_HISTORY_FALLBACK = os.environ.get(
+    "CANOPY_ALLOW_COSMOS_MISSION_HISTORY_FALLBACK", "true"
+).lower() == "true"
+
 COSMOS_ENDPOINT = os.environ.get("CANOPY_COSMOS_ENDPOINT")
 COSMOS_DATABASE = os.environ.get("CANOPY_COSMOS_DATABASE", "canopy-db")
 COSMOS_PROFILE_CONTAINER = os.environ.get("CANOPY_COSMOS_MISSION_PROFILE_CONTAINER", "mission-profiles")
@@ -100,7 +108,7 @@ def compute_category_preferences(
     *,
     prior: float = PREFERENCE_PRIOR,
 ) -> dict[str, dict[str, float | int]]:
-    """완료된 비교가능 미션만 성향의 양의 증거로 누적한다."""
+    """완료된 비교가능 미션만 affinity의 양의 증거로 누적한다."""
     state = {
         category: {
             "prior": float(prior),
@@ -133,7 +141,6 @@ def compute_category_preferences(
 
 
 def compute_difficulty_state(bundles: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """가장 최근 주의 비교가능 미션 수행 결과를 다음 주 공통 난이도 입력으로 만든다."""
     ordered = sorted(bundles, key=lambda item: (str(item.get("week_start", "")), str(item.get("created_at", ""))))
     for bundle in reversed(ordered):
         missions = [m for m in (bundle.get("missions") or []) if m.get("preference_comparable") is True]
@@ -181,6 +188,59 @@ def compute_family_capability(bundles: Iterable[Mapping[str, Any]]) -> dict[str,
     return state
 
 
+def _finish_profile(
+    *,
+    user_id: str,
+    campaign_id: str,
+    source_week_start: str,
+    source_week_end: str,
+    valid: int,
+    invalid: int,
+    invalid_reasons: Mapping[str, int],
+    car: int,
+    short_car: int,
+    transit: int,
+    low_carbon: int,
+    bundle_history: Iterable[Mapping[str, Any]],
+    carbon_change_rate: float | None,
+    mission_history_source: str,
+) -> dict[str, Any]:
+    bundles = list(bundle_history)
+    category_preferences = compute_category_preferences(bundles)
+    difficulty_state = compute_difficulty_state(bundles)
+    family_capability = compute_family_capability(bundles)
+    positive_evidence_count = sum(int(row["positive_evidence_count"]) for row in category_preferences.values())
+    profile_status = "ready" if valid > 0 else ("history_only" if bundles else "collecting")
+    profile: dict[str, Any] = {
+        "type": "mission_profile",
+        "profile_version": PROFILE_VERSION,
+        "profile_status": profile_status,
+        "user_id": user_id,
+        "campaign_id": campaign_id,
+        "source_week_start": source_week_start,
+        "source_week_end": source_week_end,
+        "effective_week_start": source_week_end,
+        "valid_trip_count": valid,
+        "invalid_trip_count": invalid,
+        "invalid_trip_reasons": dict(sorted(invalid_reasons.items())),
+        "car_primary_trip_count": car,
+        "car_ratio": car / valid if valid else None,
+        "short_car_trip_count": short_car,
+        "short_car_share": short_car / car if car else None,
+        "transit_primary_trip_count": transit,
+        "low_carbon_trip_count": low_carbon,
+        "carbon_change_rate": carbon_change_rate,
+        "mission_history_source": mission_history_source,
+        "category_preferences": category_preferences,
+        "preference_positive_evidence_count": positive_evidence_count,
+        "difficulty_state": difficulty_state,
+        "family_capability": family_capability,
+    }
+    canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    profile["profile_hash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return profile
+
+
 def build_profile_from_trips(
     trips: Iterable[Mapping[str, Any]],
     *,
@@ -190,7 +250,9 @@ def build_profile_from_trips(
     source_week_end: str,
     bundle_history: Iterable[Mapping[str, Any]] = (),
     carbon_change_rate: float | None = None,
+    mission_history_source: str = "none",
 ) -> dict[str, Any]:
+    """Pure helper retained for unit tests and contract validation."""
     valid = car = short_car = transit = low_carbon = invalid = 0
     invalid_reasons: dict[str, int] = defaultdict(int)
     for trip in trips:
@@ -208,40 +270,60 @@ def build_profile_from_trips(
             transit += 1
         if mode in LOW_CARBON_MODES:
             low_carbon += 1
+    history = list(bundle_history)
+    if history and mission_history_source == "none":
+        mission_history_source = "cosmos_bundle_fallback"
+    return _finish_profile(
+        user_id=user_id,
+        campaign_id=campaign_id,
+        source_week_start=source_week_start,
+        source_week_end=source_week_end,
+        valid=valid,
+        invalid=invalid,
+        invalid_reasons=invalid_reasons,
+        car=car,
+        short_car=short_car,
+        transit=transit,
+        low_carbon=low_carbon,
+        bundle_history=history,
+        carbon_change_rate=carbon_change_rate,
+        mission_history_source=mission_history_source,
+    )
 
-    bundles = list(bundle_history)
-    category_preferences = compute_category_preferences(bundles)
-    difficulty_state = compute_difficulty_state(bundles)
-    family_capability = compute_family_capability(bundles)
-    positive_evidence_count = sum(int(row["positive_evidence_count"]) for row in category_preferences.values())
-    profile_status = "ready" if valid > 0 else ("history_only" if bundles else "collecting")
 
-    profile: dict[str, Any] = {
-        "type": "mission_profile",
-        "profile_version": PROFILE_VERSION,
-        "profile_status": profile_status,
-        "user_id": user_id,
-        "campaign_id": campaign_id,
-        "source_week_start": source_week_start,
-        "source_week_end": source_week_end,
-        "valid_trip_count": valid,
-        "invalid_trip_count": invalid,
-        "invalid_trip_reasons": dict(sorted(invalid_reasons.items())),
-        "car_primary_trip_count": car,
-        "car_ratio": car / valid if valid else None,
-        "short_car_trip_count": short_car,
-        "short_car_share": short_car / car if car else None,
-        "transit_primary_trip_count": transit,
-        "low_carbon_trip_count": low_carbon,
-        "carbon_change_rate": carbon_change_rate,
-        "category_preferences": category_preferences,
-        "preference_positive_evidence_count": positive_evidence_count,
-        "difficulty_state": difficulty_state,
-        "family_capability": family_capability,
-    }
-    canonical = json.dumps(profile, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    profile["profile_hash"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return profile
+def build_profile_from_weekly_summary(
+    summary: Mapping[str, Any] | None,
+    *,
+    user_id: str,
+    campaign_id: str,
+    source_week_start: str,
+    source_week_end: str,
+    bundle_history: Iterable[Mapping[str, Any]] = (),
+    carbon_change_rate: float | None = None,
+    mission_history_source: str = "none",
+) -> dict[str, Any]:
+    summary = summary or {}
+    valid = int(summary.get("valid_primary_trip_count") or 0)
+    total = int(summary.get("trip_count") or 0)
+    invalid = int(summary.get("ambiguous_primary_trip_count") or max(total - valid, 0))
+    invalid_reasons = {"primary_mode_ambiguous": invalid} if invalid else {}
+    history = list(bundle_history)
+    return _finish_profile(
+        user_id=user_id,
+        campaign_id=campaign_id,
+        source_week_start=source_week_start,
+        source_week_end=source_week_end,
+        valid=valid,
+        invalid=invalid,
+        invalid_reasons=invalid_reasons,
+        car=int(summary.get("car_primary_trip_count") or 0),
+        short_car=int(summary.get("short_car_trip_count") or 0),
+        transit=int(summary.get("transit_primary_trip_count") or 0),
+        low_carbon=int(summary.get("low_carbon_trip_count") or 0),
+        bundle_history=history,
+        carbon_change_rate=carbon_change_rate,
+        mission_history_source=mission_history_source,
+    )
 
 
 def _iso_week_label(day_iso: str) -> str:
@@ -249,26 +331,79 @@ def _iso_week_label(day_iso: str) -> str:
     return f"{year}-W{week:02d}"
 
 
-def _carbon_change_map(spark, campaign_id: str, source_week_start: str):
+def _weekly_summary_maps(spark, campaign_id: str, source_week_start: str):
     from pyspark.sql import functions as F
+
     source_day = datetime.fromisoformat(source_week_start).date()
     current_week = _iso_week_label(source_week_start)
     previous_week = _iso_week_label((source_day - timedelta(days=7)).isoformat())
-    try:
-        weekly = spark.read.format("delta").load(GOLD_WEEKLY_USER_PATH).filter(
-            (F.col("campaign_id") == campaign_id) & F.col("week").isin([previous_week, current_week])
-        )
-    except Exception:
-        return {}
-    values: dict[str, dict[str, float]] = {}
-    for row in weekly.select("user_id", "week", "total_kg_co2e").collect():
-        values.setdefault(row["user_id"], {})[row["week"]] = row["total_kg_co2e"]
-    result = {}
-    for user_id, weeks in values.items():
-        current = weeks.get(current_week)
+    weekly = spark.read.format("delta").load(GOLD_WEEKLY_USER_PATH).filter(
+        (F.col("campaign_id") == campaign_id) & F.col("week").isin([previous_week, current_week])
+    )
+    current: dict[str, dict[str, Any]] = {}
+    carbon: dict[str, dict[str, float]] = {}
+    for row in weekly.collect():
+        item = row.asDict(recursive=True)
+        user_id = item["user_id"]
+        carbon.setdefault(user_id, {})[item["week"]] = item.get("total_kg_co2e")
+        if item["week"] == current_week:
+            current[user_id] = item
+    change: dict[str, float | None] = {}
+    for user_id, weeks in carbon.items():
+        now = weeks.get(current_week)
         previous = weeks.get(previous_week)
-        result[user_id] = None if current is None or previous is None or float(previous) <= 0 else (float(current) - float(previous)) / float(previous)
-    return result
+        change[user_id] = (
+            None
+            if now is None or previous is None or float(previous) <= 0
+            else (float(now) - float(previous)) / float(previous)
+        )
+    return current, change
+
+
+def _responses_to_bundles(rows: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        week_start = str(row.get("week_start") or "")
+        bundle_id = str(row.get("bundle_id") or "")
+        if not week_start or not bundle_id:
+            continue
+        key = (week_start, bundle_id)
+        bundle = grouped.setdefault(key, {
+            "week_start": week_start,
+            "created_at": row.get("week_end") or week_start,
+            "common_target_count": row.get("common_target_count"),
+            "missions": [],
+        })
+        bundle["missions"].append({
+            "category_id": row.get("category_id"),
+            "mission_family": row.get("mission_family"),
+            "target_count": row.get("target_count"),
+            "achievement_rate": row.get("achievement_rate"),
+            "completed": row.get("completed") is True,
+            "preference_comparable": row.get("preference_comparable") is True,
+        })
+    return list(grouped.values())
+
+
+def _load_response_history_by_user(spark, campaign_id: str, source_week_start: str):
+    from pyspark.sql import functions as F
+
+    try:
+        df = spark.read.format("delta").load(GOLD_MISSION_RESPONSE_PATH).filter(
+            (F.col("campaign_id") == campaign_id)
+            & (F.col("week_start") <= source_week_start)
+        )
+        rows = [row.asDict(recursive=True) for row in df.collect()]
+    except Exception as exc:
+        print(f"[mission-profile] mission response Gold unavailable: {type(exc).__name__}")
+        return None
+
+    grouped_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        user_id = row.get("user_id")
+        if isinstance(user_id, str):
+            grouped_rows[user_id].append(row)
+    return {user_id: _responses_to_bundles(items) for user_id, items in grouped_rows.items()}
 
 
 def _cosmos_clients():
@@ -276,6 +411,7 @@ def _cosmos_clients():
         return None, None
     from azure.cosmos import CosmosClient
     from azure.identity import DefaultAzureCredential
+
     client = CosmosClient(COSMOS_ENDPOINT, credential=DefaultAzureCredential())
     db = client.get_database_client(COSMOS_DATABASE)
     return db.get_container_client(COSMOS_PROFILE_CONTAINER), db.get_container_client(COSMOS_MISSION_CONTAINER)
@@ -304,10 +440,25 @@ def _group_history_by_user(items: Iterable[Mapping[str, Any]]):
     return grouped
 
 
+def _history_by_user(spark, mission_container, campaign_id: str, source_week_start: str):
+    gold = _load_response_history_by_user(spark, campaign_id, source_week_start)
+    if gold is not None:
+        return gold, "mission_response_gold"
+    if ALLOW_COSMOS_HISTORY_FALLBACK:
+        bundles = _load_mission_bundles(mission_container, campaign_id, source_week_start)
+        return _group_history_by_user(bundles), "cosmos_bundle_fallback"
+    return {}, "none"
+
+
 def _latest_profile_document(profile: Mapping[str, Any]) -> dict[str, Any]:
     campaign_id = str(profile["campaign_id"])
     user_id = str(profile["user_id"])
-    return {**profile, "id": f"mission-profile-latest:{campaign_id}:{user_id}", "pk": f"{campaign_id}:{user_id}", "updated_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        **profile,
+        "id": f"mission-profile-latest:{campaign_id}:{user_id}",
+        "pk": f"{campaign_id}:{user_id}",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _gold_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
@@ -319,40 +470,26 @@ def _gold_profile(profile: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def run(campaign_id: str, source_week_start: str, source_week_end: str):
-    from pyspark.sql import SparkSession, Window
-    from pyspark.sql import functions as F
+    from pyspark.sql import SparkSession
     from pyspark.sql.types import DoubleType, IntegerType, MapType, StringType, StructField, StructType
 
     spark = SparkSession.builder.getOrCreate()
-    start_utc, end_utc = _utc_week_bounds(source_week_start, source_week_end)
-    ended_at = F.to_timestamp(F.col("ended_at"))
-    raw = spark.read.format("delta").load(CONFIRMED_TRIPS_PATH).filter(
-        (F.col("campaign_id") == campaign_id)
-        & (F.col("status") == "ready")
-        & (ended_at >= F.to_timestamp(F.lit(start_utc)))
-        & (ended_at < F.to_timestamp(F.lit(end_utc)))
-    )
-    window = Window.partitionBy("trip_id").orderBy(F.col("updated_at").desc())
-    raw = raw.withColumn("_rn", F.row_number().over(window)).filter(F.col("_rn") == 1).drop("_rn")
-    trip_struct = F.struct(*[F.col(name) for name in raw.columns])
-    trip_rows = raw.groupBy("user_id").agg(F.collect_list(trip_struct).alias("trips")).collect()
-    trips_by_user = {row["user_id"]: [trip.asDict(recursive=True) for trip in row["trips"]] for row in trip_rows}
-
+    weekly_by_user, carbon_by_user = _weekly_summary_maps(spark, campaign_id, source_week_start)
     profile_container, mission_container = _cosmos_clients()
-    bundles = _load_mission_bundles(mission_container, campaign_id, source_week_start)
-    bundles_by_user = _group_history_by_user(bundles)
-    carbon_by_user = _carbon_change_map(spark, campaign_id, source_week_start)
-    users = sorted(set(trips_by_user) | set(bundles_by_user))
+    history_by_user, history_source = _history_by_user(spark, mission_container, campaign_id, source_week_start)
+    users = sorted(set(weekly_by_user) | set(history_by_user))
+
     profiles = []
     for user_id in users:
-        profile = build_profile_from_trips(
-            trips_by_user.get(user_id, []),
+        profile = build_profile_from_weekly_summary(
+            weekly_by_user.get(user_id),
             user_id=user_id,
             campaign_id=campaign_id,
             source_week_start=source_week_start,
             source_week_end=source_week_end,
-            bundle_history=bundles_by_user.get(user_id, []),
+            bundle_history=history_by_user.get(user_id, []),
             carbon_change_rate=carbon_by_user.get(user_id),
+            mission_history_source=history_source if history_by_user.get(user_id) else "none",
         )
         profiles.append(profile)
         if profile_container is not None:
@@ -370,6 +507,7 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
         StructField("campaign_id", StringType(), False),
         StructField("source_week_start", StringType(), False),
         StructField("source_week_end", StringType(), False),
+        StructField("effective_week_start", StringType(), False),
         StructField("valid_trip_count", IntegerType(), False),
         StructField("invalid_trip_count", IntegerType(), False),
         StructField("invalid_trip_reasons", MapType(StringType(), IntegerType()), False),
@@ -380,6 +518,7 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
         StructField("transit_primary_trip_count", IntegerType(), False),
         StructField("low_carbon_trip_count", IntegerType(), False),
         StructField("carbon_change_rate", DoubleType(), True),
+        StructField("mission_history_source", StringType(), False),
         StructField("preference_positive_evidence_count", IntegerType(), False),
         StructField("category_preferences_json", StringType(), False),
         StructField("difficulty_state_json", StringType(), False),
@@ -391,10 +530,14 @@ def run(campaign_id: str, source_week_start: str, source_week_end: str):
         out.write.format("delta")
         .mode("overwrite")
         .option("partitionOverwriteMode", "dynamic")
+        .option("mergeSchema", "true")
         .partitionBy("campaign_id", "source_week_start")
         .save(GOLD_MISSION_PROFILE_PATH)
     )
-    print(f"[완료] campaign_id={campaign_id} profiles={len(profiles)} source_week={source_week_start}")
+    print(
+        f"[완료] campaign_id={campaign_id} profiles={len(profiles)} "
+        f"source_week={source_week_start} history_source={history_source}"
+    )
     return profiles
 
 
