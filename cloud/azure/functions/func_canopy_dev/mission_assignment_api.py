@@ -135,6 +135,18 @@ class CosmosMissionRepository:
             return self.assignment_container.read_item(item=item["id"], partition_key=item["pk"])
 
 
+def _assign(repo, *, user_id: str, campaign_id: str, week_start: str, week_end: str):
+    return assign_for_week(
+        repo,
+        MISSION_POLICY,
+        user_id=user_id,
+        campaign_id=campaign_id,
+        week_start=week_start,
+        week_end=week_end,
+        now_iso=datetime.now(timezone.utc).isoformat(),
+    )
+
+
 def _handle(req: func.HttpRequest, *, assign: bool) -> func.HttpResponse:
     try:
         user_id = _principal_user_id(req.headers)
@@ -143,14 +155,12 @@ def _handle(req: func.HttpRequest, *, assign: bool) -> func.HttpResponse:
         repo = CosmosMissionRepository()
 
         if assign:
-            result = assign_for_week(
+            result = _assign(
                 repo,
-                MISSION_POLICY,
                 user_id=user_id,
                 campaign_id=campaign_id,
                 week_start=week_start,
                 week_end=week_end,
-                now_iso=datetime.now(timezone.utc).isoformat(),
             )
         else:
             result = get_for_week(
@@ -160,6 +170,17 @@ def _handle(req: func.HttpRequest, *, assign: bool) -> func.HttpResponse:
                 week_start=week_start,
                 week_end=week_end,
             )
+            # The iPhone can use one read endpoint. If the week's deterministic
+            # assignment has not been issued yet, first read performs an idempotent
+            # lazy issue from the immediately previous completed profile.
+            if result.get("status") == "collecting" and result.get("reason") == "assignment_not_issued":
+                result = _assign(
+                    repo,
+                    user_id=user_id,
+                    campaign_id=campaign_id,
+                    week_start=week_start,
+                    week_end=week_end,
+                )
 
         return _response(result, 200)
     except MissionApiError as exc:
