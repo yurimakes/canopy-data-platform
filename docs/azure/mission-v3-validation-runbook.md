@@ -75,6 +75,7 @@ Mission PASS 범위:
 - Mission Profile contract tests
 - Mission JSON schema parse
 - Mission YAML/data contract parse
+- policy/data contract/배포 문서/runbook의 policy version 동기화
 
 Baseline PASS 범위:
 
@@ -501,6 +502,9 @@ category = challenge, habit, easy_win, explore 각 1개
 모든 assignment에 completion_rule 존재
 completion_rule.target_count = assignment.target_count
 assignment_id 4개 모두 서로 다름
+affinity_comparable = false (4개 모두)
+difficulty_comparable = false (4개 모두)
+preference_comparable = false (4개 모두, 하위 호환 alias)
 ```
 
 cold-start 대표 문구도 직접 확인한다.
@@ -511,6 +515,8 @@ habit     → 서로 다른 1일에 친환경 이동 시작하기
 easy_win  → 가장 편한 친환경 이동 1번
 explore   → 친환경 이동수단 한 가지 직접 이용해 보기
 ```
+
+첫 주 starter는 온보딩/행동 수집용이다. 같은 Trip이 여러 starter를 동시에 완료하더라도 첫 주 결과는 affinity evidence나 다음 주 adaptive difficulty 계산에 사용하지 않는다.
 
 ---
 
@@ -591,8 +597,8 @@ v3.2에서 예상 가능한 template:
 ```text
 challenge → challenge_car_to_transit 우선
 habit     → habit_transit_repeat 우선
-Easy      → easy_short_active 우선
-Explore   → explore_active 우선
+easy_win  → easy_short_active 우선
+explore   → explore_active 우선
 ```
 
 각 template의 eligibility와 priority 때문에 실제 Profile 값에 따라 달라질 수 있다.
@@ -610,11 +616,13 @@ Explore   → explore_active 우선
 
 Profile의 `difficulty_state`를 이용해 다음 케이스를 확인한다.
 
-### A. 처음
+### A. 처음 또는 학습 가능한 이력 없음
 
 ```text
 previous target 없음 → common_target_count = 1
 ```
+
+cold-start starter는 `difficulty_comparable=false`이므로 첫 주 starter를 모두 완료했더라도 이것만으로 target을 2로 올리면 FAIL.
 
 ### B. difficulty-comparable 전부 완료
 
@@ -814,7 +822,7 @@ source_week_end   = 2026-09-21
 mission_history_source = mission_response_gold
 ```
 
-이 상태에서 Cosmos `mission-assignments` query 권한을 제거해도 Profile history 계산이 가능해야 한다(단, Profile latest upsert 권한은 별개).
+이 상태에서 Cosmos `mission-assignments` query 권한이 없어도 Profile history 계산이 가능해야 한다(단, Profile latest upsert 권한은 별개).
 
 Response Gold가 없거나 접근 불가한데 fallback=false라면 job은 조용히 빈 history로 진행하면 안 되고 **실패해야 한다**. 이것도 PASS 조건이다.
 
@@ -822,7 +830,9 @@ Response Gold가 없거나 접근 불가한데 fallback=false라면 job은 조�
 
 ## 15. 다음 주 affinity 학습 검증
 
-예: 직전 주 assignment 결과를 다음처럼 만든다.
+cold-start starter는 모두 `affinity_comparable=false`이므로 첫 주 starter 완료 결과로 positive evidence가 증가하면 FAIL이다.
+
+행동 Profile을 바탕으로 발급된 후속 주차의 예:
 
 ```text
 challenge: completed=true,  affinity_comparable=true
@@ -856,12 +866,12 @@ explore   증가 없음
 challenge true/completed
 habit     true/completed
 easy_win  false
-eexplore  false
+explore   false
 ```
 
 두 comparable mission이 모두 완료됐다면 다음 common target은 +1.
 
-반대로 fixed-target Easy/Explore의 완료 여부 때문에 common target이 오르거나 내려가면 FAIL.
+반대로 cold-start starter 또는 fixed-target Easy/Explore의 완료 여부 때문에 common target이 오르거나 내려가면 FAIL.
 
 ---
 
@@ -898,6 +908,7 @@ CANOPY_ALLOW_DEV_USER_HEADER=false
 [ ] Mission Profile ADLS write PASS
 [ ] Cosmos latest profile projection PASS
 [ ] cold-start 4 category PASS
+[ ] cold-start affinity/difficulty non-learning PASS
 [ ] policy_version = mission-policy-v3.2
 [ ] same-week idempotency PASS
 [ ] concurrent GET single-bundle convergence PASS
