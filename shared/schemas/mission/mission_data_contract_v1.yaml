@@ -7,6 +7,7 @@ principles:
   user_does_not_select_mission: true
   issued_bundle_is_frozen_for_week: true
   issued_completion_rule_is_frozen: true
+  cold_start_is_onboarding_not_learning: true
   category_preference_field_semantics: descriptive_affinity_not_causal_preference
   category_affinity_personalization_enabled: false
   category_affinity_activation_gate: empirical_template_calibration_required
@@ -32,7 +33,13 @@ comparability:
     current_personalization_use: false
   difficulty_comparable:
     meaning: 다음 주 common_target_count 조정에 포함 가능한 adaptive assignment
-    rule: fixed target이 아니고 resolved target이 common target과 같을 때 true
+    rule: fixed target이 아니고 resolved target이 common target과 같고 difficulty_adaptive가 true일 때 true
+  cold_start:
+    affinity_comparable: false
+    difficulty_comparable: false
+    reason: >-
+      첫 주에는 사용자 행동 기회와 template 적합도를 알 수 없고 여러 starter가 같은 Trip으로 동시에 완료될 수
+      있으므로 affinity와 adaptive difficulty 학습에서 제외한다. 첫 주는 온보딩과 행동 fact 수집에 사용한다.
   reason_for_separation: >-
     category별 완료 metric이 다를 수 있으므로 affinity 비교와 adaptive difficulty 조정을 같은 flag로 사용하면
     의미가 섞인다. 기존 preference_comparable은 affinity_comparable alias로만 유지한다.
@@ -88,6 +95,7 @@ datasets:
       completion_rule_snapshot_required: true
       affinity_comparable_required: true
       difficulty_comparable_required: true
+      cold_start_assignments_are_non_learning: true
       policy_version: mission-policy-v3.2
     explicitly_not_dependent_on:
       - behavior_change
