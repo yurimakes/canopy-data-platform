@@ -80,7 +80,7 @@ Databricks-table mutation, or existing-resource start/stop was performed.
 - Rewrote `README.md` around the requested operational and contract sections.
 - Removed Gold/ML/features/segments/predictions/model variables from
   `databricks.yml`; added configurable `deduplication_watermark` with a documented
-  development default of `7 days`.
+  development default of `1 day`.
 - Reduced `deployment_config.py` to the three Pipeline A tables and two schemas;
   renamed the class to `GpsIngestionTableConfig`.
 - Retained and hardened `event_hubs_auth.py` with blank namespace/policy checks.
@@ -195,7 +195,7 @@ Only observations are deduplicated:
 key              event_id
 watermark column event_hub_enqueued_at
 horizon          canopy.deduplication_watermark
-dev default      7 days
+dev default      1 day
 ```
 
 This is bounded state, not permanent global uniqueness. Collector `event_time`
@@ -347,7 +347,7 @@ reported in the terminal/final summary. Nothing is pushed.
    deployment; ensure exactly one active writer per public table.
 3. Decide the deployed-table migration strategy if existing schemas differ.
 4. Tune `deduplication_watermark` from observed retransmission timing and state
-   size; `7 days` is only the development default.
+   size; `1 day` is only the development default.
 5. Define a separate Databricks Job or other orchestration mechanism if continuous
    execution is desired. This resource intentionally omits `continuous: true`.
 6. Establish an approved Bronze replay procedure before any full refresh or

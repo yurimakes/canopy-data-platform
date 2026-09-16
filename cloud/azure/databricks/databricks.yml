@@ -23,7 +23,7 @@ variables:
     default: gps_quarantine
   deduplication_watermark:
     description: Development default for bounded event_id deduplication state; tune per environment.
-    default: 7 days
+    default: 1 day
   event_hubs_namespace:
     default: evhns-canopy-dev
   event_hubs_topic:

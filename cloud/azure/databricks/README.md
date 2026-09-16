@@ -89,7 +89,7 @@ errors.
 # Deduplication
 
 Only Silver observations are deduplicated, using `event_id` within a configurable
-watermark on `event_hub_enqueued_at`. The development default is `7 days`; it is a
+watermark on `event_hub_enqueued_at`. The development default is `1 day`; it is a
 configuration default, not a permanent architectural guarantee.
 
 ```text
