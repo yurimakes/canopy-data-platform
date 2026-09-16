@@ -1,5 +1,6 @@
 contract_version: mission-data-contract-v1
 updated_at: 2026-09-16
+policy_version: mission-policy-v3.2
 
 principles:
   mission_and_behavior_change_are_independent: true
@@ -7,6 +8,9 @@ principles:
   issued_bundle_is_frozen_for_week: true
   issued_completion_rule_is_frozen: true
   category_preference_field_semantics: descriptive_affinity_not_causal_preference
+  category_affinity_personalization_enabled: false
+  category_affinity_activation_gate: empirical_template_calibration_required
+  affinity_and_difficulty_comparability_are_separate: true
   cosmos_role:
     current_bundle_and_progress: operational_source_of_truth
     latest_profile: serving_projection
@@ -19,6 +23,19 @@ principles:
     운영 원본이므로 현재 상태 조회에는 적절하다. 다만 다음 주 학습과 장기 분석은 재현성과 감사 가능성을 위해
     주간 마감된 mission_response_weekly Gold를 우선 사용한다. Mission Response가 준비되기 전 MVP에서는
     Cosmos bundle history를 명시적 fallback으로 사용할 수 있다.
+
+comparability:
+  affinity_comparable:
+    meaning: descriptive category-affinity evidence에 포함 가능한 assignment
+    backward_compatibility_alias: preference_comparable
+    current_use: analytics_only
+    current_personalization_use: false
+  difficulty_comparable:
+    meaning: 다음 주 common_target_count 조정에 포함 가능한 adaptive assignment
+    rule: fixed target이 아니고 resolved target이 common target과 같을 때 true
+  reason_for_separation: >-
+    category별 완료 metric이 다를 수 있으므로 affinity 비교와 adaptive difficulty 조정을 같은 flag로 사용하면
+    의미가 섞인다. 기존 preference_comparable은 affinity_comparable alias로만 유지한다.
 
 datasets:
   weekly_user_gold:
@@ -62,6 +79,8 @@ datasets:
       same_week_idempotent: true
       frozen_after_issue: true
       completion_rule_snapshot_required: true
+      affinity_comparable_required: true
+      difficulty_comparable_required: true
     explicitly_not_dependent_on:
       - behavior_change
 
@@ -75,6 +94,13 @@ datasets:
       dedupe_by_trip_id: true
       use_rule_snapshot_not_current_policy: true
       idempotent_recompute_supported: true
+      supported_metrics:
+        - qualifying_trip_count
+        - distinct_day_count
+        - distinct_mode_count
+      supported_distance_bounds:
+        - min_trip_distance_km
+        - max_trip_distance_km
     explicitly_not_dependent_on:
       - behavior_change
 
@@ -85,6 +111,15 @@ datasets:
       - mission_bundle
       - mission_progress
       - optional_mission_ui_events
+    required_learning_fields:
+      - mission_family
+      - common_target_count
+      - target_count
+      - affinity_comparable
+      - difficulty_comparable
+      - completed
+      - achievement_rate
+      - policy_version
     consumers:
       - next_mission_profile
       - mission_kpi
