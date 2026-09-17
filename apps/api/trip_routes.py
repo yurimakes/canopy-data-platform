@@ -26,6 +26,9 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
         if method == "POST" and path == "/api/routes/transit":
             from services.transit_routes import transit_routes
             return 200, transit_routes(user_id, body)
+        if method == "POST" and path == "/api/routes/places":
+            from services.transit_routes import search_places
+            return 200, search_places(user_id, body)
         api = trip_service or service()
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
@@ -60,6 +63,11 @@ def response(req):
 
 @bp.route(route="trips/start", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def trip_start(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="routes/places", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def place_search(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 

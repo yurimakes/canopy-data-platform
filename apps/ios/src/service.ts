@@ -1,6 +1,6 @@
 import type { GpsEvent } from './types';
 
-export type Place = { name:string; latitude:number; longitude:number };
+export type Place = { name:string; latitude:number; longitude:number; address?:string; id?:string };
 export type Profile = { id:string; nickname:string; email:string; role:'user'|'developer'; campaignCode:'TEST'; home:Place|null; work:Place|null };
 export type RouteLeg = { mode:string; name:string; minutes:number; distance_m:number; points:Place[]; startName?:string; endName?:string };
 export type PlannedRoute = { id:string; provider:'tmap'; searchedAt:string; minutes:number; distance_m:number; fare:number|null; legs:RouteLeg[]; from:Place; to:Place };
@@ -57,11 +57,34 @@ export async function searchRoutes(url:string,headers:Record<string,string>,from
   if(from.latitude===to.latitude&&from.longitude===to.longitude)throw Error('출발지와 도착지를 다르게 선택해주세요.');
   if(!url)throw Error('앱에 서버 주소가 반영되지 않았어요. Expo Go에서 현재 프로젝트를 닫고 PC의 새 QR 코드로 다시 열어주세요.');
   if(new URL(url).protocol!=='https:')throw Error('길찾기 서버는 HTTPS 주소가 필요합니다.');
-  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
+  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),30000);
   try {
     const response=await request(url,{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({from,to}),signal:abort.signal,redirect:'error'});
-    if(!response.ok)throw Error(response.status===429?'길찾기 이용 한도에 도달했습니다. 잠시 후 다시 시도해주세요.':'길찾기 서버에 연결하지 못했습니다. 다시 시도해주세요.');
+    if(!response.ok)throw await routeError(response);
     return parseRoutes(await response.json(),from,to);
   }catch(e){if(e instanceof Error && e.name==='AbortError')throw Error('길찾기 응답이 늦어지고 있습니다. 다시 시도해주세요.');throw e;}
+  finally{clearTimeout(timer);}
+}
+
+export async function routeError(response:Response):Promise<Error> {
+  let body:any;try{body=await response.json();}catch{}
+  if(response.status===401||response.status===403)return Error('서버 인증이 만료됐습니다. 앱을 새로 열어도 같으면 관리자에게 알려주세요.');
+  if(response.status===404)return Error('검색 서비스를 찾지 못했습니다. 앱을 새로 열어 다시 시도해주세요.');
+  if(typeof body?.message==='string'&&body.message.length<400&&/[가-힣]/.test(body.message))return Error(body.message);
+  return Error(response.status===429?'검색 이용 한도에 도달했습니다. 잠시 후 다시 시도해주세요.':'검색 서버 응답에 문제가 있습니다. 잠시 후 다시 시도해주세요.');
+}
+export async function searchPlaces(url:string,headers:Record<string,string>,query:string,request:typeof fetch=fetch):Promise<Place[]> {
+  if(query.trim().length<2)throw Error('장소 이름이나 주소를 두 글자 이상 입력해주세요.');
+  if(!url)throw Error('앱에 검색 서버 주소가 반영되지 않았습니다. 새 QR 코드로 다시 열어주세요.');
+  const endpoint=new URL(url);if(endpoint.protocol!=='https:')throw Error('검색 서버는 HTTPS 주소가 필요합니다.');
+  endpoint.pathname=endpoint.pathname.replace(/\/routes\/transit\/?$/, '/routes/places');
+  if(!endpoint.pathname.endsWith('/routes/places'))throw Error('장소 검색 서버 주소를 확인해주세요.');
+  const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
+  try {
+    const response=await request(endpoint.toString(),{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({query:query.trim()}),signal:abort.signal});
+    if(!response.ok)throw await routeError(response);
+    const data=await response.json();if(!Array.isArray(data.places))throw Error('장소 검색 응답을 확인할 수 없습니다.');
+    return data.places.filter((p:any)=>p&&typeof p.name==='string'&&validPlace(p));
+  }catch(e){if(e instanceof Error&&e.name==='AbortError')throw Error('장소 검색 응답이 늦어지고 있습니다. 다시 시도해주세요.');throw e;}
   finally{clearTimeout(timer);}
 }

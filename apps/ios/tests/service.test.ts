@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {parseRoutes,searchRoutes,routeApiUrl,gpsDistance,validPlace,journeyStage} from '../src/service';
+import {parseRoutes,searchRoutes,routeApiUrl,gpsDistance,validPlace,journeyStage,searchPlaces} from '../src/service';
 const from={name:'서울역',latitude:37.55,longitude:126.97},to={name:'강남역',latitude:37.5,longitude:127.02};
 describe('서비스 화면 연결 계약',()=>{
   it('TMAP의 초와 미터, 경도/위도 순서를 화면 계약으로 변환',()=>{
@@ -34,4 +34,15 @@ describe('서비스 화면 연결 계약',()=>{
     const result=parseRoutes({metaData:{plan:{itineraries:[{totalTime:120,totalDistance:500,legs:[{mode:'BUS',start:{name:'서울역'},end:{name:'시청'},sectionTime:120,distance:500}]}]}}},from,to);
     expect(result[0].legs[0]).toMatchObject({startName:'서울역',endName:'시청',minutes:2,distance_m:500});
   });
+  it('가까운 거리 안내를 서버 연결 실패로 바꾸지 않음',async()=>{
+    const request=vi.fn().mockResolvedValue({ok:false,status:422,json:async()=>({status:'route_too_close',message:'출발지와 도착지가 가까워 대중교통 경로가 없습니다.'})});
+    await expect(searchRoutes('https://example.test/api/routes/transit',{},from,to,request)).rejects.toThrow('가까워');
+  });
+  it('장소 검색에서 이름과 주소를 보존하고 검색 endpoint 사용',async()=>{
+    const request=vi.fn().mockResolvedValue({ok:true,json:async()=>({places:[{...from,address:'서울 용산구 한강대로'}]})});
+    const result=await searchPlaces('https://example.test/api/routes/transit',{},'서울역',request);
+    expect(result[0].address).toBe('서울 용산구 한강대로');
+    expect(request.mock.calls[0][0]).toBe('https://example.test/api/routes/places');
+  });
+
 });

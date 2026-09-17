@@ -3,10 +3,13 @@ import {View,Pressable} from 'react-native';
 import MapView,{Marker,Polyline} from 'react-native-maps';
 import {Icon,Note,C} from './theme';
 import type {MapProps} from './JourneyMap';
-export default function JourneyMap({points,route,height=310}:MapProps) {
+export default function JourneyMap({points,route,height=310,places,selectedPlace=0,onSelectPlace}:MapProps) {
   const ref=useRef<MapView>(null),last=points.at(-1),first=points[0]??route?.from;
   const [follow,setFollow]=useState(true);
   useEffect(()=>{if(last&&follow)ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);},[last?.latitude,last?.longitude,follow]);
+  useEffect(()=>{if(places?.length)ref.current?.fitToCoordinates(places,{edgePadding:{top:35,right:35,bottom:35,left:35},animated:true});},[places]);
+  useEffect(()=>{const p=places?.[selectedPlace];if(p)ref.current?.animateToRegion({...p,latitudeDelta:.008,longitudeDelta:.008},350);},[selectedPlace,places]);
+  if(places?.length)return <MapView ref={ref} style={{height,width:'100%'}} initialRegion={{...places[0],latitudeDelta:.025,longitudeDelta:.025}} onMapReady={()=>ref.current?.fitToCoordinates(places,{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false})}>{places.map((p,i)=><Marker key={`${p.id??p.name}-${i}`} coordinate={p} title={p.name} description={p.address} pinColor={selectedPlace===i?C.green:'#87958e'} onPress={()=>onSelectPlace?.(i)}/>)}</MapView>;
   if(!first)return <View style={{height,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
   return <View><MapView ref={ref} onPanDrag={()=>setFollow(false)} style={{height,width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
     onMapReady={()=>{if(route)ref.current?.fitToCoordinates([route.from,route.to,...route.legs.flatMap(l=>l.points)],{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false});}}>

@@ -29,6 +29,32 @@ class TransitTests(unittest.TestCase):
             self.assertEqual(module.transit_routes("user", self.body), raw)
             self.assertEqual(call.call_count, 1)
 
+    def test_short_transit_uses_real_walking_geometry(self):
+        walking = {"features":[{"properties":{"totalDistance":472,"totalTime":396},"geometry":{"type":"Point","coordinates":[127,36]}},
+            {"geometry":{"type":"LineString","coordinates":[[127,36],[127.001,36.001]]}}]}
+        with patch.dict(module.os.environ, {"TMAP_APP_KEY": "test"}), patch.object(module.urllib.request, "urlopen", side_effect=[io.BytesIO(b'{"result":{"status":11}}'),io.BytesIO(json.dumps(walking).encode())]) as call:
+            result = module.transit_routes("user", self.body)
+            route = result["metaData"]["plan"]["itineraries"][0]
+            self.assertEqual(route["totalDistance"],472)
+            self.assertEqual(route["legs"][0]["mode"],"WALK")
+            self.assertEqual(route["legs"][0]["steps"][0]["linestring"],"127,36 127.001,36.001")
+            self.assertEqual(call.call_count,2)
+
+    def test_place_names_and_road_addresses_are_returned_without_secret(self):
+        raw = {"searchPoiInfo": {"pois": {"poi": [{"id":"1", "name":"Station", "noorLat":"37.55", "noorLon":"126.97",
+                "newAddressList":{"newAddress":[{"fullAddressRoad":"Station road 1"}]}}]}}}
+        with patch.dict(module.os.environ, {"TMAP_POI_APP_KEY":"test-secret"}), patch.object(module.urllib.request, "urlopen",return_value=io.BytesIO(json.dumps(raw).encode())):
+            result = module.search_places("user", {"query":"Station"})
+            self.assertEqual(result["places"][0], {"id":"1", "name":"Station", "latitude":37.55,"longitude":126.97,"address":"Station road 1"})
+            self.assertNotIn("test-secret", json.dumps(result))
+
+    def test_places_missing_key_is_explicit(self):
+        with patch.dict(module.os.environ, {"TMAP_POI_APP_KEY":"", "TMAP_APP_KEY":""}), patch.object(module.urllib.request, "urlopen") as call:
+            with self.assertRaises(ApiError) as result:
+                module.search_places("user", {"query":"Station"})
+            self.assertEqual(result.exception.code, "place_not_configured")
+            call.assert_not_called()
+
     def test_requires_existing_user_authentication(self):
         def reject(headers):
             raise ApiError(401, "unauthorized", "login required")

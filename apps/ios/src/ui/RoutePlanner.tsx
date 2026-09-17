@@ -1,28 +1,41 @@
-import {CanopyMascot} from './CanopyMascot';
-import React,{useState} from 'react';
+import React,{useRef,useState} from 'react';
 import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
-import {type Place,type Profile,type PlannedRoute,searchRoutes,routeApiUrl,km,validPlace} from '../service';
+import {type Place,type Profile,type PlannedRoute,searchRoutes,searchPlaces,routeApiUrl,km,validPlace} from '../service';
 import {Button,Card,Field,Icon,Note,S,C} from './theme';
 import JourneyMap from './JourneyMap';
+function searchConfig(){const extra=Constants.expoConfig?.extra??{};const token=extra.tripAccessToken,key=extra.tripFunctionKey||extra.gpsFunctionKey;return {url:routeApiUrl(extra),headers:{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})} as Record<string,string>};}
 export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;onPick(p:Place):void}) {
-  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[results,setResults]=useState<Place[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  async function search(current=false){if(busy)return;setBusy(true);setError('');setResults([]);try {
-    if(Platform.OS==='web')throw Error('장소 검색은 iPhone에서 사용할 수 있어요.');
-    if(!(await Location.requestForegroundPermissionsAsync()).granted)throw Error('장소를 설정하려면 위치 접근을 허용해주세요.');
-    if(current){const l=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});setResults([{name:'현재 위치',...l.coords}]);}
-    else{if(query.trim().length<2)throw Error('주소 또는 장소를 두 글자 이상 입력해주세요.');const list=await Location.geocodeAsync(query.trim());setResults(list.map(x=>({name:query.trim(),latitude:x.latitude,longitude:x.longitude})).filter(validPlace));if(!list.length)setError('검색 결과가 없습니다. 도로명 주소로 다시 검색해주세요.');}
-  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
-  return <><Pressable accessibilityRole="button" accessibilityLabel={`${title} 설정`} onPress={()=>{setOpen(true);setError('');}} style={[S.card,{padding:16,borderRadius:16}]}><View style={S.between}><View style={{flex:1,gap:5}}><Text style={S.note}>{title}</Text><Text style={S.label}>{value?.name??'장소를 설정해주세요'}</Text></View><Icon name="search-outline" size={19}/></View></Pressable>
-    <Modal visible={open} animationType="slide" onRequestClose={()=>setOpen(false)}><SafeAreaView style={S.root}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.scroll}>
-      <View style={S.between}><Text style={S.heading}>{title} 설정</Text><Button title="닫기" quiet onPress={()=>setOpen(false)}/></View>
-      <Field label="주소 또는 장소" value={query} onChangeText={setQuery} placeholder="예: 서울특별시 중구 세종대로 110" returnKeyType="search" onSubmitEditing={()=>void search()}/>
-      <Button title="장소 검색" busy={busy} onPress={()=>void search()}/><Button title="현재 위치 사용" quiet disabled={busy} onPress={()=>void search(true)}/>
-      {!!error&&<Note error>{error}</Note>}
-      {results.map((p,i)=><Card key={i}><Text style={S.heading}>{p.name}</Text><Note>{p.latitude.toFixed(5)}, {p.longitude.toFixed(5)}</Note><Button title="이 위치 선택" onPress={()=>{onPick(p);setOpen(false);}}/></Card>)}
-    </ScrollView></SafeAreaView></Modal></>;
+  const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[results,setResults]=useState<Place[]>([]),[selected,setSelected]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[searched,setSearched]=useState(false);
+  const requestId=useRef(0);
+  function close(){requestId.current++;setOpen(false);setBusy(false);}
+  async function search(current=false){if(busy)return;const id=++requestId.current;setBusy(true);setError('');setResults([]);setSearched(false);try {
+    let places:Place[];
+    if(current){
+      if(Platform.OS==='web')throw Error('현재 위치는 iPhone에서 사용할 수 있어요.');
+      if(!(await Location.requestForegroundPermissionsAsync()).granted)throw Error('현재 위치를 사용하려면 위치 접근을 허용해주세요. 장소 이름 검색은 권한 없이 가능합니다.');
+      const l=await Location.getCurrentPositionAsync({accuracy:Location.Accuracy.Balanced});
+      let address='지도에서 위치를 확인해주세요';
+      try{const [a]=await Location.reverseGeocodeAsync(l.coords);if(a)address=[a.region,a.city,a.district,a.street,a.streetNumber].filter(Boolean).join(' ');}catch{}
+      places=[{name:'현재 위치',address,latitude:l.coords.latitude,longitude:l.coords.longitude}];
+    }else{const config=searchConfig();places=await searchPlaces(config.url,config.headers,query);}
+    if(id!==requestId.current)return;setResults(places.filter(validPlace));setSelected(0);setSearched(true);
+  }catch(e){if(id===requestId.current)setError(e instanceof Error?e.message:String(e));}finally{if(id===requestId.current)setBusy(false);}}
+  return <><Pressable accessibilityRole="button" accessibilityLabel={`${title} 설정`} onPress={()=>{setOpen(true);setError('');}} style={[S.card,{padding:16,borderRadius:16}]}><View style={S.between}><View style={{flex:1,gap:5}}><Text style={S.note}>{title}</Text><Text style={S.label}>{value?.name??'장소를 설정해주세요'}</Text>{!!value?.address&&<Text style={S.note}>{value.address}</Text>}</View><Icon name="search-outline" size={19}/></View></Pressable>
+    <Modal visible={open} animationType="slide" onRequestClose={close}><SafeAreaView style={S.root}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.scroll}>
+        <View style={S.between}><Text style={S.heading}>{title} 검색</Text><Button title="닫기" quiet onPress={close}/></View>
+        <Field label="장소 이름 또는 주소" value={query} onChangeText={text=>{requestId.current++;setBusy(false);setQuery(text);setResults([]);setError('');setSearched(false);}} placeholder="예: 천안역, 카페 이름, 일봉로 71" returnKeyType="search" onSubmitEditing={()=>void search()}/>
+        <Button title="검색" busy={busy} onPress={()=>void search()}/><Button title="현재 위치 사용" quiet disabled={busy} onPress={()=>void search(true)}/>
+        {!!error&&<Note error>{error}</Note>}
+        {!!results.length&&<><Text style={S.note}>검색 결과 {results.length}곳 — 목록이나 지도 핀을 선택해주세요</Text><View style={{borderRadius:20,overflow:'hidden'}}><JourneyMap points={[]} places={results} selectedPlace={selected} onSelectPlace={setSelected} height={230}/></View></>}
+        {searched&&!results.length&&<Card><Icon name="search-outline"/><Text style={S.label}>검색 결과가 없어요</Text><Note>지역명과 장소 이름을 함께 입력해보세요.</Note></Card>}
+        {results.map((p,i)=><Pressable key={`${p.id??p.name}-${i}`} accessibilityRole="button" accessibilityState={{selected:selected===i}} accessibilityLabel={`${p.name}, ${p.address||'주소 정보 없음'}`} onPress={()=>setSelected(i)} style={[S.card,{gap:8,borderColor:selected===i?C.green:C.line,borderWidth:selected===i?2:1}]}><View style={S.row}><Icon name={selected===i?'location':'location-outline'}/><Text style={[S.label,{flex:1}]}>{p.name}</Text>{selected===i&&<Icon name="checkmark-circle"/>}</View><Text style={S.note}>{p.address||'주소 정보 없음 — 지도에서 위치를 확인해주세요'}</Text></Pressable>)}
+      </ScrollView>
+      {!!results[selected]&&<View style={{padding:20,borderTopWidth:1,borderTopColor:C.line,backgroundColor:C.white,gap:8}}><Text numberOfLines={1} style={S.label}>{results[selected].name}</Text><Button title={`${title}로 선택`} onPress={()=>{onPick(results[selected]);close();}}/></View>}
+    </SafeAreaView></Modal></>;
 }
 export function RoutePlanner({profile,direction='outbound',onChoose,onFree}:{profile:Profile;direction?:'outbound'|'return';onChoose(route:PlannedRoute):void;onFree():void}){
   const [from,setFrom]=useState<Place|null>(direction==='outbound'?profile.home:profile.work),[to,setTo]=useState<Place|null>(direction==='outbound'?profile.work:profile.home);
@@ -41,9 +54,9 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree}:{pro
       <PlacePicker title="도착지" value={to} onPick={p=>change('to',p)}/>
     </View>
     <Button title="경로 찾기" busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
-    {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><CanopyMascot pose="start" height={170}/><Text style={S.heading}>지금 경로를 분석하고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
-    {!!error&&<Card><CanopyMascot height={140}/><Text style={[S.heading,{textAlign:'center'}]}>경로를 불러오지 못했어요</Text><Note error>{error}</Note><Button title="다시 시도하기" onPress={()=>void search()}/></Card>}
-    {routes?.length===0&&<Card><CanopyMascot height={160}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
+    {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><Icon name="navigate-circle-outline" size={56}/><Text style={S.heading}>지금 경로를 분석하고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
+    {!!error&&<Card><Icon name="cloud-offline-outline" size={48}/><Text style={[S.heading,{textAlign:'center'}]}>경로 검색 안내</Text><Note error>{error}</Note><Button title="다시 시도하기" onPress={()=>void search()}/></Card>}
+    {routes?.length===0&&<Card><Icon name="search-outline" size={48}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
     {!!routes?.length&&<Text style={S.note}>추천 경로 - 지금 출발</Text>}
     {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.minutes}분 경로 상세보기`} onPress={()=>setSelected(r)} style={[S.card,{gap:12,boxShadow:'0 4px 16px #174c3909'}]}>
       <Text style={[S.metric,{fontSize:26,color:C.ink}]}>{r.minutes}분</Text>

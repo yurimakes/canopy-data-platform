@@ -7,6 +7,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import urllib.parse
 from collections import OrderedDict
 from services.trip_service import ApiError
 
@@ -63,6 +64,11 @@ def transit_routes(user_id, body):
         raise ApiError(429 if exc.code == 429 else 502, "route_provider_error", "길찾기 제공사의 응답을 확인할 수 없습니다.") from None
     except (OSError, ValueError):
         raise ApiError(502, "route_unavailable", "길찾기에 실패했습니다. 잠시 후 다시 시도해주세요.") from None
+    status = str(data.get("result", {}).get("status", "")) if isinstance(data, dict) else ""
+    if status == "11":
+        return walking_route(points, key)
+    if status in ("12", "13", "14"):
+        raise ApiError(422, "route_not_found", "선택한 위치 사이에 대중교통 경로가 없습니다. 주변 정류장이나 다른 목적지로 검색해주세요.")
     if not isinstance(data, dict) or not isinstance(data.get("metaData", {}).get("plan", {}).get("itineraries"), list):
         raise ApiError(502, "route_invalid_response", "조회 가능한 대중교통 경로를 확인하지 못했습니다.")
     # 원본 응답에서 경로 정보만 반환. 키와 요청 헤더, 개인 프로필 제외
@@ -73,3 +79,91 @@ def transit_routes(user_id, body):
         while len(_cache) > 128:
             _cache.popitem(last=False)
     return copy.deepcopy(result)
+
+
+def search_places(user_id, body):
+    """장소명 검색 결과를 이름, 주소, 지도 좌표로 정리. 공급자 키는 서버에서만 사용."""
+    query = body.get("query", "")
+    if not isinstance(query, str) or not 2 <= len(query.strip()) <= 100:
+        raise ApiError(400, "invalid_place_query", "장소 이름이나 주소를 2~100자로 입력해주세요.")
+    key = (os.getenv("TMAP_POI_APP_KEY") or os.getenv("TMAP_APP_KEY", "")).strip()
+    if not key:
+        raise ApiError(503, "place_not_configured", "장소 검색 서비스 연결 준비 중입니다. 현재 위치는 사용할 수 있어요.")
+    query = query.strip()
+    now = time.monotonic()
+    cache_key = ("places", query)
+    with _lock:
+        cached = _cache.get(cache_key)
+        if cached and now-cached[0] < 60:
+            return copy.deepcopy(cached[1])
+        caller = ("places", user_id)
+        if now-_last_call.get(caller, -100) < 1:
+            raise ApiError(429, "place_rate_limit", "잠시 후 다시 검색해주세요.")
+        _last_call[caller] = now
+        while len(_last_call) > 1024:
+            _last_call.popitem(last=False)
+    params = urllib.parse.urlencode({"version": "1", "searchKeyword": query, "searchType": "all",
+        "count": "20", "page": "1", "resCoordType": "WGS84GEO", "reqCoordType": "WGS84GEO"})
+    req = urllib.request.Request("https://apis.openapi.sk.com/tmap/pois?"+params,
+                                 headers={"appKey": key, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            raw = response.read(2_000_001)
+            if len(raw) > 2_000_000:
+                raise ApiError(502, "place_response_too_large", "검색 결과를 불러오지 못했습니다.")
+            data = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (401, 403):
+            raise ApiError(503, "place_not_configured", "장소 검색 서비스 연결 준비 중입니다. 현재 위치는 사용할 수 있어요.") from None
+        raise ApiError(429 if exc.code == 429 else 502, "place_provider_error", "장소 검색을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.") from None
+    except (OSError, ValueError):
+        raise ApiError(502, "place_unavailable", "장소 검색 응답이 늦어지고 있습니다. 다시 시도해주세요.") from None
+    if not isinstance(data, dict) or not isinstance(data.get("searchPoiInfo"), dict):
+        raise ApiError(502, "place_invalid_response", "장소 검색 결과를 확인하지 못했습니다.")
+    items = data["searchPoiInfo"].get("pois", {}).get("poi", [])
+    places = []
+    for item in items:
+        try:
+            lat, lon = float(item["noorLat"]), float(item["noorLon"])
+            name = str(item.get("name", "")).strip()
+            if not name or not math.isfinite(lat) or not math.isfinite(lon) or not (-90<=lat<=90 and -180<=lon<=180):
+                continue
+            roads = item.get("newAddressList", {}).get("newAddress", [])
+            road = next((x["fullAddressRoad"] for x in roads if x.get("fullAddressRoad")), "")
+            address = road or " ".join(str(item.get(k) or "") for k in ("upperAddrName", "middleAddrName", "lowerAddrName", "detailAddrName")).strip()
+            places.append({"id": str(item.get("id") or len(places)), "name": name, "address": address,
+                           "latitude": lat, "longitude": lon})
+        except (KeyError, TypeError, ValueError):
+            continue
+    result = {"places": places}
+    with _lock:
+        _cache[cache_key] = (now, result)
+        while len(_cache) > 128:
+            _cache.popitem(last=False)
+    return result
+
+
+def walking_route(points, key):
+    """대중교통 검색의 근거리 응답을 실제 TMAP 도보 경로로 연결."""
+    payload = dict(zip(("startX", "startY", "endX", "endY"), points))
+    payload.update(startName="start", endName="end", reqCoordType="WGS84GEO", resCoordType="WGS84GEO")
+    req = urllib.request.Request("https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1",
+        data=json.dumps(payload).encode(), headers={"appKey": key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=12) as response:
+            raw = response.read(4_000_001)
+            if len(raw)>4_000_000:
+                raise ValueError("response too large")
+            data = json.loads(raw)
+        features = data["features"]
+        summary = next(f["properties"] for f in features if "totalDistance" in f.get("properties", {}))
+        distance, duration = summary["totalDistance"], summary["totalTime"]
+        if any(type(x) not in (int,float) or not math.isfinite(x) or x<0 for x in (distance,duration)):
+            raise ValueError("invalid route totals")
+        lines = [f["geometry"]["coordinates"] for f in features if f.get("geometry", {}).get("type")=="LineString"]
+        steps = [{"linestring":" ".join(str(x)+","+str(y) for x,y in line)} for line in lines]
+        return {"metaData":{"plan":{"itineraries":[{"totalTime":duration,"totalDistance":distance,
+            "fare":{"regular":{"totalFare":0}},"legs":[{"mode":"WALK","route":"도보","sectionTime":duration,
+                "distance":distance,"steps":steps}]}]}}}
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        raise ApiError(422, "walking_unavailable", "가까운 거리라 대중교통 경로가 없고, 도보 경로도 불러오지 못했습니다. 잠시 후 다시 검색해주세요.") from None
