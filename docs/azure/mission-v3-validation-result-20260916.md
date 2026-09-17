@@ -6,7 +6,9 @@
 - Mission v3.2 merge baseline: `b70d5b847fad107d8ef18f6c8beb6adcd26df0f8`
 - Validation campaign: `mission-e2e-20260916`
 - Warm test user: `mission-e2e-warm-001`
+- Cold test user: `mission-e2e-cold-20260917-001`
 - Source week: `2026-09-07` ~ `2026-09-14` (`2026-W37`)
+- Assignment week: `2026-09-14` ~ `2026-09-21`
 - ADLS validation root: `abfss://curated@stcanopydev5dt.dfs.core.windows.net/test/mission_e2e/`
 
 ## 완료된 검증
@@ -191,19 +193,114 @@ Weekly User Gold
 → Cosmos mission-state latest projection
 ```
 
+### 7. Function App Mission Assignment API E2E
+
+2026-09-17 `func-canopy-dev`에 최신 Mission v3.2 Function 코드를 전체 ZIP remote build로 배포했다. Azure runtime은 Python 3.13이며 배포 후 `mission_get`이 `/api/users/me/missions`로 등록된 것을 확인했다.
+
+Mission 검증 설정:
+
+```text
+CANOPY_CAMPAIGN_ID=mission-e2e-20260916
+CANOPY_ALLOW_DEV_USER_HEADER=true
+CANOPY_COSMOS_DATABASE=canopy-db
+CANOPY_COSMOS_MISSION_PROFILE_CONTAINER=mission-state
+CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER=mission-state
+CANOPY_CAMPAIGN_TIMEZONE=Asia/Seoul
+```
+
+기존 smoke용 `COSMOS_DATABASE=canopy-smoke`는 유지하고 Mission은 `CANOPY_COSMOS_DATABASE=canopy-db`를 우선 사용하도록 분리했다.
+
+#### Cold-start
+
+Profile이 없는 `mission-e2e-cold-20260917-001`에 대해 최초 GET 결과 PASS:
+
+```text
+status                  = assigned
+idempotent              = false
+campaign_id             = mission-e2e-20260916
+week_start              = 2026-09-14
+week_end                = 2026-09-21
+policy_version          = mission-policy-v3.2
+profile_status_at_issue = cold_start
+common_target_count     = 1
+difficulty_reason       = first_or_missing_result
+mission_count           = 4
+```
+
+발급 template:
+
+| category | template | target | affinity comparable | difficulty comparable |
+| --- | --- | ---: | --- | --- |
+| challenge | `challenge_starter` | 1 | false | false |
+| habit | `habit_starter` | 1 | false | false |
+| easy_win | `easy_starter` | 1 | false | false |
+| explore | `explore_starter` | 1 | false | false |
+
+각 assignment에 발급 시점 `completion_rule` snapshot이 포함된 것을 확인했다.
+
+같은 사용자/같은 주차를 다시 GET한 결과:
+
+```text
+idempotent          = true
+bundle_id same      = true
+assignment_ids same = true
+mission_count       = 4
+```
+
+Cosmos `mission-state` 조회 결과 해당 cold user/week의 `mission_bundle`은 정확히 1건이었다. API와 Cosmos의 `bundle_id`, `profile_status_at_issue=cold_start`, `policy_version=mission-policy-v3.2`가 일치했다.
+
+#### Warm-start
+
+앞 단계에서 생성한 `mission-e2e-warm-001`의 current Profile을 읽은 결과 PASS:
+
+```text
+status                  = assigned
+profile_status_at_issue = current
+policy_version          = mission-policy-v3.2
+common_target_count     = 1
+difficulty_reason       = first_or_missing_result
+mission_count           = 4
+```
+
+행동 Profile 기반 template 선택 결과:
+
+| category | template | target | affinity comparable | difficulty comparable |
+| --- | --- | ---: | --- | --- |
+| challenge | `challenge_car_to_transit` | 1 | true | true |
+| habit | `habit_transit_repeat` | 1 | true | true |
+| easy_win | `easy_short_active` | 1 | true | true |
+| explore | `explore_active` | 1 | false | false |
+
+Cosmos warm bundle linkage 검증:
+
+```text
+warm bundle count       = 1
+profile_status_at_issue = current
+profile_source_week     = 2026-09-07
+profile_version         = mission-profile-v3
+policy_version          = mission-policy-v3.2
+PROFILE HASH MATCH      = true
+```
+
+bundle의 `profile_hash`가 최신 Cosmos Mission Profile의 `profile_hash`와 정확히 일치했다. 따라서 발급된 warm bundle이 검증된 current Profile을 실제 입력으로 사용했음을 확인했다.
+
+따라서 아래 API 흐름은 실환경 PASS로 판정한다.
+
+```text
+Cold user → starter bundle 4개 → same-week idempotent reuse → Cosmos bundle 1건
+Warm user → current Cosmos Profile → 행동 기반 template 4개 → profile hash linkage
+```
+
 ## Git 보완
 
 - `build_weekly_summary.py`: NULL `effective_mode`를 명시적 invalid segment로 처리.
 - `test_mission_profile_contract.py`: Weekly Summary source contract에 NULL-mode guard를 추가해 회귀를 방지.
 - `run_mission_profile_serverless.py`: Serverless named Service Credential 실행 entrypoint 추가.
 - `test_mission_profile_serverless_runner.py`: credential name fail-fast 및 Cosmos factory 주입/원복 회귀 검증 추가.
+- 본 문서에 Serverless Profile E2E와 Function cold/warm/idempotency/Cosmos linkage 증거를 기록.
 
 ## 아직 완료되지 않은 E2E 게이트
 
-1. Function App에 최신 Mission v3.2 배포.
-2. cold-start GET → 4 starter missions.
-3. same-week repeated GET → 동일 bundle/idempotency.
-4. warm-start GET → 행동 Profile 기반 template 선택.
-5. Mission Progress/Response → `mission_response_weekly` → next Mission Profile 통합 검증.
+1. Mission Progress/Response → `mission_response_weekly` → next Mission Profile 통합 검증.
 
-따라서 현재 판정은 **Weekly Summary + Mission Profile + ADLS/Cosmos projection E2E PASS, Function API 및 Mission Response 통합 E2E는 진행 중**이다.
+현재 판정은 **Weekly Summary + Mission Profile + ADLS/Cosmos projection + Mission Assignment Function API core E2E PASS**다. 남은 항목은 Mission Progress/Response 결과가 다음 주 Mission Profile로 되먹임되는 통합 경로 검증이다.
