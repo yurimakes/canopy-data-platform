@@ -18,10 +18,16 @@ from pyspark import pipelines as dp
 from pyspark.sql.functions import pandas_udf
 from pyspark.sql import SparkSession, Window, functions as F, types as T
 
-# 깃 폴더 경로 지정
-git_module_path = "/Workspace/canopy-data-platform-git/cloud/azure/pipelines/databricks"
-if git_module_path not in sys.path:
-    sys.path.append(git_module_path)
+# 현재 weekly_analysis 폴더 기준으로 sibling databricks 모듈 경로를 계산한다.
+# Git Folder와 Workspace 수동 업로드 양쪽에서 절대 경로 하드코딩을 피한다.
+weekly_analysis_path = os.getcwd()
+databricks_module_path = os.path.abspath(
+    os.path.join(weekly_analysis_path, "..", "databricks")
+)
+
+for module_path in (weekly_analysis_path, databricks_module_path):
+    if module_path not in sys.path:
+        sys.path.insert(0, module_path)
 
 # 파이프라인 실행에 필요한 함수 및 모듈 임포트
 from build_personal_baseline import load_policy as load_baseline_policy
@@ -32,12 +38,16 @@ from helpers.spark_baseline import (
     build_global_eligibility,
     build_global_baseline as build_global_baseline_df,
 )
-from helpers.baseline_eligibility import (
-    load_eligibility_policy, 
-    build_baseline_eligibility,
-    evaluate_personal_eligibility, 
-    observation_context, 
+from baseline_eligibility import (
+    load_eligibility_policy,
+    evaluate_personal_eligibility,
+    observation_context,
     week_evaluation_time,
+)
+from helpers.baseline_eligibility import build_baseline_eligibility
+from helpers.weekly_user_profile import build_weekly_user_profile
+from helpers.campaign_kpi import (
+    build_campaign_kpi as build_campaign_kpi_df,
 )
 
 policy = load_eligibility_policy()
@@ -46,7 +56,7 @@ spark = SparkSession.builder.getOrCreate()
 
 # 기존 build_personal_baseline.py가 쓰는 정책 파일 그대로 사용
 BASELINE_POLICY = load_baseline_policy(
-    os.path.join(git_module_path, "baseline_policy.yaml")
+    os.path.join(databricks_module_path, "baseline_policy.yaml")
 )
 BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
 
@@ -397,11 +407,37 @@ def ranking():
     return empty_result(RANKING_DRAFT_SCHEMA, "weekly_user_profile")
 
 
-@dp.materialized_view(schema=CAMPAIGN_KPI_DRAFT_SCHEMA, comment="계산 미연결. 캠페인 KPI 컬럼 초안, 담당자 확정 필요")
+@dp.materialized_view(
+    schema=CAMPAIGN_KPI_DRAFT_SCHEMA,
+    comment="주간 Campaign KPI 집계",
+)
 def campaign_kpi():
-    # 주간 집계와 담당 코드에 필요한 보상 및 참여 이력 연결 → 캠페인 지표 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(CAMPAIGN_KPI_DRAFT_SCHEMA, "weekly_user_profile", "weekly_gold")
+    mission_response_path = os.environ.get(
+        "CANOPY_GOLD_MISSION_RESPONSE_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
+    )
+    reward_ledger_path = os.environ.get(
+        "CANOPY_GOLD_REWARD_LEDGER_HISTORY_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_ledger_history/",
+    )
+    membership_path = os.environ.get(
+        "CANOPY_ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
+    )
+
+    return build_campaign_kpi_df(
+        weekly_gold=spark.read.table("weekly_gold"),
+        mission_response=(
+            spark.read.format("delta").load(mission_response_path)
+        ),
+        behavior_change=spark.read.table("behavior_change"),
+        reward_ledger=(
+            spark.read.format("delta").load(reward_ledger_path)
+        ),
+        campaign_membership=(
+            spark.read.format("delta").load(membership_path)
+        ),
+    )
 
 
 @dp.materialized_view(schema=WEEKLY_OUTPUTS_DRAFT_SCHEMA, comment="계산 미연결. 최종 묶음 컬럼 초안, 소비 계약 확정 필요")
