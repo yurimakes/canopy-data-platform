@@ -11,10 +11,43 @@
 가입 정보, 미션 응답 이력, 실제 보상 이력 등 외부 입력은 담당 코드 연결 시 추가.
 실행 시작: 바깥 Job의 run_weekly_pipeline. 데이터 입력 시작: final_trip_gold_input().
 """
+import sys
+import os
+import pandas as pd
 from pyspark import pipelines as dp
+from pyspark.sql.functions import pandas_udf
 from pyspark.sql import SparkSession, Window, functions as F, types as T
 
+# 깃 폴더 경로 지정
+git_module_path = "/Workspace/canopy-data-platform-git/cloud/azure/pipelines/databricks"
+if git_module_path not in sys.path:
+    sys.path.append(git_module_path)
+
+# 파이프라인 실행에 필요한 함수 및 모듈 임포트
+from baseline_eligibility import load_eligibility_policy, evaluate_personal_eligibility, observation_context, week_evaluation_time
+from build_personal_baseline import load_policy as load_baseline_policy
+from helpers.spark_baseline import (
+    build_personal_baseline as build_personal_baseline_df,
+    select_personal_ready_users,
+    build_global_eligibility,
+    build_global_baseline as build_global_baseline_df,
+)
+
+policy = load_eligibility_policy()
 spark = SparkSession.builder.getOrCreate()
+
+
+# 기존 build_personal_baseline.py가 쓰는 정책 파일 그대로 사용
+BASELINE_POLICY = load_baseline_policy(
+    os.path.join(git_module_path, "baseline_policy.yaml")
+)
+BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
+
+# 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산
+COMMUTE_SCOPE_VERIFIED = (
+    os.environ.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED") == "true"
+)
+
 # 기존 계약: shared/schemas/baseline/weekly_user_gold.schema.json
 WEEKLY_SCHEMA = """
     `user_id` STRING,
@@ -142,7 +175,7 @@ PROFILE_SCHEMA = """
 """
 
 # 기존 판정 함수 반환값에 사용자, 캠페인, 적용 주차 식별자 연결
-# 원본: baseline_eligibility.py, Hayden Shin 작성
+# 원본: baseline_eligibility.py
 PERSONAL_ELIGIBILITY_SCHEMA = """
     user_id STRING, campaign_id STRING, week STRING,
     status STRING, policy_version STRING, observation_days BIGINT,
@@ -248,7 +281,7 @@ def final_trip_gold_input():
 
 @dp.temporary_view(comment="한국시간 기준 사용자별 주간 거리와 탄소 집계")
 def weekly_summary():
-    # 원본: build_weekly_summary.py, 5dt028 작성 / ManiaKCY 수정
+    # 원본: build_weekly_summary.py
     # 입력: final_trip_gold_input / 출력: shared/schemas/baseline/weekly_user_gold.schema.json
     # 거리 m, 탄소 kgCO2e. 저장된 탄소 합계 사용, 배출계수 재계산 제외
     return calculate_weekly(spark.read.table("final_trip_gold_input"))
@@ -262,37 +295,109 @@ def weekly_gold():
 
 @dp.temporary_view(comment="Baseline 계산 대상 판정 코드 입력 위치")
 def baseline_eligibility():
-    # 주간 이력과 가입 정보 입력 → 수집 기간과 Trip 수 조건 판정 → 사용자별 판정 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(PERSONAL_ELIGIBILITY_SCHEMA, "weekly_gold")
+    weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
+
+    agg_df = weekly_df.groupBy("user_id", "campaign_id", "week").agg(
+        F.sum("trip_count").alias("trip_count"),
+        F.sum("total_distance_m").alias("total_distance"),
+        F.sum("total_kg_co2e").alias("total_carbon")
+    )
+
+    @pandas_udf(PERSONAL_ELIGIBILITY_SCHEMA)
+    def evaluate_personal_row(
+        user_id: pd.Series,
+        campaign_id: pd.Series,
+        week: pd.Series,
+        trip_count: pd.Series,
+        total_distance: pd.Series,
+        total_carbon: pd.Series
+    ) -> pd.DataFrame:
+        results = []
+        for uid, cid, w, tc, td, tc_carb in zip(
+            user_id, campaign_id, week, trip_count, total_distance, total_carbon
+        ):
+            try:
+                evaluated_at = week_evaluation_time(w)
+            except Exception:
+                evaluated_at = None
+
+            identities = {
+                "users": [],
+                "memberships": []
+            }
+
+            obs_days, source, err = observation_context(uid, cid, evaluated_at, identities)
+            observation_days = int(obs_days) if obs_days is not None else 0
+
+            result = evaluate_personal_eligibility(
+                observation_days=observation_days,
+                trip_count=tc or 0,
+                total_distance=td or 0.0,
+                total_carbon=tc_carb or 0.0,
+                policy=policy
+            )
+
+            results.append({
+                "user_id": uid,
+                "campaign_id": cid,
+                "week": w,
+                "status": result.get("status"),
+                "policy_version": result.get("policy_version"),
+                "observation_days": observation_days,
+                "confirmed_trip_count": int(result.get("confirmed_trip_count", tc or 0)),
+                "reasons": result.get("reasons", [])
+            })
+
+        return pd.DataFrame(results)
+
+    return agg_df.select(
+        evaluate_personal_row(
+            F.col("user_id"),
+            F.col("campaign_id"),
+            F.col("week"),
+            F.col("trip_count"),
+            F.col("total_distance"),
+            F.col("total_carbon")
+        ).alias("evaluated")
+    ).select("evaluated.*")
 
 
-@dp.temporary_view(comment="개인 Baseline 계산 및 갱신 코드 입력 위치")
+@dp.temporary_view(comment="이전 완료 주 이력을 이용한 개인 Baseline 계산")
 def personal_baseline():
-    # 주간 이력과 대상 판정 입력 → 기존 개인 Baseline 계산 코드 적용 → 사용자별 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(PERSONAL_SCHEMA, "baseline_eligibility")
+    return build_personal_baseline_df(
+        weekly=spark.read.table("weekly_gold"),
+        eligibility=spark.read.table("baseline_eligibility"),
+        baseline_policy_version=BASELINE_POLICY_VERSION,
+        commute_scope_verified=COMMUTE_SCOPE_VERIFIED,
+        eligibility_policy=policy,
+    )
 
 
-@dp.temporary_view(comment="개인 Baseline 준비 완료 사용자 선택 위치")
+@dp.temporary_view(comment="Global Baseline 계산에 사용할 준비 완료 Personal 사용자 선택")
 def personal_ready_users():
-    # 개인 Baseline 입력 → 준비 완료 조건 필터 → 대상 사용자 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(PERSONAL_SCHEMA, "personal_baseline")
+    return select_personal_ready_users(
+        spark.read.table("personal_baseline"),
+        eligibility_policy=policy,
+    )
 
 
-@dp.temporary_view(comment="Global Baseline 계산 가능 여부 판정 위치")
+@dp.temporary_view(comment="Global Baseline 계산 가능 여부 판정")
 def global_eligibility():
-    # 대상 사용자 입력 → 참여 인원 등 정책 조건 판정 → 캠페인별 판정 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(GLOBAL_ELIGIBILITY_SCHEMA, "personal_ready_users")
+    return build_global_eligibility(
+        personal=spark.read.table("personal_baseline"),
+        ready=spark.read.table("personal_ready_users"),
+        eligibility_policy=policy,
+    )
 
 
-@dp.temporary_view(comment="Global Baseline 계산 및 갱신 코드 입력 위치")
+@dp.temporary_view(comment="Global Baseline 계산 및 갱신")
 def global_baseline():
-    # 개인 Baseline과 대상 판정 입력 → 기존 Global 계산 코드 적용 → 캠페인별 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(GLOBAL_SCHEMA, "global_eligibility")
+    return build_global_baseline_df(
+        ready=spark.read.table("personal_ready_users"),
+        eligibility=spark.read.table("global_eligibility"),
+        baseline_policy_version=BASELINE_POLICY_VERSION,
+        eligibility_policy=policy,
+    )
 
 
 @dp.materialized_view(schema=BASELINE_GOLD_SCHEMA, comment="계산 미연결. 개인과 Global 통합 형태는 컬럼 초안")
@@ -346,9 +451,9 @@ def weekly_outputs_gold():
 
 
 # 앞의 세 단계에서만 사용. 이후 담당자 블록과 분리
-# 원본: build_weekly_summary.py, 5dt028 / ManiaKCY
+# 원본: build_weekly_summary.py
 # 파이프라인 연결: 검증용 count/collect 대신 Spark 표현식 사용
-# null mode 판정은 팀원 수정 d268a7d 기준
+# null mode 판정은 창연님 수정 d268a7d 기준
 def calculate_weekly(trips):
     # 주차 경계는 한국시간 월요일. Spark 세션 시간대는 UTC 기준
     if spark.conf.get("spark.sql.session.timeZone") not in {"UTC", "Etc/UTC"}:
