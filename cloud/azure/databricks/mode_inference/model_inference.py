@@ -32,8 +32,12 @@ def predict_pandas(model: Any, frame: Any) -> Any:
 
 
 def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
+    import os
     import mlflow.pyfunc
     from pyspark.sql import functions as F
+
+    # Work around MLflow DBConnect runtime parsing for Lakeflow serverless
+    os.environ["_MLFLOW_SPARK_UDF_SERVERLESS_SKIP_DBCONNECT_ARTIFACT"] = "true"
 
     model_name, model_version = model_identity(model_uri)
     predict = mlflow.pyfunc.spark_udf(
