@@ -12,7 +12,6 @@ export const missionProgress=(mission:WeeklyMission)=>Math.max(0,Math.min(100,Ma
 export function MissionRankingScreen({api,initialTab='missions',onBack}:{api:EngagementClient;initialTab?:Tab;onBack():void}){
   const [tab,setTab]=useState<Tab>(initialTab),[scope,setScope]=useState<RankingScope>('individual');
   const [data,setData]=useState<EngagementDashboard>(),[loading,setLoading]=useState(true),[refreshing,setRefreshing]=useState(false),[error,setError]=useState('');
-  const [started,setStarted]=useState<Set<string>>(new Set());
   const alive=useRef(true);
   const load=useCallback(async(refresh=false)=>{
     refresh?setRefreshing(true):setLoading(true);setError('');
@@ -21,10 +20,8 @@ export function MissionRankingScreen({api,initialTab='missions',onBack}:{api:Eng
     finally{if(alive.current){setLoading(false);setRefreshing(false);}}
   },[api]);
   useEffect(()=>{alive.current=true;void load();return()=>{alive.current=false;};},[load]);
-  const viewedKey=data?.missions?.missions.map(m=>m.assignment_id).join('|')??'';
-  useEffect(()=>{if(!data?.missions)return;for(const mission of data.missions.missions)void api.recordMissionEvent(mission.assignment_id,'viewed').catch(()=>{});},[api,viewedKey]);
   const completed=useMemo(()=>data?.missions?.missions.filter(m=>m.completed).length??0,[data]);
-  async function startMission(id:string){if(started.has(id))return;setStarted(current=>new Set(current).add(id));try{await api.recordMissionEvent(id,'started');}catch{setStarted(current=>{const next=new Set(current);next.delete(id);return next;});}}
+  const ranking=data?.rankings[scope];
   return <SafeAreaView style={s.root}><View style={s.header}>
     <Pressable accessibilityRole="button" onPress={onBack}><Text style={s.back}>← 이동 기록</Text></Pressable><Text style={s.brand}>Canopy</Text><View style={{width:72}}/>
   </View><View style={s.tabs}>{(['missions','ranking'] as Tab[]).map(value=><Pressable key={value} accessibilityRole="tab" accessibilityState={{selected:tab===value}}
@@ -38,39 +35,44 @@ export function MissionRankingScreen({api,initialTab='missions',onBack}:{api:Eng
         <Text style={s.heroNote}>{data?.missions?`${date(data.missions.week_start)} – ${date(data.missions.week_end)}`:'현재 부여된 미션이 없습니다.'}</Text>
         {!!data?.missions&&<View style={s.summaryTrack}><View style={[s.summaryFill,{width:`${data.missions.missions.length?completed/data.missions.missions.length*100:0}%` as `${number}%`}]} /></View>}
       </View>
-      {!data?.missions?<Empty title="아직 이번 주 미션이 없습니다." detail="Baseline 수집 중이어도 첫 주 미션은 별도로 발급될 수 있습니다. 잠시 후 다시 확인해 주세요."/>:
+      {data?.errors.missions?<SectionError message={data.errors.missions} onRetry={()=>void load()}/>:
+      !data?.missions?<Empty title="아직 이번 주 미션이 없습니다." detail="Baseline 수집 중이어도 첫 주 미션은 별도로 발급될 수 있습니다. 잠시 후 다시 확인해 주세요."/>:
       <>{data.missions.profile_status_at_issue==='cold_start'&&<View style={s.info}><Text style={s.infoTitle}>첫 주 미션이에요</Text><Text style={s.note}>이동 기록이 없어도 네 가지 시작 미션이 자동으로 부여됩니다.</Text></View>}
       <Text style={s.sectionTitle}>자동 배정된 미션</Text><Text style={s.note}>서버 진행률을 그대로 표시합니다. 이동 완료와 보상 확정 시점은 다를 수 있습니다.</Text>
-      {data.missions.missions.map(mission=><MissionCard key={mission.assignment_id} mission={mission} started={started.has(mission.assignment_id)} onStart={()=>void startMission(mission.assignment_id)}/>)}</>}
-      <View style={s.reward}><View><Text style={s.eyebrow}>WEEKLY POINTS</Text><Text style={s.rewardPoints}>{data?.reward.total_points.toLocaleString('ko-KR')??0} P</Text></View>
-        <Text style={s.badge}>{data?.reward.status==='processing'?'일부 처리 중':data?.reward.status==='settled'?'정산 완료':'내역 없음'}</Text></View>
-      {!!data?.reward.entries.length&&<View style={s.card}><Text style={s.sectionTitle}>포인트 내역</Text>{data.reward.entries.map(entry=><View key={entry.reward_id} style={s.rewardRow}>
-        <View><Text style={s.rowTitle}>{entry.label}</Text><Text style={s.caption}>{time(entry.occurred_at)}</Text></View><Text style={s.points}>+{entry.points} P</Text></View>)}
-        <Text style={s.caption}>갱신 {time(data.reward.updated_at)}</Text></View>}
+      {data.missions.missions.map(mission=><MissionCard key={mission.assignment_id} mission={mission}/>)}</>}
+      {data?.errors.reward?<SectionError message={data.errors.reward} onRetry={()=>void load()}/>:
+      data?.reward?<><View style={s.reward}><View><Text style={s.eyebrow}>WEEKLY POINTS</Text><Text style={s.rewardPoints}>{data.reward.total_points.toLocaleString('ko-KR')} P</Text></View>
+        <Text style={s.badge}>{data.reward.status==='processing'?'일부 처리 중':data.reward.status==='settled'?'정산 완료':'내역 없음'}</Text></View>
+      {!!data.reward.entries.length&&<View style={s.card}><Text style={s.sectionTitle}>포인트 내역</Text>{data.reward.entries.map(entry=><View key={entry.reward_id} style={s.rewardRow}>
+        <View><Text style={s.rowTitle}>{entry.label}</Text><Text style={s.caption}>{time(entry.occurred_at)}</Text></View><Text style={entry.points<0?s.negative:s.points}>{entry.points>0?'+':''}{entry.points} P</Text></View>)}
+        <Text style={s.caption}>갱신 {time(data.reward.updated_at)}{data.reward.policy_version?` · ${data.reward.policy_version}`:''}</Text></View>}</>:null}
     </>:<>
-      <View style={s.hero}><Text style={s.eyebrow}>WEEKLY RANKING</Text><Text style={s.heroTitle}>주간 확정 순위</Text>
-        <Text style={s.heroNote}>{date(data!.rankings[scope].week_start)} – {date(data!.rankings[scope].week_end)}</Text></View>
+      <View style={s.hero}><Text style={s.eyebrow}>WEEKLY RANKING</Text><Text style={s.heroTitle}>{ranking?.snapshot_status==='finalized'?'주간 확정 순위':'순위 집계 중'}</Text>
+        <Text style={s.heroNote}>{ranking?`${date(ranking.week_start)} – ${date(ranking.week_end)}`:'랭킹 정보를 불러오지 못했습니다.'}</Text></View>
       <View style={s.scope}>{(['individual','department'] as RankingScope[]).map(value=><Pressable key={value} accessibilityRole="button" accessibilityState={{selected:scope===value}}
         onPress={()=>setScope(value)} style={[s.scopeButton,scope===value&&s.scopeOn]}><Text style={[s.scopeText,scope===value&&s.scopeTextOn]}>{value==='individual'?'개인':'부서'}</Text></Pressable>)}</View>
       <View style={s.info}><Text style={s.infoTitle}>실시간 순위가 아닙니다</Text><Text style={s.note}>마감된 주간 Snapshot입니다. 승인된 보상 조정은 다음 Snapshot 갱신에 반영됩니다.</Text></View>
-      <View style={s.card}>{data!.rankings[scope].entries.length?data!.rankings[scope].entries.map(entry=><View key={entry.subject_id} style={[s.rankRow,entry.is_me&&s.me]}>
+      {data?.errors[scope]?<SectionError message={data.errors[scope]!} onRetry={()=>void load()}/>:
+      !ranking?<Empty title="랭킹 자료가 없습니다." detail="집계가 시작되면 이 화면에 표시됩니다."/>:
+      ranking.snapshot_status==='in_progress'?<Empty title="이번 주 순위를 집계 중입니다." detail="확정 Snapshot이 생성되면 순위가 표시됩니다."/>:
+      <View style={s.card}>{ranking.entries.length?ranking.entries.map(entry=><View key={entry.subject_id} style={[s.rankRow,entry.is_me&&s.me]}>
         <Text style={[s.rank,entry.rank<=3&&s.top]}>{entry.rank}</Text><Text style={s.rankName}>{entry.display_name}</Text><Text style={s.rankScore}>{entry.score.toLocaleString('ko-KR')} P</Text></View>):
         <Empty title="공개할 순위가 없습니다." detail="참여 조건과 공개 범위를 충족한 결과가 생기면 표시됩니다."/>}
-        <Text style={s.caption}>생성 {time(data!.rankings[scope].generated_at)} · {data!.rankings[scope].policy_version}</Text></View>
+        {!!ranking.generated_at&&<Text style={s.caption}>생성 {time(ranking.generated_at)}{ranking.policy_version?` · ${ranking.policy_version}`:''}</Text>}</View>}
     </>}
   </ScrollView>}</SafeAreaView>;
 }
 
-function MissionCard({mission,started,onStart}:{mission:WeeklyMission;started:boolean;onStart():void}){
+function MissionCard({mission}:{mission:WeeklyMission}){
   const progress=missionProgress(mission),color=categoryColor[mission.category_id]??'#287a5c';
   return <View style={s.card}><View style={s.cardTop}><Text style={[s.category,{color}]}>{mission.category_label}</Text><Text style={[s.badge,mission.completed&&s.completeBadge]}>{mission.completed?'완료':'진행 중'}</Text></View>
     <Text style={s.missionTitle}>{mission.mission_name}</Text>{!!mission.mission_description&&<Text style={s.note}>{mission.mission_description}</Text>}
     <View style={s.progressLabel}><Text style={s.rowTitle}>{mission.progress_count}/{mission.target_count}{mission.progress_unit}</Text><Text style={s.caption}>{progress}%</Text></View>
     <View style={s.track}><View style={[s.fill,{width:`${progress}%` as `${number}%`,backgroundColor:color}]}/></View>
-    {!mission.completed&&<Pressable accessibilityRole="button" disabled={started} onPress={onStart} style={[s.outline,started&&s.disabled]}><Text style={s.outlineText}>{started?'시작 기록됨':'미션 시작'}</Text></Pressable>}
   </View>;
 }
 function Empty({title,detail}:{title:string;detail:string}){return <View style={s.empty}><Text style={s.infoTitle}>{title}</Text><Text style={s.note}>{detail}</Text></View>;}
+function SectionError({message,onRetry}:{message:string;onRetry():void}){return <View style={s.empty}><Text accessibilityRole="alert" style={s.error}>{message}</Text><Pressable accessibilityRole="button" onPress={onRetry} style={s.primary}><Text style={s.primaryText}>다시 시도</Text></Pressable></View>;}
 
 const s=StyleSheet.create({root:{flex:1,backgroundColor:'#f6f8f6'},header:{height:56,paddingHorizontal:20,flexDirection:'row',alignItems:'center',justifyContent:'space-between',backgroundColor:'#fff'},
   back:{color:'#174c39',fontWeight:'600'},brand:{fontSize:18,fontWeight:'800',color:'#162922'},tabs:{flexDirection:'row',backgroundColor:'#fff',paddingHorizontal:20,borderBottomWidth:1,borderColor:'#e2e8e4'},
@@ -81,9 +83,9 @@ const s=StyleSheet.create({root:{flex:1,backgroundColor:'#f6f8f6'},header:{heigh
   sectionTitle:{fontSize:18,fontWeight:'800',color:'#162922',marginTop:4},note:{fontSize:13,color:'#66736e',lineHeight:20},card:{backgroundColor:'#fff',padding:18,borderRadius:16,gap:12,borderWidth:1,borderColor:'#e4e9e6'},
   cardTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},category:{fontSize:12,fontWeight:'800'},badge:{fontSize:11,fontWeight:'700',color:'#675f25',backgroundColor:'#f4edc5',paddingHorizontal:9,paddingVertical:5,borderRadius:12},completeBadge:{color:'#176344',backgroundColor:'#dcefe6'},
   missionTitle:{fontSize:17,fontWeight:'800',color:'#1c2e27',lineHeight:24},progressLabel:{flexDirection:'row',justifyContent:'space-between'},rowTitle:{fontSize:14,fontWeight:'700',color:'#263c33'},caption:{fontSize:11,color:'#79857f'},
-  track:{height:8,borderRadius:8,backgroundColor:'#e8eeea',overflow:'hidden'},fill:{height:'100%',borderRadius:8},outline:{borderWidth:1,borderColor:'#9eb7a8',borderRadius:10,padding:12,alignItems:'center'},outlineText:{fontWeight:'700',color:'#174c39'},disabled:{opacity:.55},
+  track:{height:8,borderRadius:8,backgroundColor:'#e8eeea',overflow:'hidden'},fill:{height:'100%',borderRadius:8},
   info:{backgroundColor:'#e9f4ef',padding:16,borderRadius:14,gap:5},infoTitle:{fontSize:15,fontWeight:'800',color:'#174c39'},reward:{backgroundColor:'#fff',padding:18,borderRadius:16,flexDirection:'row',justifyContent:'space-between',alignItems:'center',borderWidth:1,borderColor:'#e4e9e6'},
-  rewardPoints:{fontSize:25,fontWeight:'800',color:'#174c39'},rewardRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingVertical:8,borderBottomWidth:1,borderColor:'#edf1ee'},points:{fontWeight:'800',color:'#087f5b'},
+  rewardPoints:{fontSize:25,fontWeight:'800',color:'#174c39'},rewardRow:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',paddingVertical:8,borderBottomWidth:1,borderColor:'#edf1ee'},points:{fontWeight:'800',color:'#087f5b'},negative:{fontWeight:'800',color:'#ad2929'},
   scope:{flexDirection:'row',backgroundColor:'#e7ece9',padding:4,borderRadius:12},scopeButton:{flex:1,padding:11,alignItems:'center',borderRadius:9},scopeOn:{backgroundColor:'#fff'},scopeText:{color:'#718078',fontWeight:'700'},scopeTextOn:{color:'#174c39'},
   rankRow:{flexDirection:'row',alignItems:'center',paddingVertical:13,borderBottomWidth:1,borderColor:'#edf1ee',gap:12},me:{backgroundColor:'#eef7f2',marginHorizontal:-10,paddingHorizontal:10,borderRadius:10},rank:{width:28,textAlign:'center',fontSize:16,fontWeight:'700',color:'#768179'},top:{color:'#d18b2e'},rankName:{flex:1,fontWeight:'700',color:'#263c33'},rankScore:{fontWeight:'800',color:'#174c39'},
   empty:{padding:22,backgroundColor:'#fff',borderRadius:16,gap:6,alignItems:'center'},primary:{backgroundColor:'#087f5b',borderRadius:12,paddingVertical:14,paddingHorizontal:26},primaryText:{color:'#fff',fontWeight:'800'},

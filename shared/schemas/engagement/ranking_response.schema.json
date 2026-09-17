@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://canopy.example/schemas/engagement/ranking_response.schema.json",
+  "title": "Canopy ranking snapshot read response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["scope", "campaign_id", "week_start", "week_end", "snapshot_status", "generated_at", "policy_version", "aggregation_version", "finalized", "score_unit", "entries", "next_cursor"],
+  "properties": {
+    "scope": {"enum": ["individual", "department"]},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "week_start": {"type": "string", "format": "date"},
+    "week_end": {"type": "string", "format": "date"},
+    "snapshot_status": {"enum": ["finalized", "in_progress"]},
+    "generated_at": {"type": ["string", "null"], "format": "date-time"},
+    "policy_version": {"type": ["string", "null"]},
+    "aggregation_version": {"type": ["string", "null"]},
+    "finalized": {"type": "boolean"},
+    "score_unit": {"const": "points"},
+    "next_cursor": {"type": ["string", "null"]},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rank", "subject_id", "display_name", "score", "is_me"],
+        "properties": {
+          "rank": {"type": "integer", "minimum": 1},
+          "subject_id": {"type": "string", "minLength": 1},
+          "display_name": {"type": "string", "minLength": 1},
+          "score": {"type": "number"},
+          "is_me": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

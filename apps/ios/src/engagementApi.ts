@@ -42,6 +42,9 @@ export type WeeklyReward = {
   status:RewardStatus;
   total_points:number;
   updated_at:string;
+  policy_version:string|null;
+  finalized:boolean;
+  next_cursor:string|null;
   entries:RewardEntry[];
 };
 
@@ -59,23 +62,25 @@ export type RankingSnapshot = {
   week_start:string;
   week_end:string;
   snapshot_status:'finalized'|'in_progress';
-  generated_at:string;
-  policy_version:string;
+  generated_at:string|null;
+  policy_version:string|null;
+  aggregation_version:string|null;
+  finalized:boolean;
   score_unit:'points';
+  next_cursor:string|null;
   entries:RankingEntry[];
 };
 
 export type EngagementDashboard = {
   source:'api'|'mock';
   missions:MissionBundle|null;
-  reward:WeeklyReward;
-  rankings:Record<RankingScope,RankingSnapshot>;
+  reward:WeeklyReward|null;
+  rankings:Partial<Record<RankingScope,RankingSnapshot>>;
+  errors:Partial<Record<'missions'|'reward'|RankingScope,string>>;
 };
 
-export type MissionEventType = 'viewed'|'started';
 export interface EngagementClient {
   loadDashboard(week?:string,signal?:AbortSignal):Promise<EngagementDashboard>;
-  recordMissionEvent(assignmentId:string,eventType:MissionEventType):Promise<void>;
 }
 
 export type EngagementConfig = {
@@ -125,25 +130,36 @@ export function parseMissionBundle(payload:unknown):MissionBundle {
 export function parseReward(payload:unknown):WeeklyReward {
   const root=object(payload,'보상');
   if(!Array.isArray(root.entries)||!['processing','settled','empty'].includes(String(root.status)))throw Error('보상 응답 형식이 다릅니다.');
+  const ids=new Set<string>();
   return {week_start:isoDate(root.week_start,'보상 시작 주차'),week_end:isoDate(root.week_end,'보상 종료 주차'),status:root.status as RewardStatus,
-    total_points:number(root.total_points,'보상 합계'),updated_at:text(root.updated_at,'보상 갱신 시각'),entries:root.entries.map((value,index)=>{
-      const item=object(value,`보상 ${index+1}`);return {reward_id:text(item.reward_id,'reward_id'),label:text(item.label,'보상 이름'),
-        points:number(item.points,'포인트'),status:text(item.status,'보상 상태') as RewardEntry['status'],occurred_at:text(item.occurred_at,'보상 시각')};
+    total_points:number(root.total_points,'보상 합계'),updated_at:text(root.updated_at,'보상 갱신 시각'),
+    policy_version:typeof root.policy_version==='string'?root.policy_version:null,finalized:root.finalized===true,
+    next_cursor:typeof root.next_cursor==='string'?root.next_cursor:null,entries:root.entries.map((value,index)=>{
+      const item=object(value,`보상 ${index+1}`),rewardId=text(item.reward_id,'reward_id'),status=text(item.status,'보상 상태');
+      if(ids.has(rewardId))throw Error('중복된 reward_id가 있습니다.');ids.add(rewardId);
+      if(!['processing','paid','adjusted'].includes(status))throw Error('보상 상태가 올바르지 않습니다.');
+      return {reward_id:rewardId,label:text(item.label,'보상 이름'),points:number(item.points,'포인트'),status:status as RewardEntry['status'],occurred_at:text(item.occurred_at,'보상 시각')};
     })};
 }
 
 export function parseRanking(payload:unknown,expected:RankingScope):RankingSnapshot {
   const root=object(payload,'랭킹');
   if(root.scope!==expected||!Array.isArray(root.entries)||!['finalized','in_progress'].includes(String(root.snapshot_status)))throw Error('랭킹 응답 형식이 다릅니다.');
+  if(root.score_unit!=='points')throw Error('랭킹 점수 단위가 올바르지 않습니다.');
+  const ids=new Set<string>();
   return {scope:expected,campaign_id:text(root.campaign_id,'campaign_id'),week_start:isoDate(root.week_start,'랭킹 시작 주차'),
     week_end:isoDate(root.week_end,'랭킹 종료 주차'),snapshot_status:root.snapshot_status as RankingSnapshot['snapshot_status'],
-    generated_at:text(root.generated_at,'랭킹 생성 시각'),policy_version:text(root.policy_version,'랭킹 정책 버전'),score_unit:'points',
-    entries:root.entries.map((value,index)=>{const item=object(value,`순위 ${index+1}`);return {rank:number(item.rank,'순위'),
-      subject_id:text(item.subject_id,'순위 대상'),display_name:text(item.display_name,'표시 이름'),score:number(item.score,'점수'),is_me:item.is_me===true};})};
+    generated_at:typeof root.generated_at==='string'?root.generated_at:null,policy_version:typeof root.policy_version==='string'?root.policy_version:null,
+    aggregation_version:typeof root.aggregation_version==='string'?root.aggregation_version:null,finalized:root.finalized===true,score_unit:'points',
+    next_cursor:typeof root.next_cursor==='string'?root.next_cursor:null,
+    entries:root.entries.map((value,index)=>{const item=object(value,`순위 ${index+1}`),rank=number(item.rank,'순위'),subjectId=text(item.subject_id,'순위 대상');
+      if(!Number.isInteger(rank)||rank<1)throw Error('순위 값이 올바르지 않습니다.');
+      if(ids.has(subjectId))throw Error('중복된 랭킹 대상이 있습니다.');ids.add(subjectId);
+      return {rank,subject_id:subjectId,display_name:text(item.display_name,'표시 이름'),score:number(item.score,'점수'),is_me:item.is_me===true};})};
 }
 
 export class HttpEngagementApi implements EngagementClient {
-  constructor(private config:EngagementConfig,private request:typeof fetch=fetch,private uuid:()=>string=()=>`${Date.now()}-${Math.random()}`){
+  constructor(private config:EngagementConfig,private request:typeof fetch=fetch){
     const parsed=new URL(config.url);
     if(parsed.protocol!=='https:'&&!(config.allowLocalHttp&&parsed.protocol==='http:'))throw Error('미션·랭킹 API는 HTTPS 주소를 사용하세요.');
     if(parsed.username||parsed.password||parsed.search||parsed.hash||!/\/api\/?$/.test(parsed.pathname))throw Error('미션·랭킹 API 주소는 /api로 끝나야 합니다.');
@@ -159,14 +175,21 @@ export class HttpEngagementApi implements EngagementClient {
   async loadDashboard(week?:string,signal?:AbortSignal):Promise<EngagementDashboard>{
     const query=week?`?week=${encodeURIComponent(week)}`:'';
     const separator=week?'&':'?';
-    const [missions,reward,individual,department]=await Promise.all([
-      this.call('/users/me/missions'+query,{},signal),this.call('/users/me/rewards'+query,{},signal),
-      this.call('/rankings'+query+separator+'scope=individual',{},signal),this.call('/rankings'+query+separator+'scope=department',{},signal),
+    const results=await Promise.allSettled([
+      this.call('/users/me/missions'+query,{},signal).then(parseMissionBundle),
+      this.call('/users/me/rewards'+query,{},signal).then(parseReward),
+      this.call('/rankings'+query+separator+'scope=individual',{},signal).then(value=>parseRanking(value,'individual')),
+      this.call('/rankings'+query+separator+'scope=department',{},signal).then(value=>parseRanking(value,'department')),
     ]);
-    return {source:'api',missions:parseMissionBundle(missions),reward:parseReward(reward),rankings:{
-      individual:parseRanking(individual,'individual'),department:parseRanking(department,'department')}};
-  }
-  async recordMissionEvent(assignmentId:string,eventType:MissionEventType){
-    await this.call('/users/me/missions/events',{method:'POST',body:JSON.stringify({request_id:this.uuid(),assignment_id:assignmentId,event_type:eventType})});
+    if(results.every(result=>result.status==='rejected')){
+      const failure=results.find((result):result is PromiseRejectedResult=>result.status==='rejected');
+      throw failure?.reason??Error('미션·랭킹 정보를 불러오지 못했습니다.');
+    }
+    const keys=['missions','reward','individual','department'] as const,errors:EngagementDashboard['errors']={};
+    results.forEach((result,index)=>{if(result.status==='rejected')errors[keys[index]]=result.reason instanceof Error?result.reason.message:String(result.reason);});
+    return {source:'api',missions:results[0].status==='fulfilled'?results[0].value:null,
+      reward:results[1].status==='fulfilled'?results[1].value:null,rankings:{
+        ...(results[2].status==='fulfilled'?{individual:results[2].value}:{}),
+        ...(results[3].status==='fulfilled'?{department:results[3].value}:{})},errors};
   }
 }

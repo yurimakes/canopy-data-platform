@@ -20,11 +20,10 @@ describe('weekly mission and ranking contract',()=>{
     const ranking=parseRanking(fixture.rankings.individual,'individual');
     expect(ranking.snapshot_status).toBe('finalized');expect(ranking.entries.find(item=>item.is_me)?.rank).toBe(3);
   });
-  it('deduplicates repeated viewed and started events in the mock adapter',async()=>{
-    const api=new MockEngagementApi();
-    await api.recordMissionEvent('assign-habit','viewed');await api.recordMissionEvent('assign-habit','viewed');
-    await api.recordMissionEvent('assign-habit','started');await api.recordMissionEvent('assign-habit','started');
-    expect(api.events).toEqual([{assignmentId:'assign-habit',eventType:'viewed'},{assignmentId:'assign-habit',eventType:'started'}]);
+  it('rejects unsupported reward states instead of displaying untrusted ledger data',()=>{
+    const fixture=engagementReadyFixture();
+    const reward=structuredClone(fixture.reward)!;reward.entries[0].status='unknown' as 'paid';
+    expect(()=>parseReward(reward)).toThrow('보상 상태');
   });
   it('loads mission, reward, personal ranking and department ranking through API only',async()=>{
     const fixture=engagementReadyFixture();const request=vi.fn(async(url:string|URL|Request)=>{
@@ -34,9 +33,20 @@ describe('weekly mission and ranking contract',()=>{
       else body=value.includes('scope=department')?fixture.rankings.department:fixture.rankings.individual;
       return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
     });
-    const api=new HttpEngagementApi({url:'https://example.test/api',token:'test'},request as unknown as typeof fetch,()=> 'request-1');
+    const api=new HttpEngagementApi({url:'https://example.test/api',token:'test'},request as unknown as typeof fetch);
     const result=await api.loadDashboard('2026-09-14');
     expect(result.missions?.bundle_id).toBe('bundle_demo_20260914');expect(request).toHaveBeenCalledTimes(4);
     expect(request.mock.calls.every(([url])=>String(url).startsWith('https://example.test/api/'))).toBe(true);
+  });
+  it('keeps healthy sections visible when one backend projection fails',async()=>{
+    const fixture=engagementReadyFixture();const request=vi.fn(async(url:string|URL|Request)=>{
+      const value=String(url);
+      if(value.includes('/rewards'))return new Response(JSON.stringify({code:'service_unavailable',message:'보상 조회 지연'}),{status:503});
+      const body=value.includes('/missions')?{status:'assigned',bundle:fixture.missions}:value.includes('scope=department')?fixture.rankings.department:fixture.rankings.individual;
+      return new Response(JSON.stringify(body),{status:200,headers:{'Content-Type':'application/json'}});
+    });
+    const result=await new HttpEngagementApi({url:'https://example.test/api'},request as unknown as typeof fetch).loadDashboard();
+    expect(result.missions?.missions).toHaveLength(4);expect(result.reward).toBeNull();expect(result.errors.reward).toBe('보상 조회 지연');
+    expect(result.rankings.individual?.snapshot_status).toBe('finalized');
   });
 });

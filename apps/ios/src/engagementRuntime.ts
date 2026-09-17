@@ -10,7 +10,6 @@ export function getEngagementApi():EngagementClient {
   if(useMock)return singleton=new MockEngagementApi();
   if(!extra.engagementApiUrl)return singleton={
     async loadDashboard(){throw Error('미션·랭킹 API 설정이 필요합니다.');},
-    async recordMissionEvent(){throw Error('미션·랭킹 API 설정이 필요합니다.');},
   };
   return singleton=new HttpEngagementApi({url:extra.engagementApiUrl,token:extra.engagementAccessToken||'',
     functionKey:extra.engagementFunctionKey||extra.tripFunctionKey||extra.gpsFunctionKey,

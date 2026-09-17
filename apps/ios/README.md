@@ -38,7 +38,6 @@ npm run start:tunnel
 GET  /api/users/me/missions?week=YYYY-MM-DD
 GET  /api/users/me/rewards?week=YYYY-MM-DD
 GET  /api/rankings?week=YYYY-MM-DD&scope=individual|department
-POST /api/users/me/missions/events
 ```
 
-랭킹 화면은 `snapshot_status`, 주차, 생성 시각을 함께 표시하며 주간 Snapshot을 실시간 순위로 표현하지 않습니다. 현재 서버에 병합된 미션 조회 API와 달리 보상·랭킹 조회 API 및 미션 이벤트 API는 담당자 통합 전까지 Mock으로 검증합니다.
+랭킹 화면은 `snapshot_status`, 주차, 생성 시각을 함께 표시하며 주간 Snapshot을 실시간 순위로 표현하지 않습니다. 미션은 조회 시 자동 배정되고 Final Trip과 서버에서 자동 매칭하므로 앱의 별도 선택·시작 요청은 없습니다. 보상·랭킹 Cosmos projection이 준비되기 전에는 Mock으로 검증합니다.
