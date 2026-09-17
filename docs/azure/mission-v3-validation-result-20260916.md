@@ -142,23 +142,68 @@ short_car_share                    = 0.5
 
 T5/T6는 primary-mode fact에서는 invalid이지만 Trip 자체의 전체 거리/탄소 합계에는 유지한다.
 
+### 6. Mission Profile Serverless E2E
+
+Databricks Serverless에서 `run_mission_profile_serverless.py`를 사용해 named Unity Catalog Service Credential을 직접 주입하고, 위 Weekly User Gold를 Mission Profile 입력으로 사용했다.
+
+결과 PASS:
+
+```text
+type                  = mission_profile
+profile_version       = mission-profile-v3
+profile_status        = ready
+user_id               = mission-e2e-warm-001
+campaign_id           = mission-e2e-20260916
+source_week_start     = 2026-09-07
+source_week_end       = 2026-09-14
+effective_week_start  = 2026-09-14
+valid_trip_count      = 4
+invalid_trip_count    = 2
+invalid_trip_reasons  = {primary_mode_tie: 1, invalid_segment: 1}
+car_primary_trip_count= 2
+car_ratio             = 0.5
+short_car_trip_count  = 1
+short_car_share       = 0.5
+transit_primary_trip_count = 1
+low_carbon_trip_count = 2
+carbon_change_rate    = null
+```
+
+`carbon_change_rate=null`은 test path에 직전 주 Weekly Summary가 없기 때문에 의도된 결과다.
+
+ADLS Delta 검증:
+- `.../test/mission_e2e/mission_profile/`에 해당 user/source week row 1건 생성 확인.
+- Python profile과 ADLS row의 핵심 필드 일치 확인.
+
+Cosmos latest projection 검증:
+- container: `canopy-db/mission-state`
+- id: `mission-profile-latest:mission-e2e-20260916:mission-e2e-warm-001`
+- pk: `mission-e2e-20260916:mission-e2e-warm-001`
+- `profile_status=ready`
+- Cosmos `profile_hash`와 Python profile `profile_hash` 일치(`HASH MATCH: True`).
+
+따라서 아래 흐름은 실환경 PASS로 판정한다.
+
+```text
+Weekly User Gold
+→ Databricks Serverless Mission Profile
+→ ADLS mission_profile history
+→ Cosmos mission-state latest projection
+```
+
 ## Git 보완
 
 - `build_weekly_summary.py`: NULL `effective_mode`를 명시적 invalid segment로 처리.
 - `test_mission_profile_contract.py`: Weekly Summary source contract에 NULL-mode guard를 추가해 회귀를 방지.
+- `run_mission_profile_serverless.py`: Serverless named Service Credential 실행 entrypoint 추가.
+- `test_mission_profile_serverless_runner.py`: credential name fail-fast 및 Cosmos factory 주입/원복 회귀 검증 추가.
 
 ## 아직 완료되지 않은 E2E 게이트
 
-아래 항목은 이번 문서 시점에 아직 검증 전이다.
+1. Function App에 최신 Mission v3.2 배포.
+2. cold-start GET → 4 starter missions.
+3. same-week repeated GET → 동일 bundle/idempotency.
+4. warm-start GET → 행동 Profile 기반 template 선택.
+5. Mission Progress/Response → `mission_response_weekly` → next Mission Profile 통합 검증.
 
-1. Serverless 실행의 `build_mission_profile.py` → named Unity Catalog Service Credential 연결.
-2. Weekly User Gold → Mission Profile 생성.
-3. Mission Profile → ADLS `mission_profile` write.
-4. Mission Profile → Cosmos `mission-state` latest projection.
-5. Function App에 최신 Mission v3.2 배포.
-6. cold-start GET → 4 starter missions.
-7. same-week repeated GET → 동일 bundle/idempotency.
-8. warm-start GET → 행동 Profile 기반 template 선택.
-9. Mission Progress/Response → `mission_response_weekly` → next Mission Profile 통합 검증.
-
-따라서 현재 판정은 **Weekly Summary + 인프라 연결 검증 PASS, Mission Profile/API 전체 E2E는 진행 중**이다.
+따라서 현재 판정은 **Weekly Summary + Mission Profile + ADLS/Cosmos projection E2E PASS, Function API 및 Mission Response 통합 E2E는 진행 중**이다.
