@@ -12,7 +12,7 @@ class FinalSegment(TypedDict):
     start_time: str
     end_time: str
     distance_m: float
-    confidence: float
+    confidence: float | None
 
 
 Segment = FinalSegment  # Compatibility with existing processor integrations.
@@ -73,9 +73,11 @@ def validate_result(trip: dict, result: ProcessorResult) -> None:
                 raise ValueError("invalid segment times/mode")
             for field in ("distance_m", "confidence"):
                 value = segment[field]
+                if field == "confidence" and value is None:
+                    continue
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not isfinite(value) or value < 0:
                     raise ValueError("invalid " + field)
-            if segment["confidence"] > 1:
+            if segment["confidence"] is not None and segment["confidence"] > 1:
                 raise ValueError("confidence above 1")
             previous_end = end
     except (KeyError, TypeError, ValueError) as exc:

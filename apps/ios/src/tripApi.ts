@@ -2,7 +2,7 @@ import type { Identity, Trip, TransportMode } from './types';
 import type { Storage } from './storage';
 
 export type FinalSegment = {
-  segment_id:string; mode:TransportMode; start_time:string; end_time:string; distance_m:number; confidence:number;
+  segment_id:string; mode:TransportMode; start_time:string; end_time:string; distance_m:number; confidence:number|null;
   model_prediction?:TransportMode; confirmed_mode?:TransportMode|null; carbon_kg?:number;
 };
 export type ConfirmedTrip = {
