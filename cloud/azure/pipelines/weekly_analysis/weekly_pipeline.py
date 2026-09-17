@@ -18,10 +18,16 @@ from pyspark import pipelines as dp
 from pyspark.sql.functions import pandas_udf
 from pyspark.sql import SparkSession, Window, functions as F, types as T
 
-# 깃 폴더 경로 지정
-git_module_path = "/Workspace/canopy-data-platform-git/cloud/azure/pipelines/databricks"
-if git_module_path not in sys.path:
-    sys.path.append(git_module_path)
+# 현재 weekly_analysis 폴더 기준으로 sibling databricks 모듈 경로를 계산한다.
+# Git Folder와 Workspace 수동 업로드 양쪽에서 동일하게 동작하도록 절대 경로 하드코딩을 피한다.
+weekly_analysis_path = os.path.dirname(os.path.abspath(__file__))
+databricks_module_path = os.path.abspath(
+    os.path.join(weekly_analysis_path, "..", "databricks")
+)
+
+for module_path in (weekly_analysis_path, databricks_module_path):
+    if module_path not in sys.path:
+        sys.path.insert(0, module_path)
 
 # 파이프라인 실행에 필요한 함수 및 모듈 임포트
 from baseline_eligibility import load_eligibility_policy, evaluate_personal_eligibility, observation_context, week_evaluation_time
@@ -39,7 +45,7 @@ spark = SparkSession.builder.getOrCreate()
 
 # 기존 build_personal_baseline.py가 쓰는 정책 파일 그대로 사용
 BASELINE_POLICY = load_baseline_policy(
-    os.path.join(git_module_path, "baseline_policy.yaml")
+    os.path.join(databricks_module_path, "baseline_policy.yaml")
 )
 BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
 
