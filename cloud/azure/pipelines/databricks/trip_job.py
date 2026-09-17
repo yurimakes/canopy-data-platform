@@ -22,9 +22,10 @@ def main():
     parser.add_argument("--cosmos-endpoint", required=True)
     parser.add_argument("--secret-scope", required=True)
     parser.add_argument("--cosmos-secret-key", required=True)
-    parser.add_argument("--gps-table", default="dbw_canopy_dev.silver.gps_features")
-    parser.add_argument("--prediction-table", default="dbw_canopy_dev.gold.mode_segment_predictions")
+    parser.add_argument("--final-segment-table", help="ML completed output: catalog.schema.table")
     args = parser.parse_args()
+    if args.input_mode == "ml" and not args.final_segment_table:
+        parser.error("--final-segment-table must name the agreed ML completed-result table")
     event = json.loads(args.end_event)
     if event.get("event_type") != "trip_ended" or event.get("schema_version") != "trip-lifecycle-v1" or event.get("result_owner") != "databricks":
         raise ValueError("expected a Databricks-owned Trip end")
@@ -47,17 +48,18 @@ def main():
             if "/pipeline_test/" not in args.gold_path or not event["campaign_id"].startswith("pipeline_test_"):
                 raise ValueError("Mock requires the isolated test campaign and Gold path")
             # Same explicit Mock as the existing phone tests. This is NOT real ML or measured distance.
-            envelope = {"provider": "mock", "trip": {**event, "status": "processing"},
+            from finalize_trip_pipeline import ConfirmationFixtureProcessor
+            trip = {k: event[k] for k in ("trip_id", "user_id", "campaign_id", "started_at", "ended_at", "processing_generation")}
+            envelope = {"trip": trip, "result": ConfirmationFixtureProcessor().process_trip(trip),
                         "completed_at": datetime.now(timezone.utc).isoformat()}
             document = build_final_trip(envelope, allow_test_trip=True)
             save_gold(spark, args.gold_path, document)
         else:
-            # Fail before entering the wait loop when the Job cannot read its inputs.
-            # Missing permissions are not late ML predictions.
-            print(json.dumps({"trip_id": event["trip_id"], "stage": "checking_ml_inputs",
-                              "gps_table": args.gps_table, "prediction_table": args.prediction_table}), flush=True)
-            spark.table(args.gps_table).select("user_id", "trip_id", "sequence", "event_time", "distance_m", "transition_valid").limit(1).collect()
-            spark.table(args.prediction_table).select("user_id", "trip_id", "segment_id", "strong_mode", "inference_status").limit(1).collect()
+            # 완료 결과 테이블의 접근 권한과 구조를 먼저 확인
+            print(json.dumps({"trip_id": event["trip_id"], "stage": "checking_final_segments",
+                              "final_segment_table": args.final_segment_table}), flush=True)
+            spark.table(args.final_segment_table).select("trip.trip_id", "trip.user_id",
+                "trip.processing_generation", "result.segments", "completed_at").limit(1).collect()
             fields = ["user_id", "trip_id", "processing_generation", "event_id", "campaign_id", "started_at",
                       "ended_at", "expected_last_sequence", "result_owner"]
             schema = "user_id string, trip_id string, processing_generation long, event_id string, campaign_id string, started_at timestamp, ended_at timestamp, expected_last_sequence long, result_owner string"
@@ -66,7 +68,7 @@ def main():
             register(spark, ends, args.queue_path, datetime.now(timezone.utc))
             while True:
                 now = datetime.now(timezone.utc)
-                poll(spark, args.queue_path, args.gps_table, args.prediction_table, now)
+                poll(spark, args.queue_path, args.final_segment_table, now, event=event)
                 wait = spark.read.format("delta").load(args.queue_path).where(
                     key & (F.col("processing_generation") == event["processing_generation"])).first()
                 if wait.status == "ready":
