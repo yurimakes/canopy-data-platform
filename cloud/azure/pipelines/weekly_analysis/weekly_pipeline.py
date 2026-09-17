@@ -20,7 +20,7 @@ from pyspark.sql import SparkSession, Window, functions as F, types as T
 
 # 현재 weekly_analysis 폴더 기준으로 sibling databricks 모듈 경로를 계산한다.
 # Git Folder와 Workspace 수동 업로드 양쪽에서 동일하게 동작하도록 절대 경로 하드코딩을 피한다.
-weekly_analysis_path = os.path.dirname(os.path.abspath(__file__))
+weekly_analysis_path = os.getcwd()
 databricks_module_path = os.path.abspath(
     os.path.join(weekly_analysis_path, "..", "databricks")
 )
