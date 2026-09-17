@@ -57,7 +57,7 @@
         "start_time": {"type": "string", "format": "date-time"},
         "end_time": {"type": "string", "format": "date-time"},
         "distance_m": {"type": "number", "minimum": 0},
-        "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
       }
     }
   }
