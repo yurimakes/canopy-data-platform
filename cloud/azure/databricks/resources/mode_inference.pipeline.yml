@@ -11,6 +11,7 @@ resources:
         - file:
             path: ${workspace.file_path}/mode_inference/lakeflow_pipeline.py
       environment:
+        environment_version: "4"
         dependencies:
           - -r ${workspace.file_path}/requirements.lakeflow.txt
       configuration:
