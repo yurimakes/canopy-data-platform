@@ -407,36 +407,89 @@ def ranking():
     return empty_result(RANKING_DRAFT_SCHEMA, "weekly_user_profile")
 
 
+def _read_optional_delta(path, schema, input_name):
+    """Development fallback for upstream Delta inputs not materialized yet.
+
+    Only PATH_NOT_FOUND is tolerated.
+    Permission, schema, and other integration errors remain hard failures.
+    """
+    try:
+        frame = spark.read.format("delta").load(path)
+
+        # Spark lazy evaluation: force path/schema resolution.
+        _ = frame.columns
+        return frame
+
+    except Exception as exc:
+        if "PATH_NOT_FOUND" not in str(exc):
+            raise
+
+        print(
+            f"[WARN] {input_name} is not materialized yet; "
+            "using typed 0-row DataFrame for development validation."
+        )
+        return spark.createDataFrame([], schema)
+
+
 @dp.materialized_view(
     schema=CAMPAIGN_KPI_DRAFT_SCHEMA,
-    comment="주간 Campaign KPI 집계",
+    comment="Weekly Campaign KPI aggregation",
 )
 def campaign_kpi():
     mission_response_path = os.environ.get(
         "CANOPY_GOLD_MISSION_RESPONSE_PATH",
         "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
     )
+
     reward_ledger_path = os.environ.get(
         "CANOPY_GOLD_REWARD_LEDGER_HISTORY_PATH",
         "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_ledger_history/",
     )
+
     membership_path = os.environ.get(
         "CANOPY_ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH",
         "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
     )
 
+    mission_response_df = _read_optional_delta(
+        mission_response_path,
+        """
+        campaign_id STRING,
+        week_start STRING,
+        week_end STRING,
+        completed BOOLEAN
+        """,
+        "mission_response_weekly",
+    )
+
+    reward_ledger_df = _read_optional_delta(
+        reward_ledger_path,
+        """
+        campaign_id STRING,
+        week_label STRING,
+        points DOUBLE,
+        status STRING
+        """,
+        "reward_ledger_history",
+    )
+
+    campaign_membership_df = _read_optional_delta(
+        membership_path,
+        """
+        user_id STRING,
+        campaign_id STRING,
+        joined_at STRING,
+        left_at STRING
+        """,
+        "campaign_membership_raw",
+    )
+
     return build_campaign_kpi_df(
         weekly_gold=spark.read.table("weekly_gold"),
-        mission_response=(
-            spark.read.format("delta").load(mission_response_path)
-        ),
+        mission_response=mission_response_df,
         behavior_change=spark.read.table("behavior_change"),
-        reward_ledger=(
-            spark.read.format("delta").load(reward_ledger_path)
-        ),
-        campaign_membership=(
-            spark.read.format("delta").load(membership_path)
-        ),
+        reward_ledger=reward_ledger_df,
+        campaign_membership=campaign_membership_df,
     )
 
 
@@ -514,18 +567,45 @@ def aggregate_primary_facts(primary_trip_df):
     return primary_trip_df.groupBy('user_id', 'campaign_id', 'week').agg(F.sum(F.when(F.col('primary_mode_valid'), 1).otherwise(0)).cast('long').alias('valid_primary_trip_count'), F.sum(F.when(~F.col('primary_mode_valid'), 1).otherwise(0)).cast('long').alias('invalid_primary_trip_count'), F.sum(F.when(F.col('primary_mode_invalid_reason') == 'primary_mode_tie', 1).otherwise(0)).cast('long').alias('ambiguous_primary_trip_count'), F.sum(F.when(F.col('primary_mode_invalid_reason') == 'invalid_segment', 1).otherwise(0)).cast('long').alias('invalid_segment_primary_trip_count'), F.sum(F.when(F.col('primary_mode') == 'car', 1).otherwise(0)).cast('long').alias('car_primary_trip_count'), F.sum(F.when(F.col('primary_mode').isin(TRANSIT_MODES), 1).otherwise(0)).cast('long').alias('transit_primary_trip_count'), F.sum(F.when(F.col('primary_mode').isin(LOW_CARBON_MODES), 1).otherwise(0)).cast('long').alias('low_carbon_trip_count'), F.sum(F.when((F.col('primary_mode') == 'car') & (F.col('trip_distance_m') <= F.lit(SHORT_CAR_MAX_DISTANCE_M)), 1).otherwise(0)).cast('long').alias('short_car_trip_count')).withColumn('car_primary_ratio', F.when(F.col('valid_primary_trip_count') > 0, F.col('car_primary_trip_count') / F.col('valid_primary_trip_count'))).withColumn('short_car_share', F.when(F.col('car_primary_trip_count') > 0, F.col('short_car_trip_count') / F.col('car_primary_trip_count')))
 
 def _pivot_ratio(mode_metrics_df, ratio_col, prefix):
-    pivoted = mode_metrics_df.groupBy('user_id', 'campaign_id', 'week').pivot('effective_mode', MODES).agg(F.first(ratio_col))
-    for mode in MODES:
-        name = f'{prefix}_{mode}'
-        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
-    return pivoted
+    keys = ['user_id', 'campaign_id', 'week']
+
+    expressions = [
+        F.max(
+            F.when(
+                F.col('effective_mode') == mode,
+                F.col(ratio_col),
+            )
+        ).alias(f'{prefix}_{mode}')
+        for mode in MODES
+    ]
+
+    result = mode_metrics_df.groupBy(*keys).agg(*expressions)
+
+    return result.fillna(
+        0.0,
+        subset=[f'{prefix}_{mode}' for mode in MODES],
+    )
+
 
 def _pivot_mode_distance(mode_metrics_df):
-    pivoted = mode_metrics_df.groupBy('user_id', 'campaign_id', 'week').pivot('effective_mode', MODES).agg(F.first('distance_m'))
-    for mode in MODES:
-        name = f'{mode}_distance_m'
-        pivoted = pivoted.withColumnRenamed(mode, name).fillna(0.0, subset=[name])
-    return pivoted
+    keys = ['user_id', 'campaign_id', 'week']
+
+    expressions = [
+        F.max(
+            F.when(
+                F.col('effective_mode') == mode,
+                F.col('distance_m'),
+            )
+        ).alias(f'{mode}_distance_m')
+        for mode in MODES
+    ]
+
+    result = mode_metrics_df.groupBy(*keys).agg(*expressions)
+
+    return result.fillna(
+        0.0,
+        subset=[f'{mode}_distance_m' for mode in MODES],
+    )
 
 def build_personal_weekly(ready_df):
     exploded = explode_segments(ready_df)
