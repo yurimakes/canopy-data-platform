@@ -1,4 +1,3 @@
-import {CanopyMascot} from './CanopyMascot';
 import React,{useState} from 'react';
 import {ActivityIndicator,Pressable,Text,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
@@ -42,10 +41,10 @@ export function MissionPanel({value=unavailable,onRetry}:{value?:RemotePanel<Mis
 
 export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<RankingView>;onRetry?:()=>void}) {
   const [group,setGroup]=useState<'personal'|'department'>('personal'),[season,setSeason]=useState(false);
-  if(season)return <><View style={{alignItems:'center',padding:20,gap:18,backgroundColor:C.mint,borderRadius:18}}><Text style={S.heading}>시즌 랭킹</Text><Text style={S.pill}>시즌 집계 준비 중</Text><CanopyMascot pose="complete" height={180}/><Text style={[S.heading,{textAlign:'center'}]}>이번 시즌, 가장 많은 탄소를{ '\n'}절감한 사람은 누구일까요?</Text><Note>시즌 기간과 보상은 운영 정책이 확정되면 안내됩니다.</Note></View><Button title="주간 랭킹 보기" onPress={()=>setSeason(false)}/></>;
+  if(season)return <><View style={{alignItems:'center',padding:20,gap:18,backgroundColor:C.mint,borderRadius:18}}><Text style={S.heading}>시즌 랭킹</Text><Text style={S.pill}>시즌 집계 준비 중</Text><View style={{padding:30,borderRadius:70,backgroundColor:'#fff6dd'}}><Icon name="trophy-outline" size={65} color="#b88a28"/></View><Text style={[S.heading,{textAlign:'center'}]}>이번 시즌, 가장 많은 탄소를{ '\n'}절감한 사람은 누구일까요?</Text><Note>시즌 기간과 보상은 운영 정책이 확정되면 안내됩니다.</Note></View><Button title="주간 랭킹 보기" onPress={()=>setSeason(false)}/></>;
   return <><View style={S.row}><View style={{flex:1}}><Button title="주간 랭킹" quiet onPress={()=>setSeason(false)}/></View><View style={{flex:1}}><Button title="시즌 랭킹" quiet onPress={()=>setSeason(true)}/></View></View>
     <View style={S.row}>{([['personal','개인'],['department','부서']] as const).map(([id,label])=><View key={id} style={{flex:1}}><Button title={label} quiet={group!==id} onPress={()=>setGroup(id)}/></View>)}</View>
-    <View style={{backgroundColor:C.mint,borderRadius:18,padding:20,gap:14}}><Text style={[S.label,{textAlign:'center'}]}>이번 주 TOP 3</Text><View style={{flexDirection:'row',alignItems:'flex-end',justifyContent:'center',gap:16}}>{[2,1,3].map(rank=>{const row=value.state==='ready'?value.data[group].find(r=>r.rank===rank):null;return <View key={rank} style={{flex:1,alignItems:'center',gap:6}}><View style={{width:rank===1?82:60}}><CanopyMascot height={rank===1?105:75}/></View><Text style={[S.metric,{fontSize:18,color:rank===1?'#bd8d30':C.muted}]}>{rank}</Text><Text numberOfLines={1} style={S.label}>{row?.name??'—'}</Text><Text style={[S.note,{fontSize:11}]}>{row?`${row.carbonKg.toFixed(2)} kg`:'집계 대기'}</Text></View>;})}</View></View>
+    <View style={{backgroundColor:C.mint,borderRadius:18,padding:20,gap:14}}><Text style={[S.label,{textAlign:'center'}]}>이번 주 TOP 3</Text><View style={{flexDirection:'row',alignItems:'flex-end',justifyContent:'center',gap:16}}>{[2,1,3].map(rank=>{const row=value.state==='ready'?value.data[group].find(r=>r.rank===rank):null;return <View key={rank} style={{flex:1,alignItems:'center',gap:6}}><View style={{width:rank===1?78:62,height:rank===1?78:62,borderRadius:40,backgroundColor:rank===1?'#fff1c4':rank===2?'#e5edf0':'#f3e5d9',alignItems:'center',justifyContent:'center',borderWidth:2,borderColor:C.white}}><Icon name={rank===1?'trophy':'ribbon-outline'} size={rank===1?35:27} color={rank===1?'#b88a28':rank===2?'#708b97':'#ad805e'}/></View><Text style={[S.metric,{fontSize:18,color:rank===1?'#bd8d30':C.muted}]}>{rank}</Text><Text numberOfLines={1} style={S.label}>{row?.name??'—'}</Text><Text style={[S.note,{fontSize:11}]}>{row?`${row.carbonKg.toFixed(2)} kg`:'집계 대기'}</Text></View>;})}</View></View>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       <Updated week={value.data.week} time={value.data.updatedAt}/><Note>주간 집계 결과입니다.</Note>
       {!value.data[group].length&&<Status value={{state:'empty'}}/>}
@@ -60,7 +59,7 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
 export function RewardPanel({value=unavailable,onRetry}:{value?:RemotePanel<RewardView>;onRetry?:()=>void}) {
   const [info,setInfo]=useState(false);
   return <><Card><View style={S.between}><View style={S.row}><Icon name="leaf-outline" size={40}/><View><Text style={S.note}>보유 토큰</Text><Text style={[S.metric,{color:C.green}]}>{value.state==='ready'?`${value.data.balance.toLocaleString()} T`:'— T'}</Text></View></View><Pressable accessibilityRole="button" onPress={()=>setInfo(!info)} style={{borderWidth:1,borderColor:C.green,borderRadius:20,padding:10}}><Text style={[S.link,{fontSize:12}]}>리워드 안내</Text></Pressable></View></Card>
-    {info&&<Card><CanopyMascot pose="complete" height={130}/><Text style={S.heading}>일상의 이동을 가치 있게</Text><Note>여정과 미션의 보상은 서버에서 지급이 확정된 뒤 반영됩니다. 사용처와 교환 기능은 준비 중입니다.</Note><Button title="닫기" quiet onPress={()=>setInfo(false)}/></Card>}
+    {info&&<Card><View style={{alignItems:'center',padding:24}}><Icon name="gift-outline" size={48}/></View><Text style={S.heading}>일상의 이동을 가치 있게</Text><Note>여정과 미션의 보상은 서버에서 지급이 확정된 뒤 반영됩니다. 사용처와 교환 기능은 준비 중입니다.</Note><Button title="닫기" quiet onPress={()=>setInfo(false)}/></Card>}
     <Text style={S.label}>최근 적립 내역</Text>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       {!value.data.items.length&&<Status value={{state:'empty'}}/>}

@@ -1,20 +1,20 @@
-import React,{useEffect,useState} from 'react';
-import {AccessibilityInfo,AppState,Image,View} from 'react-native';
+import React,{useEffect,useRef,useState} from 'react';
+import {AccessibilityInfo,Animated,AppState,Easing,Platform,View} from 'react-native';
 
-const walk=[require('../../assets/canopy-ui/landing-mascot-walk-1.png'),require('../../assets/canopy-ui/landing-mascot-walk-2.png'),require('../../assets/canopy-ui/landing-mascot-point.png')];
-const start=[require('../../assets/canopy-ui/journey-start-frame-1.png'),require('../../assets/canopy-ui/journey-start-frame-2.png'),require('../../assets/canopy-ui/journey-start-frame-3.png'),require('../../assets/canopy-ui/journey-start-frame-4.png'),require('../../assets/canopy-ui/journey-start-frame-5.png'),require('../../assets/canopy-ui/journey-start-frame-6.png'),require('../../assets/canopy-ui/journey-start-frame-7.png'),require('../../assets/canopy-ui/journey-start-frame-8.png')];
-const complete=[require('../../assets/canopy-ui/journey-complete-frame-1.png'),require('../../assets/canopy-ui/journey-complete-frame-2.png'),require('../../assets/canopy-ui/journey-complete-frame-3.png'),require('../../assets/canopy-ui/journey-complete-frame-4.png'),require('../../assets/canopy-ui/journey-complete-frame-5.png'),require('../../assets/canopy-ui/journey-complete-frame-6.png'),require('../../assets/canopy-ui/journey-complete-frame-7.png'),require('../../assets/canopy-ui/journey-complete-frame-8.png')];
-
-// 기존 PoC의 걷기, 출발, 도착 프레임 재사용. 화면 비활성화와 동작 줄이기 설정 시 정지
-export function CanopyMascot({pose='walk',height=200}:{pose?:'walk'|'start'|'complete';height?:number}){
-  const [frame,setFrame]=useState(0),[reduced,setReduced]=useState(true),[active,setActive]=useState(AppState.currentState==='active');
-  const frames=pose==='walk'?walk:pose==='start'?start:complete;
-  useEffect(()=>{let alive=true;void AccessibilityInfo.isReduceMotionEnabled().then(v=>{if(alive)setReduced(v);});
-    const motion=AccessibilityInfo.addEventListener('reduceMotionChanged',setReduced),state=AppState.addEventListener('change',v=>setActive(v==='active'));
-    return()=>{alive=false;motion.remove();state.remove();};},[]);
-  useEffect(()=>{setFrame(0);if(reduced||!active)return;
-    const durations=pose==='walk'?[1218,1050,1932]:pose==='complete'?[200,200,200,200,200,200,200,200]:[576,576,624,768,720,576,480,480];let timer:ReturnType<typeof setTimeout>;let index=0;
-    function advance(){timer=setTimeout(()=>{index=(index+1)%frames.length;setFrame(index);advance();},durations[index]);}advance();return()=>clearTimeout(timer);
-  },[pose,reduced,active]);
-  return <View pointerEvents="none" accessibilityLabel="캐노피 캐릭터" accessible style={{height,width:'100%',overflow:'hidden'}}>{frames.map((source,i)=><Image key={i} source={source} resizeMode="contain" style={{position:'absolute',width:'100%',height:'100%',opacity:i===frame?1:0,transform:[{scale:pose==='walk'?1:1.65}]}}/>)}</View>;
+// PoC의 입체 캐릭터 이미지 사용. 프레임 교체 없이 네이티브 연속 보간으로 움직임 처리
+export function CanopyMascot({pose='walk',height=200,animated=true}:{pose?:'walk'|'start'|'complete';height?:number;animated?:boolean}){
+  const motion=useRef(new Animated.Value(0)).current;
+  const [reduced,setReduced]=useState(true),[active,setActive]=useState(AppState.currentState==='active');
+  useEffect(()=>{let alive=true;void AccessibilityInfo.isReduceMotionEnabled().then(v=>{if(alive)setReduced(v);}).catch(()=>{});
+    const a=AccessibilityInfo.addEventListener('reduceMotionChanged',setReduced),b=AppState.addEventListener('change',v=>setActive(v==='active'));
+    return()=>{alive=false;a.remove();b.remove();};},[]);
+  useEffect(()=>{motion.setValue(0);if(!animated||reduced||!active)return;
+    const timing=(toValue:number)=>Animated.timing(motion,{toValue,duration:2400,easing:Easing.inOut(Easing.sin),useNativeDriver:Platform.OS!=='web'});
+    const loop=Animated.loop(Animated.sequence([timing(1),timing(0)]));loop.start();return()=>loop.stop();
+  },[animated,reduced,active]);
+  const complete=pose==='complete';
+  return <View pointerEvents="none" accessible accessibilityLabel="캐노피 캐릭터" style={{height,width:'100%',alignItems:'center',justifyContent:'center'}}>
+    <Animated.Image source={complete?require('../../assets/canopy-ui/journey-complete-frame-4.png'):require('../../assets/canopy-ui/landing-mascot-point.png')} resizeMode="contain"
+      style={{width:'100%',height:'100%',transform:[{perspective:900},{translateY:motion.interpolate({inputRange:[0,1],outputRange:[0,-7]})},{rotateY:motion.interpolate({inputRange:[0,1],outputRange:['-3deg','3deg']})},{rotateZ:motion.interpolate({inputRange:[0,1],outputRange:['-1deg','1deg']})},{scale:motion.interpolate({inputRange:[0,1],outputRange:complete?[1.55,1.58]:[1,1.018]})}]}}/>
+  </View>;
 }

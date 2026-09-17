@@ -31,6 +31,7 @@ export default function App() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);
+  const [entered,setEntered]=useState(false);
   const [route,setRoute]=useState<PlannedRoute|null>(null);
   const trackRef=useRef<{id:string;events:GpsEvent[]}>({id:'',events:[]});
   const [events,setEvents]=useState<GpsEvent[]>([]);
@@ -48,7 +49,7 @@ export default function App() {
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
     let alive=true;
-    void initialize().then(async s=>{ const saved=await s.db.syncValue<Profile>('ui:session'); if(!alive)return; setService(s); if(s.collector.trip){const meta=await s.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+s.collector.trip.trip_id);if(alive)setRoute(meta?.route??null);} if(saved){setProfile(saved);if(s.collector.trip?.status==='recording')setScreen(s.collector.collectionMode);else{s.collector.selectCollectionMode('user');setScreen('user');}} s.collector.changed=()=>redraw(n=>n+1); }).catch(e=>setError(String(e)));
+    void initialize().then(async s=>{ const saved=await s.db.syncValue<Profile>('ui:session'); if(!alive)return; setService(s); if(s.collector.trip){const meta=await s.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+s.collector.trip.trip_id);if(alive)setRoute(meta?.route??null);} if(saved){setProfile(saved);if(s.collector.trip?.status==='recording'){setScreen(s.collector.collectionMode);setEntered(true);}else{s.collector.selectCollectionMode('user');setScreen('user');}} s.collector.changed=()=>redraw(n=>n+1); }).catch(e=>setError(String(e)));
     const timer=setInterval(()=>setNow(Date.now()),1000);
     const sub=AppState.addEventListener('change',state=>{void runtime?.then(s=>s.collector.appStateChanged(state));});
     return ()=>{alive=false;clearInterval(timer);sub.remove();void runtime?.then(s=>{s.collector.changed=()=>{};void s.collector.interrupt('화면 종료');});};
@@ -147,7 +148,7 @@ export default function App() {
     if(!service)return;
     await service.db.saveSync('ui:session',p);setProfile(p);
     if(c?.trip?.status!=='recording')c?.selectCollectionMode('user');
-    setError('');setScreen(c?.collectionMode??'user');
+    setError('');setScreen(c?.collectionMode??'user');setEntered(true);
   }
   async function changeProfile(p:Profile){await updateProfile(p);await service?.db.saveSync('ui:session',p);setProfile(p);}
   async function startJourney(){
@@ -162,13 +163,13 @@ export default function App() {
     void service?.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+id).then(v=>setRoute(v?.route??null));
     void getTripApi().then(api=>api.refresh(id)).then(setServerTrip).catch(e=>setTripError(String(e)));
   }
-  if(!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error}
+  if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile&&screen!==null)setEntered(true);}}
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
     trips={ownedTrips} onSelect={select}
     onCollectionMode={mode=>{c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}
-    collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))void service?.db.saveSync('ui:session',null).then(()=>{setProfile(null);setScreen(null);setSelectedTrip(undefined);setRoute(null);});}}
+    collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))void service?.db.saveSync('ui:session',null).then(()=>{setProfile(null);setScreen(null);setEntered(false);setSelectedTrip(undefined);setRoute(null);});}}
     ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={c?.count??0} duration={duration}
     accuracy={c?.latest?.accuracy??null} latestLabel={c?.latest?.label} tripId={trip?.trip_id}
     error={error||c?.error||''} onMode={mode=>{void c?.selectMode(mode).catch(e=>setError(String(e)));}} onStart={()=>{void startJourney().catch(e=>setError(String(e)));}}

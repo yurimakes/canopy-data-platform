@@ -40,7 +40,7 @@ export function ServiceScreen(p:ServiceProps){
       {tab==='home'?<ImageBackground source={require('../../assets/canopy-ui/home-park.png')} resizeMode="cover" style={{flex:1,minHeight:560,backgroundColor:'#f1faf5'}} imageStyle={{width:'100%',height:'100%'}}>
         <View style={{flex:1,padding:26,paddingTop:34,justifyContent:'space-between'}}>
           <View style={{gap:14}}><Text style={[S.title,{fontSize:29,lineHeight:41}]}>오늘도{ '\n'}지구를 위한{ '\n'}좋은 선택을 해볼까요?</Text><Text style={[S.note,{color:C.deep,lineHeight:23}]}>당신의 작은 이동이{ '\n'}더 큰 변화를 만들어요</Text></View>
-          <CanopyMascot pose="start" height={250}/>
+          <CanopyMascot animated={false} height={250}/>
           <View style={{gap:12,paddingBottom:10}}>{([['outbound','출근 길찾기','leaf-outline'],['return','퇴근 길찾기','home-outline']] as const).map(([value,label,icon])=><Pressable key={value} accessibilityRole="button" onPress={()=>{setDirection(value);setTab(busy?'journey':'route');}} style={[S.between,{backgroundColor:C.white,borderRadius:30,paddingHorizontal:22,minHeight:57,boxShadow:'0 4px 18px #174c3910'}]}><View style={S.row}><Icon name={icon}/><Text style={[S.label,{fontSize:16}]}>{busy?'진행 중인 여정 보기':label}</Text></View><Icon name="chevron-forward" size={17}/></Pressable>)}</View>
         </View>
       </ImageBackground>:<Fade key={tab}>
@@ -72,7 +72,7 @@ export function ServiceScreen(p:ServiceProps){
           <Card><View style={S.row}><Stat label="이동 거리" value={p.serverTrip.confirmed_trip?km(p.serverTrip.confirmed_trip.total_distance_m):'—'}/><Stat label="소요 시간" value={p.serverTrip.ended_at?`${Math.max(0,Math.round((Date.parse(p.serverTrip.ended_at)-Date.parse(p.serverTrip.started_at))/60000))}분`:'—'}/><Stat label="탄소 배출량" value={p.serverTrip.confirmed_trip?`${p.serverTrip.confirmed_trip.total_carbon_kg.toFixed(2)} kg`:'—'}/></View></Card>
           <Button title="상세 내역과 피드백" onPress={()=>setTab('tripdetail')}/>
           <Card><View style={S.row}><Icon name="gift-outline"/><Text style={S.heading}>캐노피 토큰</Text></View><Note>보상 기능 연결 후 실제 지급 내역이 표시됩니다. 현재는 토큰이 지급되지 않습니다.</Note><Button title="토큰 내역 보기" quiet onPress={()=>setTab('rewards')}/></Card>
-        </>:(p.resultTrip||p.tripId)?<Card><CanopyMascot pose="start" height={180}/><Icon name={stage.failed?'alert-circle-outline':'hourglass-outline'} size={38}/><Text style={S.heading}>{stage.title}</Text>
+        </>:(p.resultTrip||p.tripId)?<Card><Icon name="leaf-outline" size={42}/><Icon name={stage.failed?'alert-circle-outline':'hourglass-outline'} size={38}/><Text style={S.heading}>{stage.title}</Text>
           {!stage.failed&&<ActivityIndicator color={C.green}/>}<Note>{stage.detail}</Note>
           {['위치 전송','서버 분석','결과 확인'].map((label,i)=><View key={label} style={S.row}><Icon name={i<stage.step?'checkmark-circle':i===stage.step?'radio-button-on':'ellipse-outline'} color={i<=stage.step?C.green:C.muted}/><Text style={S.label}>{label}</Text></View>)}
           {!!p.tripError&&<Note error>{p.tripError}</Note>}
@@ -92,7 +92,7 @@ export function ServiceScreen(p:ServiceProps){
       {tab==='rewards'&&<RewardPanel value={p.rewards} onRetry={p.onRefreshCommunity}/>}
       {tab==='preview'&&p.profile.role==='developer'&&<PanelPreview/>}
       {tab==='profile'&&<>
-        <View style={[S.row,{paddingVertical:16}]}><View style={{width:80,borderRadius:40,backgroundColor:C.mint}}><CanopyMascot height={85}/></View><View style={{flex:1,gap:6}}><Text style={S.heading}>{p.profile.nickname}</Text><Note>{p.profile.email}</Note><Text style={S.pill}>테스트 캠페인 소속</Text></View></View>
+        <View style={[S.row,{paddingVertical:16}]}><View accessibilityLabel="프로필 아바타" style={{width:72,height:72,borderRadius:36,backgroundColor:'#dcefe6',alignItems:'center',justifyContent:'center',borderWidth:3,borderColor:C.white}}><Text style={{fontSize:28,fontWeight:'700',color:C.deep}}>{Array.from(p.profile.nickname.trim())[0]??'C'}</Text></View><View style={{flex:1,gap:6}}><Text style={S.heading}>{p.profile.nickname}</Text><Note>{p.profile.email}</Note><Text style={S.pill}>테스트 캠페인 소속</Text></View></View>
         <Card><Text style={S.label}>나의 탄소 절감량</Text><Text style={[S.metric,{color:C.green}]}>— kg</Text><Note>주간 분석 결과 연결 후 표시됩니다.</Note><Pressable accessibilityRole="button" onPress={()=>setTab('baseline')}><Text style={S.link}>나의 이동 기준 보기</Text></Pressable></Card>
         <View style={S.row}>{([['집',p.profile.home,'home-outline'],['직장',p.profile.work,'business-outline']] as const).map(([label,place,icon])=><Pressable key={label} accessibilityRole="button" disabled={busy} onPress={()=>{setDraft(p.profile);setSaveError('');setEdit(true);}} style={[S.card,{flex:1,padding:12}]}><View style={S.row}><Icon name={icon}/><View style={{flex:1}}><Text style={S.note}>{label}</Text><Text numberOfLines={2} style={S.label}>{place?.name??'장소 설정'}</Text></View></View></Pressable>)}</View>
 

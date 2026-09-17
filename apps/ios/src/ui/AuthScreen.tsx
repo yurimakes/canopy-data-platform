@@ -1,4 +1,4 @@
-import {CanopyMascot} from './CanopyMascot';
+import {LandingScreen} from './LandingScreen';
 import React,{useState} from 'react';
 import {KeyboardAvoidingView,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -7,7 +7,7 @@ import {loginProfile,registerProfile} from '../profileStore';
 import type {Profile,Place} from '../service';
 import {PlacePicker} from './RoutePlanner';
 import {Button,C,Fade,Field,Icon,Note,S} from './theme';
-export function AuthScreen({onEnter,error:runtimeError,ready=true}:{onEnter(p:Profile):void;error?:string;ready?:boolean}) {
+export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,onContinue}:{onEnter(p:Profile):void;error?:string;ready?:boolean;savedProfile?:Profile|null;onContinue?:()=>void}) {
   const [page,setPage]=useState<'welcome'|'login'|'signup'>('welcome');
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[nickname,setNickname]=useState(''),[code,setCode]=useState('');
   const [visible,setVisible]=useState(false),[agreed,setAgreed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
@@ -24,16 +24,12 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true}:{onEnter(p:Pr
     onEnter(result);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   function navigate(p:typeof page){setPage(p);setStep(0);setError('');setPassword('');}
-  return <SafeAreaView style={[S.root,{backgroundColor:page==='welcome'?'#eaf6ef':C.paper}]}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+  if(page==='welcome')return <LandingScreen onLogin={()=>navigate('login')} onSignup={()=>navigate('signup')} nickname={savedProfile?.nickname} onContinue={onContinue} ready={ready} error={runtimeError}/>;
+  return <SafeAreaView style={S.root}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[S.scroll,{flexGrow:1,justifyContent:'center',paddingVertical:36}]}>
       <Fade key={page}>
-      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{page!=='welcome'&&<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
-      {page==='welcome'?<>
-        <CanopyMascot height={260}/>
-        <Text style={[S.title,{fontSize:30,lineHeight:41}]}>매일의 이동이,{ '\n'}더 나은 내일로.</Text>
-        <Text style={[S.note,{fontSize:16,lineHeight:26}]}>익숙한 출근길에 작은 변화를 더해보세요.{ '\n'}나의 여정부터 함께 만드는 변화까지.</Text>
-        <View style={{gap:10,marginTop:18}}><Button title="캐노피 시작하기" onPress={()=>navigate('signup')}/><Button title="이미 계정이 있어요" quiet onPress={()=>navigate('login')}/></View>
-      </>:page==='signup'&&step===1?<>
+      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
+      {page==='signup'&&step===1?<>
         <Text style={S.pill}>2 / 2  출퇴근 장소</Text>
         <Text style={S.title}>매일의 출발과{ '\n'}도착을 알려주세요.</Text>
         <Note>저장한 장소로 출퇴근 경로를 빠르게 찾을 수 있어요. 나중에 설정하거나 다른 목적지로 이동해도 괜찮아요.</Note>
