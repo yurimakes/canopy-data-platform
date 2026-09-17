@@ -416,9 +416,19 @@ def behavior_change():
 
 @dp.temporary_view(comment="계산 미연결. 기존 미션 프로필 Gold 출력 컬럼")
 def weekly_user_profile():
-    # 주간 집계와 미션 응답 이력 연결 → 사용자 프로필 반환. 초기 연결선은 담당 코드 기준으로 조정
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(PROFILE_SCHEMA, "weekly_gold")
+    weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
+    
+    mission_response_path = os.environ.get(
+        "CANOPY_GOLD_MISSION_RESPONSE_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/"
+    )
+    
+    try:
+        mission_df = spark.read.format("delta").load(mission_response_path)
+    except Exception:
+        mission_df = None
+
+    return build_weekly_user_profile(weekly_df=weekly_df, mission_df=mission_df)
 
 
 @dp.materialized_view(schema=MISSION_BUNDLE_SCHEMA, comment="계산 미연결. 기존 mission_bundle.v1 출력 컬럼")
