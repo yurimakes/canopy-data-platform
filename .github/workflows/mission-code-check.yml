@@ -12,12 +12,21 @@ on:
       - "cloud/azure/functions/func_canopy_dev/tests/test_mission_*.py"
       - "cloud/azure/pipelines/databricks/build_mission_profile.py"
       - "cloud/azure/pipelines/databricks/build_weekly_summary.py"
+      - "cloud/azure/pipelines/databricks/run_mission_profile_serverless.py"
+      - "cloud/azure/pipelines/databricks/mission_progress.py"
+      - "cloud/azure/pipelines/databricks/build_mission_response.py"
       - "cloud/azure/pipelines/databricks/tests/test_*mission*.py"
       - "cloud/azure/pipelines/databricks/tests/test_build_mission_profile.py"
+      - "cloud/azure/pipelines/databricks/tests/test_mission_profile_serverless_runner.py"
+      - "cloud/azure/pipelines/databricks/tests/test_mission_progress.py"
+      - "cloud/azure/pipelines/databricks/tests/test_build_mission_response.py"
       - "shared/schemas/mission/**"
       - "shared/schemas/baseline/weekly_user_gold.schema.json"
       - "docs/azure/weekly-mission-v3.md"
       - "docs/azure/mission-v3-validation-runbook.md"
+      - "docs/azure/mission-v3-validation-result-20260916.md"
+      - "docs/architecture/mission-progress-response-handoff-v1.md"
+      - "docs/architecture/weekly-gold-integration-topology-v1.md"
       - ".github/workflows/mission-code-check.yml"
   workflow_dispatch:
 
@@ -41,6 +50,9 @@ jobs:
           cloud/azure/functions/func_canopy_dev/mission_assignment_api.py
           cloud/azure/pipelines/databricks/build_mission_profile.py
           cloud/azure/pipelines/databricks/build_weekly_summary.py
+          cloud/azure/pipelines/databricks/run_mission_profile_serverless.py
+          cloud/azure/pipelines/databricks/mission_progress.py
+          cloud/azure/pipelines/databricks/build_mission_response.py
       - name: Validate mission schemas contracts and version sync
         run: |
           python - <<'PY'
@@ -78,6 +90,12 @@ jobs:
       - name: Run mission policy and service contract tests
         working-directory: cloud/azure/functions/func_canopy_dev
         run: python -m pytest -q tests/test_mission_policy.py tests/test_mission_service_contract.py
-      - name: Run profile tests
+      - name: Run mission Databricks contract tests
         working-directory: cloud/azure/pipelines/databricks
-        run: python -m pytest -q tests/test_build_mission_profile.py tests/test_mission_profile_contract.py
+        run: >-
+          python -m pytest -q
+          tests/test_build_mission_profile.py
+          tests/test_mission_profile_contract.py
+          tests/test_mission_profile_serverless_runner.py
+          tests/test_mission_progress.py
+          tests/test_build_mission_response.py
