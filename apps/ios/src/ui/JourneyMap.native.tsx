@@ -3,12 +3,12 @@ import {View,Pressable} from 'react-native';
 import MapView,{Marker,Polyline} from 'react-native-maps';
 import {Icon,Note,C} from './theme';
 import type {MapProps} from './JourneyMap';
-export default function JourneyMap({points,route}:MapProps) {
+export default function JourneyMap({points,route,height=310}:MapProps) {
   const ref=useRef<MapView>(null),last=points.at(-1),first=points[0]??route?.from;
   const [follow,setFollow]=useState(true);
   useEffect(()=>{if(last&&follow)ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);},[last?.latitude,last?.longitude,follow]);
-  if(!first)return <View style={{height:280,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
-  return <View><MapView ref={ref} onPanDrag={()=>setFollow(false)} style={{height:310,width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
+  if(!first)return <View style={{height,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
+  return <View><MapView ref={ref} onPanDrag={()=>setFollow(false)} style={{height,width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
     onMapReady={()=>{if(route)ref.current?.fitToCoordinates([route.from,route.to,...route.legs.flatMap(l=>l.points)],{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false});}}>
     {route?.legs.filter(l=>l.points.length>1).map((leg,i)=><Polyline key={i} coordinates={leg.points} strokeWidth={5} strokeColor={leg.mode==='WALK'?'#9baba5':'#5279d1'} lineDashPattern={leg.mode==='WALK'?[5,5]:undefined}/>)}
     {points.length>1&&<Polyline coordinates={points} strokeColor={C.green} strokeWidth={4}/>}

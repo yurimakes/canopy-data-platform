@@ -1,3 +1,4 @@
+import {CanopyMascot} from './CanopyMascot';
 import React,{useState} from 'react';
 import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -23,8 +24,8 @@ export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;
       {results.map((p,i)=><Card key={i}><Text style={S.heading}>{p.name}</Text><Note>{p.latitude.toFixed(5)}, {p.longitude.toFixed(5)}</Note><Button title="이 위치 선택" onPress={()=>{onPick(p);setOpen(false);}}/></Card>)}
     </ScrollView></SafeAreaView></Modal></>;
 }
-export function RoutePlanner({profile,onChoose,onFree}:{profile:Profile;onChoose(route:PlannedRoute):void;onFree():void}){
-  const [from,setFrom]=useState<Place|null>(profile.home),[to,setTo]=useState<Place|null>(profile.work);
+export function RoutePlanner({profile,direction='outbound',onChoose,onFree}:{profile:Profile;direction?:'outbound'|'return';onChoose(route:PlannedRoute):void;onFree():void}){
+  const [from,setFrom]=useState<Place|null>(direction==='outbound'?profile.home:profile.work),[to,setTo]=useState<Place|null>(direction==='outbound'?profile.work:profile.home);
   const [routes,setRoutes]=useState<PlannedRoute[]|null>(null),[selected,setSelected]=useState<PlannedRoute|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   function change(which:'from'|'to',p:Place){if(busy)return;if(which==='from')setFrom(p);else setTo(p);setRoutes(null);setSelected(null);setError('');}
   async function search(){if(!from||!to||busy)return;setBusy(true);setError('');setSelected(null);setRoutes(null);try{
@@ -32,20 +33,38 @@ export function RoutePlanner({profile,onChoose,onFree}:{profile:Profile;onChoose
     const token=extra.tripAccessToken,key=extra.tripFunctionKey||extra.gpsFunctionKey;
     const r=await searchRoutes(url,{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})},from,to);setRoutes(r);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
-  return <><Text style={S.title}>어디로 떠나볼까요?</Text><Note>평소 출퇴근길도, 오늘의 다른 목적지도 자유롭게.</Note>
-    <View pointerEvents={busy?"none":"auto"} style={{gap:10,opacity:busy?0.6:1}}><PlacePicker title="출발지" value={from} onPick={p=>change('from',p)}/><Button title="출발지와 도착지 바꾸기" quiet onPress={()=>{setFrom(to);setTo(from);setRoutes(null);setSelected(null);}}/><PlacePicker title="도착지" value={to} onPick={p=>change('to',p)}/></View>
-    <Button title="대중교통 경로 찾기" busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
-    {!!error&&<Note error>{error}</Note>}
-    {routes?.length===0&&<Card><Text style={S.heading}>찾은 경로가 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
-    {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityState={{selected:selected?.id===r.id}} onPress={()=>setSelected(r)} style={[S.card,selected?.id===r.id&&{borderColor:C.green,borderWidth:2}]}>
-      <View style={S.between}><Text style={S.heading}>{r.minutes}분</Text><Text style={S.pill}>{km(r.distance_m)}</Text></View><Text style={S.label}>{r.legs.map(l=>l.name).join(' → ')}</Text><Note>{r.fare==null?'요금 정보 없음':`${r.fare.toLocaleString()}원`} / TMAP 제공</Note></Pressable>)}
-    {selected&&<><View style={{borderRadius:24,overflow:'hidden'}}><JourneyMap points={[]} route={selected}/></View>
-      <Card><Text style={S.heading}>이렇게 이동해요</Text><Text style={S.label}>{selected.from.name}</Text>
-        {selected.legs.map((leg,i)=><View key={i} style={[S.row,{alignItems:'flex-start'}]}>
-          <View style={{padding:10,borderRadius:14,backgroundColor:C.mint}}><Icon name={leg.mode==='WALK'?'walk-outline':leg.mode==='BUS'?'bus-outline':'train-outline'}/></View>
-          <View style={{flex:1,gap:5,paddingBottom:16,borderBottomWidth:1,borderColor:C.line}}><Text style={S.label}>{leg.name}</Text><Note>{leg.minutes}분 / {km(leg.distance_m)}</Note>{(leg.startName||leg.endName)&&<Note>{leg.startName??'출발'} → {leg.endName??'도착'}</Note>}</View>
-        </View>)}<Text style={S.label}>{selected.to.name}</Text><Note>검색 시각 {new Date(selected.searchedAt).toLocaleTimeString('ko-KR')} / 교통 상황에 따라 실제 소요 시간이 달라질 수 있어요.</Note>
-      </Card><Card><View style={S.row}><Icon name="leaf-outline"/><Text style={S.heading}>나의 이동 기준</Text></View><Note>Baseline 조회 기능을 연결하면 비교 기준을 보여드릴게요. 선택한 경로의 예상 거리와 실제 이동 결과는 다를 수 있어요.</Note></Card><Button title="이 경로로 여정 준비" onPress={()=>onChoose(selected)}/></>}
-    <Button title="경로 없이 자유롭게 기록하기" quiet onPress={onFree}/><Note>경로 선택은 안내용입니다. 실제 이동은 GPS로 기록해요.</Note>
+  return <>
+    <Text style={S.note}>저장한 경로</Text>
+    <View pointerEvents={busy?"none":"auto"} style={{gap:8,opacity:busy?.6:1}}>
+      <PlacePicker title="출발지" value={from} onPick={p=>change('from',p)}/>
+      <View style={{alignItems:'center',marginVertical:-8,zIndex:1}}><Pressable accessibilityRole="button" accessibilityLabel="출발지와 도착지 바꾸기" onPress={()=>{setFrom(to);setTo(from);setRoutes(null);setSelected(null);}} style={{backgroundColor:C.white,borderRadius:24,padding:10,borderWidth:1,borderColor:C.line}}><Icon name="swap-vertical" size={18}/></Pressable></View>
+      <PlacePicker title="도착지" value={to} onPick={p=>change('to',p)}/>
+    </View>
+    <Button title="경로 찾기" busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
+    {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><CanopyMascot pose="start" height={170}/><Text style={S.heading}>지금 경로를 분석하고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
+    {!!error&&<Card><CanopyMascot height={140}/><Text style={[S.heading,{textAlign:'center'}]}>경로를 불러오지 못했어요</Text><Note error>{error}</Note><Button title="다시 시도하기" onPress={()=>void search()}/></Card>}
+    {routes?.length===0&&<Card><CanopyMascot height={160}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
+    {!!routes?.length&&<Text style={S.note}>추천 경로 - 지금 출발</Text>}
+    {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.minutes}분 경로 상세보기`} onPress={()=>setSelected(r)} style={[S.card,{gap:12,boxShadow:'0 4px 16px #174c3909'}]}>
+      <Text style={[S.metric,{fontSize:26,color:C.ink}]}>{r.minutes}분</Text>
+      <Note>{km(r.distance_m)} / {r.fare==null?'요금 정보 없음':`${r.fare.toLocaleString()}원`}</Note>
+      <RouteStrip route={r}/><View style={S.between}><Text numberOfLines={1} style={[S.note,{flex:1}]}>{r.legs.filter(l=>l.mode!=='WALK').map(l=>l.name).join(' / ')||'도보'}</Text><Text style={S.pill}>경로 상세보기</Text></View>
+    </Pressable>)}
+    <Button title="경로 없이 자유롭게 기록하기" quiet onPress={onFree}/>
+    <Modal visible={!!selected} animationType="slide" onRequestClose={()=>setSelected(null)}><SafeAreaView style={S.root}>
+      <View style={[S.row,{padding:16}]}><Pressable accessibilityRole="button" accessibilityLabel="경로 목록으로" onPress={()=>setSelected(null)} style={{padding:8}}><Icon name="arrow-back"/></Pressable><Text style={S.heading}>경로 상세보기</Text></View>
+      {selected&&<ScrollView contentContainerStyle={S.scroll}><Card><Text style={[S.metric,{fontSize:28}]}>{selected.minutes}분</Text><Note>{km(selected.distance_m)} / {selected.fare==null?'요금 정보 없음':`${selected.fare.toLocaleString()}원`}</Note><RouteStrip route={selected}/></Card>
+        <View style={{borderRadius:16,overflow:'hidden'}}><JourneyMap points={[]} route={selected}/></View>
+        <Text style={S.label}>상세 이동 경로</Text><Card>
+          <View style={S.row}><Icon name="location-outline"/><Text style={S.label}>{selected.from.name} 출발</Text></View>
+          {selected.legs.map((leg,i)=><View key={i} style={[S.row,{alignItems:'flex-start'}]}><View style={{alignItems:'center',width:28,gap:5}}><Icon color={leg.mode==='WALK'?C.muted:'#318cef'} name={leg.mode==='WALK'?'walk-outline':leg.mode==='BUS'?'bus-outline':'train-outline'}/><View style={{width:1,backgroundColor:C.line,minHeight:32}}/></View><View style={{flex:1,gap:4,paddingBottom:14}}><Text style={S.label}>{leg.name}</Text><Note>{leg.minutes}분 / {km(leg.distance_m)}</Note>{(leg.startName||leg.endName)&&<Note>{leg.startName??'출발'} → {leg.endName??'도착'}</Note>}</View></View>)}
+          <View style={S.row}><Icon name="flag-outline"/><Text style={S.label}>{selected.to.name} 도착</Text></View>
+        </Card><Card><Text style={S.label}>나의 이동 기준</Text><Note>이동 기록을 바탕으로 한 Baseline 연결 후 비교 결과가 표시됩니다.</Note></Card>
+        <Button title="이 경로로 안내 시작" onPress={()=>{const chosen=selected;setSelected(null);onChoose(chosen);}}/>
+        <Note>TMAP 검색 결과입니다. 실제 이동 시간과 거리는 GPS 기록 후 확정됩니다.</Note>
+      </ScrollView>}
+    </SafeAreaView></Modal>
   </>;
 }
+
+export function RouteStrip({route}:{route:PlannedRoute}){return <View style={{flexDirection:'row',gap:3,minHeight:24}}>{route.legs.map((leg,i)=><View key={i} style={{flex:Math.max(leg.minutes,5),backgroundColor:leg.mode==='WALK'?'#80958b':leg.mode==='BUS'?'#80c83f':'#318cef',borderRadius:16,justifyContent:'center',alignItems:'center',paddingHorizontal:3,paddingVertical:6}}><Text numberOfLines={1} style={{fontSize:10,color:C.white}}>{leg.mode==='WALK'?'도보':leg.mode==='BUS'?'버스':'지하철'} {leg.minutes}분</Text></View>)}</View>;}

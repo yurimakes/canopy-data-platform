@@ -1,11 +1,12 @@
+import {CanopyMascot} from './CanopyMascot';
 import React,{useState} from 'react';
-import {Image,KeyboardAvoidingView,Platform,Pressable,ScrollView,Text,View} from 'react-native';
+import {KeyboardAvoidingView,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import {loginProfile,registerProfile} from '../profileStore';
 import type {Profile,Place} from '../service';
 import {PlacePicker} from './RoutePlanner';
-import {Button,C,Fade,Floating,Field,Icon,Note,S} from './theme';
+import {Button,C,Fade,Field,Icon,Note,S} from './theme';
 export function AuthScreen({onEnter,error:runtimeError,ready=true}:{onEnter(p:Profile):void;error?:string;ready?:boolean}) {
   const [page,setPage]=useState<'welcome'|'login'|'signup'>('welcome');
   const [email,setEmail]=useState(''),[password,setPassword]=useState(''),[nickname,setNickname]=useState(''),[code,setCode]=useState('');
@@ -26,10 +27,10 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true}:{onEnter(p:Pr
   return <SafeAreaView style={[S.root,{backgroundColor:page==='welcome'?'#eaf6ef':C.paper}]}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[S.scroll,{flexGrow:1,justifyContent:'center',paddingVertical:36}]}>
       <Fade key={page}>
-      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>CANOPY</Text></View>{page!=='welcome'&&<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
+      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{page!=='welcome'&&<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
       {page==='welcome'?<>
-        <Floating><Image source={require('../../assets/canopy-ui/landing-mascot-point.png')} style={{width:'100%',height:280}} resizeMode="contain"/></Floating>
-        <Text style={[S.title,{fontSize:37,lineHeight:48}]}>매일의 이동이,{ '\n'}더 나은 내일로.</Text>
+        <CanopyMascot height={260}/>
+        <Text style={[S.title,{fontSize:30,lineHeight:41}]}>매일의 이동이,{ '\n'}더 나은 내일로.</Text>
         <Text style={[S.note,{fontSize:16,lineHeight:26}]}>익숙한 출근길에 작은 변화를 더해보세요.{ '\n'}나의 여정부터 함께 만드는 변화까지.</Text>
         <View style={{gap:10,marginTop:18}}><Button title="캐노피 시작하기" onPress={()=>navigate('signup')}/><Button title="이미 계정이 있어요" quiet onPress={()=>navigate('login')}/></View>
       </>:page==='signup'&&step===1?<>

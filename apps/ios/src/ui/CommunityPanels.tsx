@@ -1,3 +1,4 @@
+import {CanopyMascot} from './CanopyMascot';
 import React,{useState} from 'react';
 import {ActivityIndicator,Pressable,Text,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
@@ -24,17 +25,15 @@ export function BaselinePanel({value=unavailable,onRetry}:{value?:RemotePanel<Ba
 }
 
 export function MissionPanel({value=unavailable,onRetry}:{value?:RemotePanel<MissionView>;onRetry?:()=>void}) {
-  const [filter,setFilter]=useState<'all'|'active'|'completed'>('all');
-  return <><Text style={S.title}>작은 도전,{ '\n'}일상 속 큰 변화.</Text><Note>주간 미션과 나의 실천을 한곳에서 확인해요.</Note>
-    <View style={S.row}>{([['all','전체'],['active','진행 중'],['completed','완료']] as const).map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:filter===id}} onPress={()=>setFilter(id)} style={[S.pill,{backgroundColor:filter===id?C.green:C.mint}]}><Text style={{color:filter===id?C.white:C.green}}>{label}</Text></Pressable>)}</View>
+  const [filter,setFilter]=useState<'all'|'active'|'completed'>('active');
+  return <>
+    <View style={S.row}>{([['active','진행 중'],['completed','완료'],['all','전체']] as const).map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:filter===id}} onPress={()=>setFilter(id)} style={{flex:1,alignItems:'center',padding:12,borderRadius:24,backgroundColor:filter===id?C.white:'transparent'}}><Text style={{color:filter===id?C.green:C.muted}}>{label}</Text></Pressable>)}</View>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       <Updated week={value.data.week} time={value.data.updatedAt}/>
       {value.data.items.filter(m=>filter==='all'||m.status===filter).map(m=><Card key={m.id}>
-        <View style={S.between}><Text style={S.pill}>{m.category}</Text><Icon name={m.status==='completed'?'checkmark-circle':'flag-outline'}/></View>
-        <Text style={S.heading}>{m.title}</Text><Note>{m.description}</Note>
-        <View style={S.between}><Text style={S.label}>{m.progress} / {m.goal} {m.unit}</Text><Text style={S.note}>{m.status==='completed'?'완료':m.status==='expired'?'기간 종료':'진행 중'}</Text></View>
-        <View accessibilityRole="progressbar" accessibilityValue={{min:0,max:m.goal,now:m.progress}} style={{height:8,borderRadius:8,backgroundColor:C.mint,overflow:'hidden'}}><View style={{height:8,backgroundColor:C.green,width:`${m.goal>0?Math.min(100,Math.max(0,m.progress/m.goal*100)):0}%`}}/></View>
-        <Note>진행 상황과 완료 여부는 서버에서 확인한 결과입니다.</Note>
+        <View style={S.row}><Icon name={m.status==='completed'?'checkmark-circle-outline':'leaf-outline'} size={29}/><View style={{flex:1,gap:7}}><Text style={S.label}>{m.title}</Text><Text style={[S.note,{fontSize:11,lineHeight:15}]}>{m.progress.toLocaleString()} / {m.goal.toLocaleString()} {m.unit}</Text>
+          <View accessibilityRole="progressbar" accessibilityValue={{min:0,max:m.goal,now:m.progress}} style={{height:5,borderRadius:5,backgroundColor:'#dbe9e2',overflow:'hidden'}}><View style={{height:5,backgroundColor:C.green,width:`${m.goal>0?Math.min(100,Math.max(0,m.progress/m.goal*100)):0}%`}}/></View>
+        </View>{m.status==='completed'&&<Text style={S.pill}>완료</Text>}</View>
       </Card>)}
       {!value.data.items.some(m=>filter==='all'||m.status===filter)&&<Status value={{state:'empty'}}/>}
     </>}
@@ -42,11 +41,13 @@ export function MissionPanel({value=unavailable,onRetry}:{value?:RemotePanel<Mis
 }
 
 export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<RankingView>;onRetry?:()=>void}) {
-  const [group,setGroup]=useState<'personal'|'department'>('personal');
-  return <><Text style={S.title}>함께 만드는{ '\n'}더 큰 변화.</Text><Note>TEST 캠페인의 주간 탄소 감축 순위</Note>
+  const [group,setGroup]=useState<'personal'|'department'>('personal'),[season,setSeason]=useState(false);
+  if(season)return <><View style={{alignItems:'center',padding:20,gap:18,backgroundColor:C.mint,borderRadius:18}}><Text style={S.heading}>시즌 랭킹</Text><Text style={S.pill}>시즌 집계 준비 중</Text><CanopyMascot pose="complete" height={180}/><Text style={[S.heading,{textAlign:'center'}]}>이번 시즌, 가장 많은 탄소를{ '\n'}절감한 사람은 누구일까요?</Text><Note>시즌 기간과 보상은 운영 정책이 확정되면 안내됩니다.</Note></View><Button title="주간 랭킹 보기" onPress={()=>setSeason(false)}/></>;
+  return <><View style={S.row}><View style={{flex:1}}><Button title="주간 랭킹" quiet onPress={()=>setSeason(false)}/></View><View style={{flex:1}}><Button title="시즌 랭킹" quiet onPress={()=>setSeason(true)}/></View></View>
     <View style={S.row}>{([['personal','개인'],['department','부서']] as const).map(([id,label])=><View key={id} style={{flex:1}}><Button title={label} quiet={group!==id} onPress={()=>setGroup(id)}/></View>)}</View>
+    <View style={{backgroundColor:C.mint,borderRadius:18,padding:20,gap:14}}><Text style={[S.label,{textAlign:'center'}]}>이번 주 TOP 3</Text><View style={{flexDirection:'row',alignItems:'flex-end',justifyContent:'center',gap:16}}>{[2,1,3].map(rank=>{const row=value.state==='ready'?value.data[group].find(r=>r.rank===rank):null;return <View key={rank} style={{flex:1,alignItems:'center',gap:6}}><View style={{width:rank===1?82:60}}><CanopyMascot height={rank===1?105:75}/></View><Text style={[S.metric,{fontSize:18,color:rank===1?'#bd8d30':C.muted}]}>{rank}</Text><Text numberOfLines={1} style={S.label}>{row?.name??'—'}</Text><Text style={[S.note,{fontSize:11}]}>{row?`${row.carbonKg.toFixed(2)} kg`:'집계 대기'}</Text></View>;})}</View></View>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
-      <Updated week={value.data.week} time={value.data.updatedAt}/><Note>주간 집계 결과입니다. 실시간 순위가 아닙니다.</Note>
+      <Updated week={value.data.week} time={value.data.updatedAt}/><Note>주간 집계 결과입니다.</Note>
       {!value.data[group].length&&<Status value={{state:'empty'}}/>}
       {value.data[group].map(row=><Card key={row.id}><View style={S.between}>
         <View style={[S.row,{flex:1}]}><Text style={[S.metric,{width:36}]}>{row.rank}</Text><View style={{flex:1,gap:4}}><Text style={S.label}>{row.name}{'isMe' in row&&row.isMe?' (나)':''}</Text><Note>{row.carbonKg.toFixed(2)} kgCO₂e 감축</Note></View></View>
@@ -57,11 +58,13 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
 }
 
 export function RewardPanel({value=unavailable,onRetry}:{value?:RemotePanel<RewardView>;onRetry?:()=>void}) {
-  return <><Text style={S.title}>나의 캐노피 토큰</Text><Card><Icon name="wallet-outline" size={36}/><Stat label="보유 토큰" value={value.state==='ready'?`${value.data.balance.toLocaleString()} T`:'—'}/><Note>서버에서 지급이 확정된 토큰만 잔액에 반영됩니다.</Note></Card>
-    <Text style={S.heading}>적립 내역</Text>
+  const [info,setInfo]=useState(false);
+  return <><Card><View style={S.between}><View style={S.row}><Icon name="leaf-outline" size={40}/><View><Text style={S.note}>보유 토큰</Text><Text style={[S.metric,{color:C.green}]}>{value.state==='ready'?`${value.data.balance.toLocaleString()} T`:'— T'}</Text></View></View><Pressable accessibilityRole="button" onPress={()=>setInfo(!info)} style={{borderWidth:1,borderColor:C.green,borderRadius:20,padding:10}}><Text style={[S.link,{fontSize:12}]}>리워드 안내</Text></Pressable></View></Card>
+    {info&&<Card><CanopyMascot pose="complete" height={130}/><Text style={S.heading}>일상의 이동을 가치 있게</Text><Note>여정과 미션의 보상은 서버에서 지급이 확정된 뒤 반영됩니다. 사용처와 교환 기능은 준비 중입니다.</Note><Button title="닫기" quiet onPress={()=>setInfo(false)}/></Card>}
+    <Text style={S.label}>최근 적립 내역</Text>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       {!value.data.items.length&&<Status value={{state:'empty'}}/>}
-      {value.data.items.map(row=><Card key={row.id}><View style={S.between}><View style={{flex:1,gap:6}}><Text style={S.label}>{row.title}</Text><Note>{new Date(row.time).toLocaleString('ko-KR')}</Note></View><View style={{alignItems:'flex-end',gap:6}}><Text style={S.heading}>{row.status==='paid'?`+${row.amount} T`:'처리 중'}</Text><Note>{row.status==='paid'?'지급 완료':'지급 확인 대기'}</Note></View></View></Card>)}
+      {value.data.items.map(row=><Card key={row.id}><View style={S.between}><Icon name="sparkles-outline"/><View style={{flex:1,gap:6}}><Text style={S.label}>{row.title}</Text><Note>{new Date(row.time).toLocaleString('ko-KR')}</Note></View><View style={{alignItems:'flex-end',gap:6}}><Text style={S.heading}>{row.status==='paid'?`+${row.amount} T`:'처리 중'}</Text><Note>{row.status==='paid'?'지급 완료':'지급 확인 대기'}</Note></View></View></Card>)}
     </>}
   </>;
 }
