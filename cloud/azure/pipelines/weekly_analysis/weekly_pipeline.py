@@ -24,13 +24,20 @@ if git_module_path not in sys.path:
     sys.path.append(git_module_path)
 
 # 파이프라인 실행에 필요한 함수 및 모듈 임포트
-from baseline_eligibility import load_eligibility_policy, evaluate_personal_eligibility, observation_context, week_evaluation_time
 from build_personal_baseline import load_policy as load_baseline_policy
+
 from helpers.spark_baseline import (
     build_personal_baseline as build_personal_baseline_df,
     select_personal_ready_users,
     build_global_eligibility,
     build_global_baseline as build_global_baseline_df,
+)
+from helpers.baseline_eligibility import (
+    load_eligibility_policy, 
+    build_baseline_eligibility,
+    evaluate_personal_eligibility, 
+    observation_context, 
+    week_evaluation_time,
 )
 
 policy = load_eligibility_policy()
@@ -296,70 +303,15 @@ def weekly_gold():
 @dp.temporary_view(comment="Baseline 계산 대상 판정 코드 입력 위치")
 def baseline_eligibility():
     weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
-
-    agg_df = weekly_df.groupBy("user_id", "campaign_id", "week").agg(
-        F.sum("trip_count").alias("trip_count"),
-        F.sum("total_distance_m").alias("total_distance"),
-        F.sum("total_kg_co2e").alias("total_carbon")
+    
+    return build_baseline_eligibility(
+        weekly_df=weekly_df,
+        policy=policy,
+        PERSONAL_ELIGIBILITY_SCHEMA=PERSONAL_ELIGIBILITY_SCHEMA,
+        week_evaluation_time=week_evaluation_time,
+        observation_context=observation_context,
+        evaluate_personal_eligibility=evaluate_personal_eligibility
     )
-
-    @pandas_udf(PERSONAL_ELIGIBILITY_SCHEMA)
-    def evaluate_personal_row(
-        user_id: pd.Series,
-        campaign_id: pd.Series,
-        week: pd.Series,
-        trip_count: pd.Series,
-        total_distance: pd.Series,
-        total_carbon: pd.Series
-    ) -> pd.DataFrame:
-        results = []
-        for uid, cid, w, tc, td, tc_carb in zip(
-            user_id, campaign_id, week, trip_count, total_distance, total_carbon
-        ):
-            try:
-                evaluated_at = week_evaluation_time(w)
-            except Exception:
-                evaluated_at = None
-
-            identities = {
-                "users": [],
-                "memberships": []
-            }
-
-            obs_days, source, err = observation_context(uid, cid, evaluated_at, identities)
-            observation_days = int(obs_days) if obs_days is not None else 0
-
-            result = evaluate_personal_eligibility(
-                observation_days=observation_days,
-                trip_count=tc or 0,
-                total_distance=td or 0.0,
-                total_carbon=tc_carb or 0.0,
-                policy=policy
-            )
-
-            results.append({
-                "user_id": uid,
-                "campaign_id": cid,
-                "week": w,
-                "status": result.get("status"),
-                "policy_version": result.get("policy_version"),
-                "observation_days": observation_days,
-                "confirmed_trip_count": int(result.get("confirmed_trip_count", tc or 0)),
-                "reasons": result.get("reasons", [])
-            })
-
-        return pd.DataFrame(results)
-
-    return agg_df.select(
-        evaluate_personal_row(
-            F.col("user_id"),
-            F.col("campaign_id"),
-            F.col("week"),
-            F.col("trip_count"),
-            F.col("total_distance"),
-            F.col("total_carbon")
-        ).alias("evaluated")
-    ).select("evaluated.*")
 
 
 @dp.temporary_view(comment="이전 완료 주 이력을 이용한 개인 Baseline 계산")
