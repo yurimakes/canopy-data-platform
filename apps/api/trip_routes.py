@@ -44,6 +44,12 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             raise ApiError(410, "correction_retired", "Direct correction is retired; submit Trip feedback instead")
         if stop == "/stop" and method == "POST":
             trip = api.stop(trip_id, user_id, body)
+            if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
+                try:
+                    from services.trip_dispatch import recover
+                    recover(api.store)
+                except Exception as exc:
+                    logging.warning("trip_dispatch_deferred trip_id=%s error_type=%s", trip_id, type(exc).__name__)
             return (202 if trip["status"] == "processing" else 200), public(trip)
         if not stop and method == "GET":
             return 200, public(api.get(trip_id, user_id))

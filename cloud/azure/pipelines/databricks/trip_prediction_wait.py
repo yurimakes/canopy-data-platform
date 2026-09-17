@@ -81,15 +81,33 @@ def register(spark, ends, queue_path, now, timeout_seconds=600):
             set={"status": F.lit("failed"), "reason": F.lit("conflicting_end_events")}).whenNotMatchedInsertAll().execute()
 
 
+def normalize_table_result(row):
+    """팀 테이블의 추적용 열은 유지하고, 계산 입력에 필요한 필드만 투영."""
+    trip = row["trip"]
+    for key in ("trip_id", "processing_generation"):
+        if key in row and row[key] != trip[key]:
+            raise ValueError("outer and nested " + key + " differ")
+    envelope = {"trip": {k: trip[k] for k in (
+        "trip_id", "user_id", "campaign_id", "started_at", "ended_at", "processing_generation")},
+        "result": {"trip_id": row["result"]["trip_id"], "model_version": row["result"]["model_version"],
+            "segments": [{k: segment[k] for k in (
+                "segment_id", "mode", "start_time", "end_time", "distance_m", "confidence")}
+                for segment in row["result"]["segments"]]}, "completed_at": row["completed_at"]}
+    for segment in envelope["result"]["segments"]:
+        if segment["mode"] in ("subway", "train"):
+            segment["mode"] = "rail"
+    return envelope
+
+
 def read_candidates(spark, table, ended):
     """해당 Trip 처리 차수만 조회. null 신뢰도 보존, 상충 결과 최대 2건 확인."""
     from pyspark.sql import functions as F
     source = spark.table(table)
     for key in KEYS:
         source = source.where(F.col("trip." + key) == ended[key])
-    rows = source.select(F.to_json(F.struct("trip", "result", "completed_at"),
+    rows = source.select(F.to_json(F.struct(*[F.col(c) for c in source.columns]),
         options={"ignoreNullFields": "false", "timestampFormat": "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXX"}).alias("payload")).distinct().limit(2).collect()
-    return [json.loads(row.payload) for row in rows]
+    return [normalize_table_result(json.loads(row.payload)) for row in rows]
 
 
 def poll(spark, queue_path, final_segment_table, now, max_attempts=12, event=None):

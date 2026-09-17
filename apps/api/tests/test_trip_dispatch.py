@@ -45,10 +45,10 @@ class DispatchTests(unittest.TestCase):
     def current(self):
         return self.store.read(self.trip["trip_id"], "user")
 
-    def test_only_actual_matching_end_receipt_dispatches(self):
+    def test_published_outbox_recovers_missing_receipt_once(self):
         job = Job()
         recover(self.store, job, self.now)
-        self.assertEqual(job.sent, [])
+        self.assertEqual(job.sent, [self.event["event_id"]])
         self.assertFalse(receive(self.store, {**self.event, "expected_last_sequence": 3}, self.now))
         self.assertFalse(receive(self.store, {"event_type": "gps"}, self.now))
         self.assertTrue(receive(self.store, self.event, self.now))
@@ -57,6 +57,14 @@ class DispatchTests(unittest.TestCase):
         recover(self.store, job, self.now + timedelta(seconds=61))
         self.assertEqual(job.sent, [self.event["event_id"]])
         self.assertEqual(self.current()["trip_dispatch"]["run_id"], 123)
+
+    def test_unpublished_outbox_does_not_launch(self):
+        trip = self.current()
+        trip["trip_end_outbox"]["status"] = "pending"
+        self.store.replace(trip)
+        job = Job()
+        recover(self.store, job, self.now)
+        self.assertEqual(job.sent, [])
 
     def test_lost_submission_retries_same_id_after_restart(self):
         job = Job(); job.failure = True

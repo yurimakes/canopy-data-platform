@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines/databricks"))
-from trip_prediction_wait import resolve, advance
+from trip_prediction_wait import resolve, advance, normalize_table_result
 from finalize_trip_pipeline import build_final_trip
 from services.trip_processor import ProcessingError
 
@@ -45,6 +45,19 @@ class FinalSegmentTests(unittest.TestCase):
         self.assertEqual(doc["carbon"], other["carbon"])
         self.assertEqual(other["segments"][1]["confidence"], 0)
         self.assertFalse(doc["is_mock"])
+
+    def test_team_table_extra_columns_and_duplicate_identity(self):
+        row = copy.deepcopy(self.value)
+        row.update(trip_id=row["trip"]["trip_id"], processing_generation=1, model_name="team")
+        row["trip"]["status"] = "completed"
+        row["result"]["segments"][0].update(segment_index=1, start_sequence=1, end_sequence=12)
+        self.assertEqual(normalize_table_result(row), self.value)
+        row["result"]["segments"][0]["mode"] = "subway"
+        self.assertEqual(normalize_table_result(row)["result"]["segments"][0]["mode"], "rail")
+        self.assertEqual(row["result"]["segments"][0]["mode"], "subway")
+        row["processing_generation"] = 2
+        with self.assertRaises(ValueError):
+            normalize_table_result(row)
 
     def test_other_user_and_generations_never_satisfy_end(self):
         for key, value in [("user_id", "other"), ("trip_id", "other"), ("processing_generation", 2)]:
