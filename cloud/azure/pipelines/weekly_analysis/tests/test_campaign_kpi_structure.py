@@ -69,6 +69,12 @@ class CampaignKpiStructureTest(unittest.TestCase):
 
         self.assertNotIn("empty_result", called)
 
+    def test_reward_contract_uses_week_label_and_adjustments(self):
+        self.assertIn('"week_label"', self.helper_source)
+        self.assertIn('"adjusted"', self.helper_source)
+
+    def test_membership_contract_uses_left_at(self):
+        self.assertIn('"left_at"', self.helper_source)
     def test_helper_imports_are_connected(self):
         source = self.pipeline_source
 

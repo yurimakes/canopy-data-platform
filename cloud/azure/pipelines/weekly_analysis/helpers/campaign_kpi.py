@@ -173,18 +173,19 @@ def _behavior_metrics(behavior_change: DataFrame) -> DataFrame:
 def _reward_metrics(reward_ledger: DataFrame) -> DataFrame:
     _require_columns(
         reward_ledger,
-        {"campaign_id", "week", "points", "status"},
+        {"campaign_id", "week_label", "points", "status"},
         "reward_ledger",
     )
 
     return (
         reward_ledger
-        .filter(F.col("status") == "paid")
-        .groupBy("campaign_id", "week")
+        .filter(F.col("status").isin("paid", "adjusted"))
+        .groupBy("campaign_id", "week_label")
         .agg(
             F.sum(F.col("points").cast("double"))
             .alias("paid_reward_points")
         )
+        .withColumnRenamed("week_label", "week")
     )
 
 
@@ -194,7 +195,7 @@ def _enrollment_metrics(
 ) -> DataFrame:
     _require_columns(
         campaign_membership,
-        {"user_id", "campaign_id", "joined_at"},
+        {"user_id", "campaign_id", "joined_at", "left_at"},
         "campaign_membership",
     )
 
@@ -210,6 +211,13 @@ def _enrollment_metrics(
             & (
                 F.to_date(F.col("m.joined_at"))
                 <= F.col("s.week_end_date")
+            )
+            & (
+                F.col("m.left_at").isNull()
+                | (
+                    F.to_date(F.col("m.left_at"))
+                    > F.col("s.week_end_date")
+                )
             ),
             "left",
         )
