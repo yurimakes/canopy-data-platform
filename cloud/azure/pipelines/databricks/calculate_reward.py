@@ -4,22 +4,6 @@ import yaml
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-GOLD_WEEKLY_USER_PATH = os.environ.get(
-    "CANOPY_GOLD_WEEKLY_USER_PATH",
-    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/weekly_summary_user/",
-)
-GOLD_PERSONAL_BASELINE_PATH = os.environ.get(
-    "CANOPY_GOLD_PERSONAL_BASELINE_PATH",
-    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/personal_baseline_history/",
-)
-GOLD_GLOBAL_BASELINE_PATH = os.environ.get(
-    "CANOPY_GOLD_GLOBAL_BASELINE_PATH",
-    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/global_baseline_history/",
-)
-GOLD_MISSION_RESPONSE_PATH = os.environ.get(
-    "CANOPY_GOLD_MISSION_RESPONSE_PATH",
-    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
-)
 REWARD_POLICY_PATH = os.environ.get(
     "CANOPY_REWARD_POLICY_PATH",
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/reward_policy.yaml",
@@ -74,7 +58,7 @@ def compute_points(status, personal_baseline, global_baseline, actual, policy):
 
 def read_current_performance(spark, campaign_id, week):
     df = (
-        spark.read.format("delta").load(GOLD_WEEKLY_USER_PATH)
+        spark.read.table("weekly_gold")
         .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week))
         .withColumn(
             "actual_g_co2e_per_km",
@@ -90,7 +74,7 @@ def read_current_performance(spark, campaign_id, week):
 
 def read_personal_baseline_map(spark, campaign_id, week):
     df = (
-        spark.read.format("delta").load(GOLD_PERSONAL_BASELINE_PATH)
+        spark.read.table("personal_baseline")
         .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week) & (F.col("status") == "ready"))
         .select("user_id", "value")
     )
@@ -99,7 +83,7 @@ def read_personal_baseline_map(spark, campaign_id, week):
 
 def read_global_baseline_value(spark, campaign_id, week):
     df = (
-        spark.read.format("delta").load(GOLD_GLOBAL_BASELINE_PATH)
+        spark.read.table("global_baseline")
         .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week) & (F.col("status") == "ready"))
         .select("value")
     )
@@ -109,12 +93,12 @@ def read_global_baseline_value(spark, campaign_id, week):
 
 def read_mission_completion(spark, campaign_id, week):
     df = (
-        spark.read.format("delta").load(GOLD_MISSION_RESPONSE_PATH)
+        spark.read.table("mission_response_weekly")
         .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week))
         .groupBy("user_id")
-        .agg(F.sum("completed").alias("missions_completed_this_week"))
+        .agg(F.sum(F.when(F.col("completed") == True, 1).otherwise(0)).alias("completed_count"))  # noqa: E712
     )
-    return {r["user_id"]: r["missions_completed_this_week"] for r in df.collect()}
+    return {r["user_id"]: r["completed_count"] for r in df.collect()}
 
 
 def calculate_rewards(spark, campaign_id, week, policy):
