@@ -24,33 +24,32 @@ def canonical(value):
 
 def build_final_trip(envelope, allow_test_trip=False):
     """The envelope supplies lifecycle context; result uses existing ProcessorResult."""
+    if set(envelope) != {"trip", "result", "completed_at"}:
+        raise ValueError("expected trip, result and completed_at only")
     trip = deepcopy(envelope["trip"])
+    if set(trip) != {"trip_id", "user_id", "campaign_id", "started_at", "ended_at", "processing_generation"}:
+        raise ValueError("invalid Final Segment Trip context fields")
+    if set(envelope["result"]) != {"trip_id", "model_version", "segments"}:
+        raise ValueError("invalid Final Segment result fields")
     for key in ("trip_id", "user_id", "campaign_id", "started_at", "ended_at"):
         if not isinstance(trip.get(key), str) or not trip[key].strip():
             raise ValueError("missing Trip context: " + key)
     generation = trip.get("processing_generation")
     if type(generation) is not int or generation < 1:
         raise ValueError("processing_generation must be a positive integer")
-    if trip.get("status") != "processing":
-        raise ValueError("only a stopped, processing Trip can be finalized")
     completed_at = envelope["completed_at"]
     if timestamp(completed_at) < timestamp(trip["ended_at"]):
         raise ValueError("completed_at precedes Trip end")
-    provider = envelope["provider"]
-    if provider == "mock":
-        if not (trip["trip_id"].startswith("pipeline_test_") or allow_test_trip) or not trip["campaign_id"].startswith("pipeline_test_"):
-            raise ValueError("Mock is restricted to pipeline_test_ identities")
-        result = ConfirmationFixtureProcessor().process_trip(trip)
-    elif provider == "external":
-        result = deepcopy(envelope["result"])
-        if result.get("model_version", "").startswith("mock"):
-            raise ValueError("Mock results must use the mock provider")
-    else:
-        raise ValueError("provider must be mock or external")
+    result = deepcopy(envelope["result"])
+    is_mock = result.get("model_version", "").startswith("mock")
+    if is_mock and not (allow_test_trip and trip["campaign_id"].startswith("pipeline_test_")):
+        raise ValueError("Mock requires explicit test execution and pipeline_test_ campaign")
     validate_result(trip, result)
     # Construct owned result fields explicitly; never accept user feedback from ML.
     segments = []
     for source in result["segments"]:
+        if set(source) != {"segment_id", "mode", "start_time", "end_time", "distance_m", "confidence"}:
+            raise ValueError("invalid Final Segment fields")
         segment = {k: source[k] for k in ("segment_id", "mode", "start_time", "end_time", "distance_m", "confidence")}
         segment.update(model_prediction=source["mode"], confirmed_mode=None, corrected=False,
                        correction_status="none", confirmation_time=None, last_request_id=None,
@@ -61,7 +60,7 @@ def build_final_trip(envelope, allow_test_trip=False):
         segments.append(segment)
     document = {key: trip[key] for key in ("trip_id", "user_id", "campaign_id", "started_at", "ended_at", "processing_generation")}
     document.update(id=trip["trip_id"], type="trip", status="ready", segments=segments,
-                    model_version=result["model_version"], is_mock=provider == "mock",
+                    model_version=result["model_version"], is_mock=is_mock,
                     created_at=trip.get("created_at", trip["started_at"]), updated_at=completed_at,
                     failed_step=None, error_message=None, lease_until="", process_after="")
     finalize_result(document, segments, completed_at)
@@ -160,7 +159,8 @@ def publish_cosmos(store, document, allow_test_create=False):
                 if current.get("status") != "processing" or current.get("result_owner") != "databricks":
                     raise ValueError("Trip is not assigned to Databricks; refusing to replace another worker's result")
                 for key in ("user_id", "campaign_id", "started_at", "ended_at"):
-                    if current.get(key) != document[key]:
+                    if (timestamp(current[key]) != timestamp(document[key]) if key in ("started_at", "ended_at")
+                            else current.get(key) != document[key]):
                         raise ValueError("lifecycle context differs: " + key)
                 merged = {**current, **document}
                 merged["created_at"] = current.get("created_at", document["created_at"])
@@ -197,7 +197,7 @@ def publish_wait_failure(store, wait):
         if current.get("status") != "processing" or current.get("result_owner") != "databricks":
             return "not_owned"
         current.update(status="failed", failed_step="wait_for_ml",
-                       error_message="Prediction results are delayed or incomplete. Retry after checking the source.",
+                       error_message="Final Segment results are delayed or invalid. Retry after checking the source.",
                        wait_reason=wait["reason"], lease_until="", process_after="")
         try:
             store.replace(current)
@@ -241,7 +241,7 @@ def main():
             envelope = json.loads(rows[0].envelope_json)
         else:
             envelope = json.loads(Path(args.input).read_text(encoding="utf-8"))
-        document = build_final_trip(envelope)
+        document = build_final_trip(envelope, allow_test_trip=args.allow_test_create)
         if document["is_mock"] and "/pipeline_test/" not in args.gold_path:
             raise ValueError("Mock Gold must be stored under /pipeline_test/")
         save_gold(spark, args.gold_path, document)

@@ -1,4 +1,5 @@
-"""Real Spark joins against the current ML column contract; no Azure writes."""
+"""Final Segment 경계, 종료정보 대조, 제한시간과 후속 탄소 계산 검증."""
+import copy
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -7,53 +8,90 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines/databricks"))
-from trip_prediction_wait import assess, advance
+from trip_prediction_wait import resolve, advance
 from finalize_trip_pipeline import build_final_trip
+from services.trip_processor import ProcessingError
 
 
-class PredictionWaitTests(unittest.TestCase):
-    def test_coverage_timeout_and_existing_carbon(self):
-        from pyspark.sql import SparkSession, functions as F
-        spark = SparkSession.builder.master("local[2]").appName("trip-prediction-wait-test").config(
-            "spark.sql.shuffle.partitions", "2").config("spark.ui.enabled", "false").getOrCreate()
-        spark.conf.set("spark.sql.session.timeZone", "UTC")
-        now = datetime(2026, 9, 16, 12, tzinfo=timezone.utc)
-        at = lambda seconds: now + timedelta(seconds=seconds)
-        try:
-            end_schema = "user_id string, trip_id string, processing_generation long, campaign_id string, started_at timestamp, ended_at timestamp, expected_last_sequence long, result_owner string, attempts int, deadline_at timestamp"
-            ends = spark.createDataFrame([(u, "trip", 1, "campaign", at(0), at(10), 4, "databricks", 0, at(600))
-                                           for u in ("ready", "tail", "gap", "unscored")], end_schema)
-            gps_schema = "user_id string, trip_id string, event_id string, sequence long, event_time timestamp, distance_m double, transition_valid boolean"
-            gps = spark.createDataFrame([(u, "trip", u+str(i), i, at(i), 0.0 if i==1 else 10.0, i>1)
-                  for u in ("ready", "tail", "gap", "unscored") for i in range(1,5) if not(u=="gap" and i==3)], gps_schema)
-            ps = "user_id string, trip_id string, segment_id string, start_time timestamp, end_time timestamp, strong_mode string, strong_confidence double, inference_status string, model_uri string"
-            preds = spark.createDataFrame([(u,"trip",u+"s1",at(2),at(3),"walk",0.9,"scored","models:/team/1")
-                for u in ("ready","tail","gap","unscored")] +
-                [(u,"trip",u+"s2",at(3),at(4),"train",0.8,"insufficient_history" if u=="unscored" else "scored","models:/team/1")
-                for u in ("ready","gap","unscored")], ps)
-            checks = advance(assess(ends,gps,preds),at(15)).cache()
-            values = {r.user_id:r for r in checks.collect()}
-            self.assertEqual(values['ready'].status,'ready')
-            self.assertEqual(values['tail'].reason,'waiting_for_prediction_coverage')
-            self.assertEqual(values['gap'].reason,'waiting_for_gps')
-            self.assertEqual(values['unscored'].reason,'waiting_for_scored_predictions')
-            self.assertEqual(values['tail'].status,'waiting')
-            self.assertEqual(values['tail'].attempts,1)
-            envelope=json.loads(values['ready'].envelope_json)
-            self.assertEqual(sum(x['distance_m'] for x in envelope['result']['segments']),30)
-            self.assertEqual(envelope['result']['segments'][1]['mode'],'rail')
-            document=build_final_trip(envelope)
-            self.assertEqual(document['status'],'ready')
-            self.assertEqual(document['confirmed_trip']['total_distance_m'],30)
-            # Once the ten-minute budget is over, even newly available data needs explicit retry.
-            expired=advance(checks.drop('status','next_check_at','checked_at','envelope_json'),at(601)).collect()
-            self.assertTrue(all(r.status=='timed_out' and r.envelope_json is None for r in expired))
-            # Two owners with the same Trip ID never share predictions or GPS coverage.
-            self.assertNotEqual(values['ready'].status,values['tail'].status)
-            checks.unpersist()
-        finally:
-            spark.stop()
+def sample():
+    return {"trip": {"trip_id": "trip_001", "user_id": "user_001", "campaign_id": "campaign_test",
+        "started_at": "2026-09-17T09:00:00+09:00", "ended_at": "2026-09-17T09:20:00+09:00",
+        "processing_generation": 1}, "result": {"trip_id": "trip_001", "model_version": "canopy-mode-v1",
+        "segments": [{"segment_id": "trip_001:segment:1", "mode": "walk",
+            "start_time": "2026-09-17T09:00:00+09:00", "end_time": "2026-09-17T09:05:00+09:00",
+            "distance_m": 350.0, "confidence": 0.92},
+            {"segment_id": "trip_001:segment:2", "mode": "bus",
+            "start_time": "2026-09-17T09:05:00+09:00", "end_time": "2026-09-17T09:20:00+09:00",
+            "distance_m": 5200.0, "confidence": None}]}, "completed_at": "2026-09-17T09:20:10+09:00"}
 
 
-if __name__ == '__main__':
+class FinalSegmentTests(unittest.TestCase):
+    def setUp(self):
+        self.value = sample()
+        self.end = {**self.value["trip"], "result_owner": "databricks", "expected_last_sequence": 120}
+
+    def test_agreed_schema_to_carbon_preserves_null_distance_and_completion(self):
+        import jsonschema
+        schema = json.loads((ROOT / "shared/schemas/final_segment.schema.json").read_text(encoding="utf-8"))
+        jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(self.value)
+        reason, payload = resolve(self.end, [self.value])
+        self.assertEqual(reason, "ready")
+        doc = build_final_trip(json.loads(payload))
+        self.assertEqual(doc["confirmed_trip"]["total_distance_m"], 5550)
+        self.assertEqual(doc["segments"][1]["confidence"], None)
+        self.assertEqual(doc["updated_at"], self.value["completed_at"])
+        self.value["result"]["segments"][1]["confidence"] = 0
+        other = build_final_trip(self.value)
+        self.assertEqual(doc["carbon"], other["carbon"])
+        self.assertEqual(other["segments"][1]["confidence"], 0)
+        self.assertFalse(doc["is_mock"])
+
+    def test_other_user_and_generations_never_satisfy_end(self):
+        for key, value in [("user_id", "other"), ("trip_id", "other"), ("processing_generation", 2)]:
+            wrong = copy.deepcopy(self.value)
+            wrong["trip"][key] = value
+            self.assertEqual(resolve(self.end, [wrong]), ("waiting_for_final_segments", None))
+
+    def test_duplicates_and_conflicting_completed_results(self):
+        self.assertEqual(resolve(self.end, [self.value]*2)[0], "ready")
+        wrong = copy.deepcopy(self.value)
+        wrong["result"]["segments"][1]["distance_m"] += 10
+        self.assertEqual(resolve(self.end, [self.value, wrong]), ("conflicting_final_segments", None))
+
+    def test_lifecycle_mismatch_and_equivalent_timezone(self):
+        wrong = copy.deepcopy(self.value)
+        wrong["trip"]["campaign_id"] = "other"
+        self.assertEqual(resolve(self.end, [wrong])[0], "lifecycle_context_mismatch")
+        self.end["ended_at"] = "2026-09-17T00:20:00+00:00"
+        self.assertEqual(resolve(self.end, [self.value])[0], "ready")
+
+    def test_timeout_and_bounded_attempts(self):
+        now = datetime.now(timezone.utc)
+        wait = {"attempts": 0, "deadline_at": now+timedelta(seconds=600)}
+        first = advance(wait, "waiting_for_final_segments", None, now)
+        self.assertEqual(first["status"], "waiting")
+        self.assertEqual(first["next_check_at"], now+timedelta(seconds=10))
+        self.assertEqual(advance(wait, "ready", "{}", now+timedelta(seconds=601))["status"], "timed_out")
+        self.assertEqual(advance({**wait,"attempts":11}, "waiting_for_final_segments", None, now)["status"], "timed_out")
+        self.assertEqual(advance(wait,"conflicting_final_segments",None,now)["status"],"failed")
+
+    def test_invalid_completed_contract_never_becomes_final_trip(self):
+        mutations = [lambda v:v.update(provider="external"),
+            lambda v:v["trip"].update(status="processing"),
+            lambda v:v.update(completed_at="2026-09-17T08:00:00+09:00"),
+            lambda v:v["result"].update(trip_id="other"),
+            lambda v:v["result"]["segments"][0].update(distance_m=-1),
+            lambda v:v["result"]["segments"][0].update(confidence=1.1),
+            lambda v:v["result"]["segments"][0].update(confidence=float("nan")),
+            lambda v:v["result"]["segments"][0].pop("confidence"),
+            lambda v:v["result"].update(model_version="mock_v1")]
+        for mutation in mutations:
+            with self.subTest(mutation=mutation):
+                value = sample()
+                mutation(value)
+                with self.assertRaises((ValueError, ProcessingError)):
+                    build_final_trip(value)
+
+
+if __name__ == "__main__":
     unittest.main()

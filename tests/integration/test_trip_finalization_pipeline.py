@@ -13,10 +13,12 @@ from services.trip_processor import ProcessingError
 
 
 def envelope():
-    return {"provider": "mock", "completed_at": "2026-09-16T01:11:00+00:00", "trip": {
+    value = { "completed_at": "2026-09-16T01:11:00+00:00", "trip": {
         "trip_id": "pipeline_test_trip_1", "user_id": "pipeline_test_user_1",
-        "campaign_id": "pipeline_test_campaign_1", "status": "processing", "processing_generation": 1,
+        "campaign_id": "pipeline_test_campaign_1", "processing_generation": 1,
         "started_at": "2026-09-16T01:00:00+00:00", "ended_at": "2026-09-16T01:10:00+00:00"}}
+    value["result"] = pipeline.ConfirmationFixtureProcessor().process_trip(value["trip"])
+    return value
 
 
 class PipelineTests(unittest.TestCase):
@@ -24,13 +26,13 @@ class PipelineTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.store = SQLiteTripStore(str(Path(self.temp.name) / "trips.sqlite"))
-        self.document = pipeline.build_final_trip(envelope())
+        self.document = pipeline.build_final_trip(envelope(), allow_test_trip=True)
 
     def test_existing_carbon_contract_and_stable_replay(self):
         self.assertEqual(self.document["carbon"]["kg_co2e"], .778224)
         self.assertEqual(self.document["confirmed_trip"]["total_distance_m"], 7000)
         self.assertEqual(self.document["confirmed_trip"]["bus_distance_m"], 6200)
-        self.assertEqual(self.document, pipeline.build_final_trip(envelope()))
+        self.assertEqual(self.document, pipeline.build_final_trip(envelope(), allow_test_trip=True))
         self.assertEqual(self.document["carbon"]["unit"], "kgCO2e")
         self.assertEqual(len(self.document["segments"]), 3)
 
@@ -56,7 +58,6 @@ class PipelineTests(unittest.TestCase):
 
     def test_external_result_uses_exact_same_boundary(self):
         value = envelope()
-        value["provider"] = "external"
         value["result"] = pipeline.ConfirmationFixtureProcessor().process_trip(value["trip"])
         value["result"]["model_version"] = "team_model_v1"
         actual = pipeline.build_final_trip(value)
@@ -75,6 +76,7 @@ class PipelineTests(unittest.TestCase):
     def test_phone_mock_requires_explicit_test_campaign(self):
         value = envelope()
         value["trip"]["trip_id"] = "phone-server-generated-uuid"
+        value["result"]["trip_id"] = value["trip"]["trip_id"]
         self.assertTrue(pipeline.build_final_trip(value, allow_test_trip=True)["is_mock"])
         value["trip"]["campaign_id"] = "production_campaign"
         with self.assertRaises(ValueError):
@@ -95,7 +97,7 @@ class PipelineTests(unittest.TestCase):
             pipeline.publish_cosmos(self.store, self.document)
 
     def test_assigned_lifecycle_keeps_unrelated_fields(self):
-        trip = {**envelope()["trip"], "id": self.document["id"], "result_owner": "databricks",
+        trip = {**envelope()["trip"], "status": "processing", "id": self.document["id"], "result_owner": "databricks",
                 "device_id": "phone", "feedback_id": "keep_me"}
         self.store.create(trip)
         pipeline.publish_cosmos(self.store, self.document)
@@ -104,10 +106,17 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(saved["feedback_id"], "keep_me")
         self.assertEqual(saved["status"], "ready")
 
+    def test_cosmos_accepts_equivalent_timezone_without_losing_lifecycle(self):
+        trip = {**envelope()["trip"], "id": self.document["id"], "status": "processing",
+                "result_owner": "databricks", "started_at": "2026-09-16T10:00:00+09:00",
+                "ended_at": "2026-09-16T10:10:00+09:00"}
+        self.store.create(trip)
+        self.assertEqual(pipeline.publish_cosmos(self.store, self.document), "published")
+
     def test_missing_production_trip_and_stale_generation_are_rejected(self):
         with self.assertRaises(ValueError):
             pipeline.publish_cosmos(self.store, self.document)
-        trip = {**envelope()["trip"], "id": self.document["id"], "processing_generation": 2}
+        trip = {**envelope()["trip"], "status": "processing", "id": self.document["id"], "processing_generation": 2}
         self.store.create(trip)
         with self.assertRaises(ValueError):
             pipeline.publish_cosmos(self.store, self.document)
@@ -140,7 +149,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(write.call_count, 1)
 
     def test_concurrent_feedback_is_preserved_after_cas_retry(self):
-        trip = {**envelope()["trip"], "id": self.document["id"], "result_owner": "databricks"}
+        trip = {**envelope()["trip"], "status": "processing", "id": self.document["id"], "result_owner": "databricks"}
         self.store.create(trip)
         store = self.store
         replace = store.replace
@@ -189,6 +198,8 @@ class PipelineTests(unittest.TestCase):
             task = job["tasks"][0]["spark_python_task"]
             self.assertTrue(task["python_file"].endswith("/trip_job.py"))
             self.assertIn("{{job.parameters.end_event}}", task["parameters"])
+            self.assertIn("--final-segment-table", task["parameters"])
+            self.assertNotIn("--gps-table", task["parameters"])
             self.assertEqual(job["max_concurrent_runs"], 3)
             self.assertNotIn("schedule", job)
 
@@ -216,13 +227,28 @@ class WeeklyContractTests(unittest.TestCase):
         spark = SparkSession.builder.master("local[2]").appName("trip-contract-test").config(
             "spark.sql.shuffle.partitions", "2").config("spark.ui.enabled", "false").getOrCreate()
         try:
-            frame = pipeline.gold_frame(spark, pipeline.build_final_trip(envelope()))
+            from test_trip_prediction_wait import sample
+            from trip_prediction_wait import read_candidates, resolve
+            from pyspark.sql import functions as F
+            value = sample()
+            value["trip"]["started_at"] = "2026-09-17T08:59:59.123456+09:00"
+            ddl = "trip struct<trip_id:string,user_id:string,campaign_id:string,started_at:timestamp,ended_at:timestamp,processing_generation:long>, result struct<trip_id:string,model_version:string,segments:array<struct<segment_id:string,mode:string,start_time:string,end_time:string,distance_m:double,confidence:double>>>, completed_at timestamp"
+            source = spark.createDataFrame([(pipeline.canonical(value),)], "payload string").select(
+                F.from_json("payload", ddl).alias("v")).select("v.*")
+            source.createOrReplaceTempView("completed_segments_test")
+            ended = {**value["trip"], "result_owner": "databricks", "expected_last_sequence": 120}
+            reason, payload = resolve(ended, read_candidates(spark, "completed_segments_test", ended))
+            self.assertEqual(reason, "ready")
+            import json
+            document = pipeline.build_final_trip(json.loads(payload))
+            self.assertIsNone(document["segments"][1]["confidence"])
+            frame = pipeline.gold_frame(spark, document)
             personal = weekly.build_personal_weekly(weekly.assign_week(frame)).cache()
             row = personal.first()
             self.assertEqual(row.trip_count, 1)
-            self.assertEqual(row.total_distance_m, 7000)
-            self.assertAlmostEqual(row.total_kg_co2e, .778224)
-            self.assertEqual(row.bus_distance_m, 6200)
+            self.assertEqual(row.total_distance_m, 5550)
+            self.assertAlmostEqual(row.total_kg_co2e, document["carbon"]["kg_co2e"])
+            self.assertEqual(row.bus_distance_m, 5200)
             self.assertEqual(row.week, "2026-W38")
             self.assertEqual(weekly.build_campaign_weekly(personal).first().total_trip_count, 1)
         finally:
