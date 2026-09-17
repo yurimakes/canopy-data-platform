@@ -34,23 +34,30 @@ def make_reward_id(user_id, campaign_id, week):
     return f"{user_id}_{campaign_id}_{week}"
 
 
+def _week_label_to_start_date(week_label):
+    year, week = week_label.split("-W")
+    return datetime.strptime(f"{year}-W{week}-1", "%G-W%V-%u").date().isoformat()
+
+
 def write_reward(container, result_row):
     if not result_row.get("payable"):
         return {"status": "skipped", "reason": "not_payable"}
 
     reward_id = make_reward_id(result_row["user_id"], result_row["campaign_id"], result_row["week"])
+    week_start = _week_label_to_start_date(result_row["week"])
 
     item = {
         "id": reward_id,
         "reward_id": reward_id,
         "user_id": result_row["user_id"],
         "campaign_id": result_row["campaign_id"],
-        "week": result_row["week"],
+        "week": week_start,
+        "week_label": result_row["week"],
+        "label": result_row["reason"],
         "points": result_row["points"],
-        "reason": result_row["reason"],
-        "policy_version": result_row["policy_version"],
         "status": "paid",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "policy_version": result_row["policy_version"],
     }
 
     try:
@@ -67,6 +74,7 @@ def process_reward_batch(container, result_rows):
 
 def create_adjustment(container, original_reward_id, user_id, campaign_id, week, points_delta, reason, policy_version):
     adjustment_id = f"adjustment_{original_reward_id}_{uuid.uuid4().hex[:8]}"
+    week_start = _week_label_to_start_date(week)
 
     item = {
         "id": adjustment_id,
@@ -74,12 +82,13 @@ def create_adjustment(container, original_reward_id, user_id, campaign_id, week,
         "adjusts_reward_id": original_reward_id,
         "user_id": user_id,
         "campaign_id": campaign_id,
-        "week": week,
+        "week": week_start,
+        "week_label": week,
+        "label": reason,
         "points": points_delta,
-        "reason": reason,
+        "status": "adjusted",
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
         "policy_version": policy_version,
-        "status": "adjustment",
-        "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     container.create_item(item)
@@ -92,8 +101,8 @@ def write_ledger_history(spark, outcomes):
         return 0
 
     schema = (
-        "id string, reward_id string, user_id string, campaign_id string, week string, "
-        "points double, reason string, policy_version string, status string, created_at string"
+        "id string, reward_id string, user_id string, campaign_id string, week string, week_label string, "
+        "label string, points double, status string, occurred_at string, policy_version string"
     )
     df = spark.createDataFrame(records, schema=schema)
 
@@ -102,7 +111,7 @@ def write_ledger_history(spark, outcomes):
         .mode("overwrite")
         .option("partitionOverwriteMode", "dynamic")
         .option("mergeSchema", "true")
-        .partitionBy("campaign_id", "week")
+        .partitionBy("campaign_id", "week_label")
         .save(GOLD_REWARD_LEDGER_HISTORY_PATH)
     )
     return len(records)

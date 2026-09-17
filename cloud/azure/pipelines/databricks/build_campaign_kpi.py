@@ -28,6 +28,9 @@ def read_enrollment(trip_metrics):
 
     joined = week_spine.join(membership, "campaign_id")
     joined = joined.filter(F.to_date(F.col("joined_at")) <= F.to_date(F.col("week_end_date")))
+    joined = joined.filter(
+        F.col("left_at").isNull() | (F.to_date(F.col("left_at")) > F.to_date(F.col("week_end_date")))
+    )
 
     return joined.groupBy("campaign_id", "week").agg(
         F.countDistinct("user_id").alias("enrolled_user_count"),
@@ -38,7 +41,7 @@ def campaign_kpi():
     weekly_gold = spark.read.table("weekly_gold")
     mission = spark.read.table("mission_response_weekly")
     behavior = spark.read.table("behavior_change")
-    reward = spark.read.table("reward_ledger_history").filter(F.col("status") == "paid")
+    reward = spark.read.table("reward_ledger_history").filter(F.col("status").isin(["paid", "adjusted"]))
 
     trip_metrics = weekly_gold.groupBy("campaign_id", "week").agg(
         F.countDistinct(F.when(F.col("trip_count") > 0, F.col("user_id"))).alias("active_user_count"),
@@ -60,9 +63,9 @@ def campaign_kpi():
         F.countDistinct(F.when(F.col("status") == "changed", F.col("user_id"))).alias("changed_user_count"),
     )
 
-    reward_metrics = reward.groupBy("campaign_id", "week").agg(
+    reward_metrics = reward.groupBy("campaign_id", "week_label").agg(
         F.sum("points").alias("paid_reward_points"),
-    )
+    ).withColumnRenamed("week_label", "week")
 
     enrollment_metrics = read_enrollment(trip_metrics)
 
