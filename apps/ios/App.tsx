@@ -11,6 +11,8 @@ import { files } from './src/files';
 import { exportTrip } from './src/exporter';
 import type { Summary } from './src/types';
 import type { FeedbackInput, ServerTrip } from './src/tripApi';
+import { getEngagementApi } from './src/engagementRuntime';
+import { MissionRankingScreen } from './src/ui/MissionRankingScreen';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -22,6 +24,7 @@ export default function App() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [screen,setScreen]=useState<'user'|'developer'|null>(null);
+  const [userSection,setUserSection]=useState<'trip'|'missions'|'ranking'>('trip');
   const [error,setError]=useState(''); const [sharing,setSharing]=useState(false);
   const [now,setNow]=useState(Date.now()); const c=service?.collector;
   const [delivery,setDelivery]=useState<{pending:number;blocked:number;sent:number;last_success:string|null}>();
@@ -123,7 +126,10 @@ export default function App() {
     ]);
   }
   if(screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><EntryScreen ready={!!c} error={error}
-    onEnter={mode=>{if(c){c.selectCollectionMode(mode);setError('');setScreen(c.collectionMode);}}}/></SafeAreaProvider>;
+    onEnter={mode=>{if(c){c.selectCollectionMode(mode);setError('');setUserSection('trip');setScreen(c.collectionMode);}}}/></SafeAreaProvider>;
+  if(screen==='user'&&userSection!=='trip') return <SafeAreaProvider><StatusBar barStyle="dark-content"/>
+    <MissionRankingScreen api={getEngagementApi()} initialTab={userSection} onBack={()=>setUserSection('trip')}/>
+  </SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><MeasurementScreen
     collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))setScreen(null);}}
     ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={c?.count??0} duration={duration}
@@ -139,6 +145,7 @@ export default function App() {
     canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
     serverTrip={resultMatches && serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
     feedbackPending={feedbackPending} onFeedback={feedback} onHistory={()=>history()}
+    onOpenMissions={()=>setUserSection('missions')} onOpenRanking={()=>setUserSection('ranking')}
     onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;

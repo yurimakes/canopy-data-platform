@@ -9,5 +9,10 @@ module.exports = ({config}) => ({
     tripAccessToken: process.env.CANOPY_TRIP_ACCESS_TOKEN || '',
     tripFunctionKey: process.env.CANOPY_TRIP_FUNCTION_KEY || '',
     tripAllowLocalHttp: process.env.CANOPY_TRIP_ALLOW_LOCAL_HTTP === 'true',
+    engagementApiUrl: process.env.CANOPY_ENGAGEMENT_API_URL || process.env.CANOPY_TRIP_API_URL || '',
+    engagementAccessToken: process.env.CANOPY_ENGAGEMENT_ACCESS_TOKEN || process.env.CANOPY_TRIP_ACCESS_TOKEN || '',
+    engagementFunctionKey: process.env.CANOPY_ENGAGEMENT_FUNCTION_KEY || process.env.CANOPY_TRIP_FUNCTION_KEY || '',
+    engagementAllowLocalHttp: process.env.CANOPY_ENGAGEMENT_ALLOW_LOCAL_HTTP === 'true',
+    engagementUseMock: process.env.CANOPY_ENGAGEMENT_USE_MOCK === 'true',
   },
 });

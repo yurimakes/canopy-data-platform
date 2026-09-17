@@ -19,6 +19,7 @@ export type MeasurementProps = {
   serverTrip?:ServerTrip;tripError?:string;onRetryTrip?():void;
   feedbackPending?:FeedbackInput;onFeedback(input:FeedbackInput):Promise<void>;
   onHistory?():void;
+  onOpenMissions?():void;onOpenRanking?():void;
 };
 // Temporary entry point. Replace the selection with the team's authenticated role later.
 export function EntryScreen(p: {ready:boolean; error:string; onEnter(mode:'user'|'developer'):void}) {
@@ -44,6 +45,10 @@ export function MeasurementScreen(p: MeasurementProps) {
     <ScrollView contentContainerStyle={s.content}>
       <Pressable accessibilityRole="button" disabled={!!busy} onPress={p.onBack} style={busy&&s.disabled}><Text style={s.modeText}>← 화면 선택</Text></Pressable>
       <Text style={s.title}>{developer?'개발자 GPS 데이터 수집':'나의 이동 기록'}</Text>
+      {!developer&&!busy&&<View style={s.userNav}>
+        <Pressable accessibilityRole="button" onPress={p.onOpenMissions} style={s.userNavButton}><Text style={s.userNavTitle}>주간 미션</Text><Text style={s.note}>진행률과 포인트 보기</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={p.onOpenRanking} style={s.userNavButton}><Text style={s.userNavTitle}>랭킹</Text><Text style={s.note}>개인·부서 주간 순위</Text></Pressable>
+      </View>}
       {!busy && <Pressable accessibilityRole="button" onPress={p.onHistory}><Text style={s.modeText}>이전 이동 결과 보기</Text></Pressable>}
       {!developer && <Text style={s.note}>이동을 시작할 때 시작 버튼을 누르고, 도착하면 종료하세요.</Text>}
       {developer && <>
@@ -122,5 +127,6 @@ const s=StyleSheet.create({
   status:{fontSize:16,fontWeight:'700',color:'#087f5b'},row:{flexDirection:'row',justifyContent:'space-between',gap:10},value:{fontWeight:'700',fontSize:16},
   id:{fontSize:11,color:'#6a746f'},error:{color:'#ad2929',fontSize:14},export:{padding:17,borderWidth:1,borderColor:'#b9cac0',borderRadius:10,alignItems:'center'},
   footer:{padding:20},action:{backgroundColor:'#087f5b',borderRadius:12,padding:19,alignItems:'center'},stop:{backgroundColor:'#ba3535'},
+  userNav:{flexDirection:'row',gap:10},userNavButton:{flex:1,padding:15,borderRadius:12,backgroundColor:'#edf6f1',borderWidth:1,borderColor:'#d5e7de'},userNavTitle:{fontSize:16,fontWeight:'700',color:'#174c39',marginBottom:4},
   actionText:{fontSize:18,fontWeight:'700',color:'#fff'},disabled:{opacity:0.4},
 });
