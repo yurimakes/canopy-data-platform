@@ -138,14 +138,15 @@ export class Storage {
       return trip;
     });
   }
-  appendBackground(locations: LocationObject[], received: string, uuid: () => string) {
+  appendBackground(locations: LocationObject[], received: string, uuid: () => string, finalFix=false) {
     return this.transaction(async () => {
       const active = await this.active(); if (!active) return 0;
       const summary = await this.summary(active.trip_id);
       let previous = summary.latest, sequence = previous?.sequence ?? 0, count = 0;
       for (const raw of locations) {
+        if (finalFix && (active.stop_at === undefined || raw.timestamp < active.stop_at)) continue;
         // Never attach a delayed fix from the previous Trip to a new Trip.
-        if (Number.isFinite(raw.timestamp) && (raw.timestamp < Date.parse(summary.started_at) || (active.stop_at !== undefined && raw.timestamp > active.stop_at))) continue;
+        if (Number.isFinite(raw.timestamp) && (raw.timestamp < Date.parse(summary.button_started_at ?? summary.started_at) || (!finalFix && active.stop_at !== undefined && raw.timestamp > active.stop_at))) continue;
         let event: GpsEvent;
         const mode=[...active.labels].reverse().find(x=>x.at<=raw.timestamp)?.mode ?? active.labels[0].mode;
         try { event = normalize(raw,summary,sequence+1,uuid(),received,previous,mode); }

@@ -5,6 +5,7 @@ import type { Storage } from './storage';
 export type CollectorPorts = {
   startTrip(identity: Identity): Promise<Pick<Trip,'trip_id'|'user_id'|'started_at'|'server'>>;
   permission(): Promise<void>;
+  finalLocation?(since: number): Promise<LocationObject>;
   watch?(cb: (l: LocationObject) => void, error: (s: string) => void): Promise<{ remove(): void }>;
   background?: {start(): Promise<void>; stop(): Promise<void>; isRunning(): Promise<boolean>};
   awake(on: boolean): Promise<void>; uuid(): string; now(): string;
@@ -24,6 +25,7 @@ export class Collector {
   private starting?: Promise<void>; private stopping?: Promise<void>;
   private stopRequested = false; private fault: string | null = null;
   private stopAt?: number;
+  private buttonStart?: string;
   private revision=0;
   constructor(private db: Storage, private identity: Identity, private p: CollectorPorts, public changed = () => {}) {}
   selectCollectionMode(mode: "user" | "developer") {
@@ -48,6 +50,7 @@ export class Collector {
     if (this.collectionMode === "developer" && !this.mode) { this.error = '이동수단을 먼저 선택하세요.'; this.changed(); return Promise.resolve(); }
     this.labels = this.collectionMode === "developer" ? [{ at: -Infinity, mode: this.mode! }] : [];
     this.revision++;
+    this.buttonStart = this.p.now();
     this.phase = 'starting'; this.error = ''; this.fault = null; this.stopRequested = false; this.stopAt=undefined;
     this.trip = null; this.count = 0; this.latest = null; this.lastReceived = null; this.foregroundNotice = ''; this.changed();
     this.starting = this.begin(); return this.starting;
@@ -58,7 +61,7 @@ export class Collector {
       if (this.stopRequested) { this.phase = 'idle'; return; }
       const remote = await this.p.startTrip(this.identity);
       const trip: Trip = { ...this.identity, ...remote, schema_version: SCHEMA, collection_mode: this.collectionMode,
-        ended_at: null, status: 'recording', interruption_reason: null, recovered_at: null, foreground_only: !this.p.background,
+        button_started_at: this.buttonStart, ended_at: null, status: 'recording', interruption_reason: null, recovered_at: null, foreground_only: !this.p.background,
         collection_settings: this.p.settings, environment: this.p.environment };
       if (this.p.background) await this.db.startActive(trip,this.collectionMode === "user" ? null : this.mode!);
       else await this.db.saveTrip(trip);
@@ -84,8 +87,9 @@ export class Collector {
       if (this.fault || this.stopRequested) void this.stop();
     }
   }
-  private receive(trip: Trip, raw: LocationObject) {
-    if (!this.accepting || this.trip !== trip) return;
+  private receive(trip: Trip, raw: LocationObject, finalFix=false) {
+    if ((!this.accepting && !finalFix) || this.trip !== trip) return;
+    if (raw.timestamp < Date.parse(trip.button_started_at ?? trip.started_at)) return;
     this.lastReceived = this.p.now(); this.changed();
     if (this.pending >= 256) { this.fail('저장 대기열 한도 초과: 수집 중단, 일부 수신 데이터 미저장'); return; }
     const received = this.lastReceived;
@@ -126,6 +130,7 @@ export class Collector {
       try {
         await this.db.markStopping(this.stopAt!);
         await this.p.background.stop(); this.backgroundRunning = false;
+        await this.captureFinalLocation(true);
         const final = await this.db.finishActive(this.p.now(),this.fault);
         if (final) { this.trip=final; const summary=await this.db.summary(final.trip_id); this.count=summary.gps_count; this.latest=summary.latest; }
         this.phase=this.fault?'error':'idle';
@@ -135,6 +140,8 @@ export class Collector {
     this.subscription?.remove(); this.subscription = undefined;
     await this.queue;
     try {
+      await this.captureFinalLocation(false);
+      await this.queue;
       if (this.trip) {
         const final: Trip = { ...this.trip, status: this.fault ? 'interrupted' : 'completed',
           ended_at: this.fault ? null : new Date(this.stopAt!).toISOString(), interruption_reason: this.fault };
@@ -145,6 +152,23 @@ export class Collector {
       this.phase = this.fault ? 'error' : 'idle';
     } catch (e) { this.phase = 'error'; this.error = `종료 저장 실패: ${String(e)}. 재시작 시 중단 기록으로 복구됩니다.`; }
     finally { try { await this.p.awake(false); } catch (e) { this.error += ` 화면 잠금 해제 오류: ${String(e)}`; } this.changed(); }
+  }
+  private async captureFinalLocation(background: boolean) {
+    if (!this.trip || this.fault || !this.p.finalLocation) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let raw: LocationObject;
+    try {
+      raw = await Promise.race([
+        this.p.finalLocation(this.stopAt!),
+        new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('final_location_timeout')),8000);}),
+      ]);
+      if (!Number.isFinite(raw.timestamp) || raw.timestamp < this.stopAt!) throw new Error('stale_final_location');
+    } catch(e) {
+      await this.db.diagnostic(this.trip.trip_id,{recorded_at:this.p.now(),kind:'final_location_unavailable',detail:String(e)});
+      return;
+    } finally { if(timer)clearTimeout(timer); }
+    if (background) await this.db.appendBackground([raw],this.p.now(),this.p.uuid,true);
+    else this.receive(this.trip,raw,true);
   }
   appStateChanged(state: string) {
     this.appState = state; this.changed();
