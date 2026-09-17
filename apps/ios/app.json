@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Canopy GPS",
+    "name": "Canopy",
     "slug": "canopy-gps-collector",
     "version": "0.1.0",
     "orientation": "portrait",
@@ -25,7 +25,8 @@
           "locationAlwaysAndWhenInUsePermission": "측정 중 화면을 잠그거나 다른 앱을 사용해도 이동 기록을 저장하려면 항상 위치 접근이 필요합니다."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-secure-store"
     ]
   }
 }
