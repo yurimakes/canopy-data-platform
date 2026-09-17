@@ -56,7 +56,6 @@ ELIGIBILITY_POLICY = {
 class SparkBaselineTest(unittest.TestCase):
 
     @classmethod
-    @classmethod
     def setUpClass(cls):
         # Databricks에서는 이미 생성된 SparkSession을 재사용한다.
         cls.spark = SparkSession.builder.getOrCreate()
