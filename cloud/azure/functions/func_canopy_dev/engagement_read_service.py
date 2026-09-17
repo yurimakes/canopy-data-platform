@@ -76,6 +76,9 @@ def build_reward_response(
             raise EngagementContractError("reward_boundary_mismatch")
         if not isinstance(record.get("points"), (int, float)):
             raise EngagementContractError("invalid_reward_points")
+    reward_ids = [str(record.get("reward_id") or record.get("id")) for record in ledger]
+    if len(reward_ids) != len(set(reward_ids)):
+        raise EngagementContractError("duplicate_reward_id")
 
     ledger.sort(key=lambda item: (_timestamp(item.get("created_at")), str(item.get("reward_id") or item.get("id"))), reverse=True)
     source_id = f"{campaign_id}:{user_id}:{week_start}"
@@ -148,9 +151,16 @@ def build_ranking_response(
     status = snapshot.get("snapshot_status", "finalized")
     if status not in {"finalized", "in_progress"}:
         raise EngagementContractError("invalid_snapshot_status")
+    if snapshot.get("score_unit", "points") != "points":
+        raise EngagementContractError("invalid_score_unit")
+    if status == "finalized" and not all(snapshot.get(key) for key in ("generated_at", "policy_version", "aggregation_version")):
+        raise EngagementContractError("incomplete_finalized_snapshot")
     raw_entries = snapshot.get("entries") or []
     if not isinstance(raw_entries, list):
         raise EngagementContractError("invalid_ranking_entries")
+    subject_ids = [str(entry.get("public_subject_id") or entry.get("subject_id") or "") for entry in raw_entries]
+    if any(not subject_id for subject_id in subject_ids) or len(subject_ids) != len(set(subject_ids)):
+        raise EngagementContractError("invalid_ranking_subjects")
     source_id = str(snapshot.get("id") or f"{campaign_id}:{week_start}:{scope}")
     page, next_cursor = _page(raw_entries, page_size, cursor, "ranking", source_id)
     entries = []
@@ -160,6 +170,8 @@ def build_ranking_response(
         if not isinstance(rank, int) or rank < 1 or not isinstance(score, (int, float)):
             raise EngagementContractError("invalid_ranking_entry")
         members = entry.get("member_user_ids") or []
+        if not isinstance(members, list):
+            raise EngagementContractError("invalid_department_members")
         is_me = entry.get("user_id") == user_id if scope == "individual" else user_id in members
         entries.append({
             "rank": rank,

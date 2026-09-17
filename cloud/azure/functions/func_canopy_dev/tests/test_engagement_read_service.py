@@ -55,6 +55,11 @@ def test_reward_rejects_records_outside_authenticated_boundary():
         build_reward_response([reward(user_id="other")], campaign_id="c1", user_id="u1", week_start=WEEK, week_end=WEEK_END, page_size=50, cursor=None)
 
 
+def test_reward_rejects_duplicate_ledger_identifiers_before_sum():
+    with pytest.raises(EngagementContractError, match="duplicate_reward_id"):
+        build_reward_response([reward(), reward(id="another-document")], campaign_id="c1", user_id="u1", week_start=WEEK, week_end=WEEK_END, page_size=50, cursor=None)
+
+
 def snapshot():
     return {
         "id": "ranking-c1-week-individual-v1",
@@ -94,6 +99,18 @@ def test_cursor_cannot_be_reused_for_another_snapshot():
     newer["id"] = "ranking-c1-week-individual-v2"
     with pytest.raises(EngagementContractError, match="invalid_cursor"):
         build_ranking_response(newer, campaign_id="c1", user_id="u1", scope="individual", week_start=WEEK, week_end=WEEK_END, page_size=1, cursor=first["next_cursor"])
+
+
+def test_finalized_ranking_requires_versions_and_unique_public_subjects():
+    incomplete = snapshot()
+    incomplete["aggregation_version"] = None
+    with pytest.raises(EngagementContractError, match="incomplete_finalized_snapshot"):
+        build_ranking_response(incomplete, campaign_id="c1", user_id="u1", scope="individual", week_start=WEEK, week_end=WEEK_END, page_size=50, cursor=None)
+
+    duplicate = snapshot()
+    duplicate["entries"][1]["subject_id"] = duplicate["entries"][0]["subject_id"]
+    with pytest.raises(EngagementContractError, match="invalid_ranking_subjects"):
+        build_ranking_response(duplicate, campaign_id="c1", user_id="u1", scope="individual", week_start=WEEK, week_end=WEEK_END, page_size=50, cursor=None)
 
 
 def test_principal_and_query_validation(monkeypatch):

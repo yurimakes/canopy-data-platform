@@ -51,7 +51,7 @@ export function MissionRankingScreen({api,initialTab='missions',onBack}:{api:Eng
         <Text style={s.heroNote}>{ranking?`${date(ranking.week_start)} – ${date(ranking.week_end)}`:'랭킹 정보를 불러오지 못했습니다.'}</Text></View>
       <View style={s.scope}>{(['individual','department'] as RankingScope[]).map(value=><Pressable key={value} accessibilityRole="button" accessibilityState={{selected:scope===value}}
         onPress={()=>setScope(value)} style={[s.scopeButton,scope===value&&s.scopeOn]}><Text style={[s.scopeText,scope===value&&s.scopeTextOn]}>{value==='individual'?'개인':'부서'}</Text></Pressable>)}</View>
-      <View style={s.info}><Text style={s.infoTitle}>실시간 순위가 아닙니다</Text><Text style={s.note}>마감된 주간 Snapshot입니다. 승인된 보상 조정은 다음 Snapshot 갱신에 반영됩니다.</Text></View>
+      <View style={s.info}><Text style={s.infoTitle}>실시간 순위가 아닙니다</Text><Text style={s.note}>{ranking?.snapshot_status==='finalized'?'마감된 주간 Snapshot입니다. 승인된 보상 조정은 다음 Snapshot 갱신에 반영됩니다.':'집계가 완료되면 기준 시각과 버전이 고정된 Snapshot을 표시합니다.'}</Text></View>
       {data?.errors[scope]?<SectionError message={data.errors[scope]!} onRetry={()=>void load()}/>:
       !ranking?<Empty title="랭킹 자료가 없습니다." detail="집계가 시작되면 이 화면에 표시됩니다."/>:
       ranking.snapshot_status==='in_progress'?<Empty title="이번 주 순위를 집계 중입니다." detail="확정 Snapshot이 생성되면 순위가 표시됩니다."/>:
