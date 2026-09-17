@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {parseRoutes,searchRoutes,gpsDistance,validPlace,journeyStage} from '../src/service';
+import {parseRoutes,searchRoutes,routeApiUrl,gpsDistance,validPlace,journeyStage} from '../src/service';
 const from={name:'서울역',latitude:37.55,longitude:126.97},to={name:'강남역',latitude:37.5,longitude:127.02};
 describe('서비스 화면 연결 계약',()=>{
   it('TMAP의 초와 미터, 경도/위도 순서를 화면 계약으로 변환',()=>{
@@ -11,13 +11,18 @@ describe('서비스 화면 연결 계약',()=>{
     expect(parseRoutes({metaData:{plan:{itineraries:[{totalTime:60,totalDistance:50,legs:[{mode:'WALK'}]}]}}},from,to)[0].legs[0].points).toEqual([]);
   });
   it('주소 미설정과 잘못된 좌표에서 네트워크 호출 제외',async()=>{
-    const request=vi.fn();await expect(searchRoutes('',{},from,to,request)).rejects.toThrow('연결');
+    const request=vi.fn();await expect(searchRoutes('',{},from,to,request)).rejects.toThrow('서버 주소');
     expect(validPlace({...from,latitude:NaN})).toBe(false);expect(request).not.toHaveBeenCalled();
   });
   it('서버가 실패하면 가짜 경로로 대체하지 않음',async()=>{
     await expect(searchRoutes('https://example.test/api/routes/transit',{},from,to,vi.fn().mockResolvedValue({ok:false,status:429}))).rejects.toThrow('한도');
   });
   it('기록이 없으면 실제 이동거리 0',()=>{expect(gpsDistance([])).toBe(0);});
+  it('길찾기 주소가 없는 이전 Expo 설정은 같은 Trip 서버로 연결',()=>{
+    expect(routeApiUrl({tripApiUrl:'https://team.test/api/'})).toBe('https://team.test/api/routes/transit');
+    expect(routeApiUrl({routeApiUrl:'https://route.test/api/routes/transit',tripApiUrl:'https://team.test/api'})).toBe('https://route.test/api/routes/transit');
+    expect(routeApiUrl({})).toBe('');
+  });
   it('서버 완료 응답 전에는 전송 완료를 여정 분석 완료로 표시하지 않음',()=>{
     expect(journeyStage(3,'processing').step).toBe(0);
     expect(journeyStage(0,'processing').step).toBe(1);

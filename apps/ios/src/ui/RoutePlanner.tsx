@@ -3,7 +3,7 @@ import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
-import {type Place,type Profile,type PlannedRoute,searchRoutes,km,validPlace} from '../service';
+import {type Place,type Profile,type PlannedRoute,searchRoutes,routeApiUrl,km,validPlace} from '../service';
 import {Button,Card,Field,Icon,Note,S,C} from './theme';
 import JourneyMap from './JourneyMap';
 export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;onPick(p:Place):void}) {
@@ -28,7 +28,7 @@ export function RoutePlanner({profile,onChoose,onFree}:{profile:Profile;onChoose
   const [routes,setRoutes]=useState<PlannedRoute[]|null>(null),[selected,setSelected]=useState<PlannedRoute|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   function change(which:'from'|'to',p:Place){if(busy)return;if(which==='from')setFrom(p);else setTo(p);setRoutes(null);setSelected(null);setError('');}
   async function search(){if(!from||!to||busy)return;setBusy(true);setError('');setSelected(null);setRoutes(null);try{
-    const extra=Constants.expoConfig?.extra??{},url=extra.routeApiUrl??'';
+    const extra=Constants.expoConfig?.extra??{},url=routeApiUrl(extra);
     const token=extra.tripAccessToken,key=extra.tripFunctionKey||extra.gpsFunctionKey;
     const r=await searchRoutes(url,{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})},from,to);setRoutes(r);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}

@@ -7,6 +7,12 @@ export type PlannedRoute = { id:string; provider:'tmap'; searchedAt:string; minu
 export const developerProfile:Profile={id:'local-developer',nickname:'개발자',email:'canopydev',role:'developer',campaignCode:'TEST',home:null,work:null};
 export function validPlace(p:Place|null):p is Place {return !!p && !!p.name.trim() && Number.isFinite(p.latitude) && Math.abs(p.latitude)<=90 && Number.isFinite(p.longitude) && Math.abs(p.longitude)<=180;}
 export const km=(m:number)=>`${(m/1000).toFixed(2)} km`;
+// 기존 설치본에도 있는 Trip API 설정을 사용. 호스트와 인증정보 하드코딩 제외
+export function routeApiUrl(config:{routeApiUrl?:unknown;tripApiUrl?:unknown}):string {
+  if(typeof config.routeApiUrl==='string'&&config.routeApiUrl.trim())return config.routeApiUrl.trim();
+  if(typeof config.tripApiUrl==='string'&&config.tripApiUrl.trim())return config.tripApiUrl.trim().replace(/\/+$/,'')+'/routes/transit';
+  return '';
+}
 export function gpsDistance(events:GpsEvent[]):number {
   let total=0;
   for(let i=1;i<events.length;i++) {
@@ -49,7 +55,7 @@ export function journeyStage(pending:number|undefined,status:string|undefined,fa
 export async function searchRoutes(url:string,headers:Record<string,string>,from:Place,to:Place,request:typeof fetch=fetch):Promise<PlannedRoute[]> {
   if(!validPlace(from)||!validPlace(to))throw Error('출발지와 도착지의 위치를 확인해주세요.');
   if(from.latitude===to.latitude&&from.longitude===to.longitude)throw Error('출발지와 도착지를 다르게 선택해주세요.');
-  if(!url)throw Error('길찾기 서버 연결을 준비하고 있습니다. 경로 없이 여정 기록은 시작할 수 있어요.');
+  if(!url)throw Error('앱에 서버 주소가 반영되지 않았어요. Expo Go에서 현재 프로젝트를 닫고 PC의 새 QR 코드로 다시 열어주세요.');
   if(new URL(url).protocol!=='https:')throw Error('길찾기 서버는 HTTPS 주소가 필요합니다.');
   const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),15000);
   try {
