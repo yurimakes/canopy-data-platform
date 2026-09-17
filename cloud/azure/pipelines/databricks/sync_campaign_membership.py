@@ -13,7 +13,7 @@ ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH = os.environ.get(
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
 )
 
-KEEP_FIELDS = ["user_id", "campaign_id", "joined_at"]
+KEEP_FIELDS = ["user_id", "campaign_id", "department_id", "joined_at", "left_at"]
 
 
 def _get_container():
@@ -34,7 +34,7 @@ def _strip_membership(item):
 
 
 def write_raw(spark, campaign_id, rows):
-    schema = "user_id string, campaign_id string, joined_at string"
+    schema = "user_id string, campaign_id string, department_id string, joined_at string, left_at string"
     df = spark.createDataFrame(rows, schema=schema) if rows else spark.createDataFrame([], schema=schema)
     (
         df.write.format("delta")
