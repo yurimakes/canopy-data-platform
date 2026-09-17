@@ -1,0 +1,67 @@
+bundle:
+  name: canopy-weekly-analysis
+
+# 기존 개발 리소스 연결. 최초 배포 전 bind 실행으로 중복 생성 방지
+# databricks bundle deployment bind -t dev weekly_analysis_pipeline 8c503d5d-9a92-440b-bf31-bbdcd4a25f8f
+# databricks bundle deployment bind -t dev weekly_analysis_job 989599034880849
+
+variables:
+  catalog:
+    default: dbw_canopy_dev
+  schema:
+    description: 개발 검증용 출력 스키마. 운영 이력 저장 및 후속 입력 위치 합의 후 변경
+    default: weekly_analysis_scaffold
+
+resources:
+  pipelines:
+    weekly_analysis_pipeline:
+      name: "[dev 5dt024] canopy-weekly-analysis-pipeline-${bundle.target}"
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      continuous: false
+      development: true
+      configuration:
+        spark.sql.session.timeZone: UTC
+      libraries:
+        - file:
+            path: ${workspace.file_path}/weekly_pipeline.py
+      tags:
+        dev: "5dt024"
+  jobs:
+    weekly_analysis_job:
+      name: "[dev 5dt024] canopy-weekly-analysis-${bundle.target}"
+      # 담당 코드와 Cosmos 반영 연결 전 수동 실행만 사용
+      max_concurrent_runs: 1
+      timeout_seconds: 3600
+      queue:
+        enabled: true
+      performance_target: STANDARD
+      tags:
+        dev: "5dt024"
+      tasks:
+        - task_key: run_weekly_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.weekly_analysis_pipeline.id}
+        - task_key: publish_weekly_cosmos
+          depends_on:
+            - task_key: run_weekly_pipeline
+          run_if: ALL_SUCCESS
+          environment_key: weekly_publish
+          max_retries: 0
+          timeout_seconds: 300
+          spark_python_task:
+            python_file: ${workspace.file_path}/publish_weekly.py
+            source: WORKSPACE
+      environments:
+        - environment_key: weekly_publish
+          spec:
+            environment_version: "4"
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405605578654524.4.azuredatabricks.net
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

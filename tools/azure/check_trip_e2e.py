@@ -137,6 +137,16 @@ def main():
             assert doc["expected_last_sequence"] == 2
             if doc["status"] == "ready":
                 assert doc["model_version"] == "mock_v1" and doc["segments"] == result["segments"]
+                if doc.get("result_owner") == "databricks":
+                    assert doc["is_mock"] and doc.get("finalization_hash")
+                    assert doc["trip_end_outbox"]["status"] == "published"
+                    assert doc["trip_dispatch"].get("run_id")
+            if doc.get("result_owner") == "databricks":
+                end = doc["trip_end_outbox"]["event"]
+                wanted[end["event_id"]] = end
+                hits.setdefault(end["event_id"], [])
+                trip["databricks"] = {"end_event_id": end["event_id"],
+                    "dispatch": doc.get("trip_dispatch"), "finalization_hash": doc.get("finalization_hash")}
             if doc["status"] == "failed":
                 raise AssertionError(f"Trip failed: {doc.get('failed_step')} {doc.get('error_message')}")
             ready &= doc["status"] == "ready" and result["status"] == "ready"
@@ -164,7 +174,7 @@ def main():
         report["checks"]["api_and_cosmos_ready_same_id"] = ready
         report["raw_paths_by_event"] = hits
         report["raw_differences"] = raw_differences
-        report["capture_complete"] = all(len(hits[t["events"][0]["event_id"]]) >= 2
+        report["capture_complete"] = all(hits.values()) and all(len(hits[t["events"][0]["event_id"]]) >= 2
                                          and len(hits[t["events"][1]["event_id"]]) >= 1 for t in report["trips"])
         report["checks"]["raw_originals_identical"] = report["capture_complete"] and not raw_differences
         report["checked_at"] = stamp()

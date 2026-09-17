@@ -1,14 +1,22 @@
-policy_version: "baseline-policy-v3"
+policy_version: "baseline-policy-v4"
 
 trip_eligibility:
-  confirmation_required: true
-  confirmation_status: confirmed
-  use_latest_confirmation_only: true
+  confirmation_required: false
+  required_status: ready
+  user_feedback_auto_applied: false
+  use_latest_trip_version_only: true
   source_dataset: "data/gold/weekly_summary_user"
+
+baseline_eligibility:
+  owner: external_eligibility_pipeline
+  integration_status: pending_teammate_contract
+  fallback_when_not_ready: population_baseline
+  thresholds: external
 
 accumulation:
   scope: campaign_to_date
   cadence: weekly
+  evaluation_cutoff: previous_completed_week
 
 emission_unit: g
 
@@ -24,8 +32,14 @@ personal_baseline:
 
 global_baseline:
   scope: personal_baseline_average
-  valid_participant_definition: "personal_baseline is not null in the evaluation week"
+  valid_participant_definition: "personal baseline is ready for the evaluation week"
   formula: "sum(valid participants personal_baseline) / count(valid participants)"
+
+reward_context:
+  granularity: trip
+  baseline_snapshot_cadence: weekly
+  freeze_snapshot_within_week: true
+  first_week_source: population_baseline
 
 mode_breakdown:
   storage: separate_from_baseline

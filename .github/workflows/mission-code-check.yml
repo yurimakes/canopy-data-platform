@@ -1,0 +1,101 @@
+permissions:
+  contents: read
+
+name: Mission code execution check
+
+on:
+  pull_request:
+    paths:
+      - "cloud/azure/functions/func_canopy_dev/mission_*.py"
+      - "cloud/azure/functions/func_canopy_dev/mission_policy.yaml"
+      - "cloud/azure/functions/func_canopy_dev/function_app.py"
+      - "cloud/azure/functions/func_canopy_dev/tests/test_mission_*.py"
+      - "cloud/azure/pipelines/databricks/build_mission_profile.py"
+      - "cloud/azure/pipelines/databricks/build_weekly_summary.py"
+      - "cloud/azure/pipelines/databricks/run_mission_profile_serverless.py"
+      - "cloud/azure/pipelines/databricks/mission_progress.py"
+      - "cloud/azure/pipelines/databricks/build_mission_response.py"
+      - "cloud/azure/pipelines/databricks/tests/test_*mission*.py"
+      - "cloud/azure/pipelines/databricks/tests/test_build_mission_profile.py"
+      - "cloud/azure/pipelines/databricks/tests/test_mission_profile_serverless_runner.py"
+      - "cloud/azure/pipelines/databricks/tests/test_mission_progress.py"
+      - "cloud/azure/pipelines/databricks/tests/test_build_mission_response.py"
+      - "shared/schemas/mission/**"
+      - "shared/schemas/baseline/weekly_user_gold.schema.json"
+      - "docs/azure/weekly-mission-v3.md"
+      - "docs/azure/mission-v3-validation-runbook.md"
+      - "docs/azure/mission-v3-validation-result-20260916.md"
+      - "docs/architecture/mission-progress-response-handoff-v1.md"
+      - "docs/architecture/weekly-gold-integration-topology-v1.md"
+      - ".github/workflows/mission-code-check.yml"
+  workflow_dispatch:
+
+jobs:
+  mission-code-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install mission test dependencies
+        run: python -m pip install "pytest>=8,<9" "pyyaml>=6,<7"
+      - name: Compile mission modules and Function App
+        run: >-
+          python -m py_compile
+          cloud/azure/functions/func_canopy_dev/function_app.py
+          cloud/azure/functions/func_canopy_dev/mission_engine.py
+          cloud/azure/functions/func_canopy_dev/mission_assignment_api.py
+          cloud/azure/pipelines/databricks/build_mission_profile.py
+          cloud/azure/pipelines/databricks/build_weekly_summary.py
+          cloud/azure/pipelines/databricks/run_mission_profile_serverless.py
+          cloud/azure/pipelines/databricks/mission_progress.py
+          cloud/azure/pipelines/databricks/build_mission_response.py
+      - name: Validate mission schemas contracts and version sync
+        run: |
+          python - <<'PY'
+          import glob, json
+          import yaml
+
+          for path in glob.glob('shared/schemas/mission/*.json') + ['shared/schemas/baseline/weekly_user_gold.schema.json']:
+              with open(path, encoding='utf-8') as fh:
+                  json.load(fh)
+              print('json ok:', path)
+
+          policy_path = 'cloud/azure/functions/func_canopy_dev/mission_policy.yaml'
+          contract_path = 'shared/schemas/mission/mission_data_contract_v1.yaml'
+          with open(policy_path, encoding='utf-8') as fh:
+              policy = yaml.safe_load(fh)
+          with open(contract_path, encoding='utf-8') as fh:
+              contract = yaml.safe_load(fh)
+          assert isinstance(policy, dict)
+          assert isinstance(contract, dict)
+          policy_version = policy['policy_version']
+          assert contract.get('policy_version') == policy_version, (
+              f"contract policy_version={contract.get('policy_version')} != {policy_version}"
+          )
+          print('yaml/version ok:', policy_version)
+
+          for path in [
+              'docs/azure/weekly-mission-v3.md',
+              'docs/azure/mission-v3-validation-runbook.md',
+          ]:
+              with open(path, encoding='utf-8') as fh:
+                  text = fh.read()
+              assert policy_version in text, f'{path} missing policy version {policy_version}'
+              print('doc version ok:', path)
+          PY
+      - name: Run mission policy and service contract tests
+        working-directory: cloud/azure/functions/func_canopy_dev
+        run: python -m pytest -q tests/test_mission_policy.py tests/test_mission_service_contract.py
+      - name: Run mission Databricks contract tests
+        working-directory: cloud/azure/pipelines/databricks
+        run: >-
+          python -m pytest -q
+          tests/test_build_mission_profile.py
+          tests/test_mission_profile_contract.py
+          tests/test_mission_profile_serverless_runner.py
+          tests/test_mission_progress.py
+          tests/test_build_mission_response.py
