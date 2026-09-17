@@ -23,6 +23,9 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             raise ApiError(400, "invalid_json", "body must be JSON") from exc
         if not isinstance(body, dict):
             raise ApiError(400, "invalid_json", "body must be a JSON object")
+        if method == "POST" and path == "/api/routes/transit":
+            from services.transit_routes import transit_routes
+            return 200, transit_routes(user_id, body)
         api = trip_service or service()
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
@@ -57,6 +60,11 @@ def response(req):
 
 @bp.route(route="trips/start", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def trip_start(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="routes/transit", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def transit_route_search(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 
