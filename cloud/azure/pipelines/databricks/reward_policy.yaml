@@ -29,8 +29,13 @@ no_change:
   condition: "improved == false and maintained == false"
 
 points:
-  improved: null
-  maintained: null
   no_change: 0
   not_eligible: null
-  note: "실제 지급 포인트/가중치는 아직 팀 확정 전이라 비워둔다. 상태 분류 로직만 확정."
+
+point_formula:
+  applies_to: ["improved", "maintained"]
+  formula: "max(delta, 0) / conversion_rate"
+  delta_for_improved: "personal_baseline - actual"
+  delta_for_maintained: "global_baseline - actual"
+  conversion_rate: null
+  note: "legacy TOKEN_REWARD_FLOW.md의 reduction/rate 방식과 동일 구조. rate는 아직 팀 미확정."
