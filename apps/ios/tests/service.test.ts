@@ -1,5 +1,5 @@
 import {describe,it,expect,vi} from 'vitest';
-import {parseRoutes,searchRoutes,gpsDistance,validPlace} from '../src/service';
+import {parseRoutes,searchRoutes,gpsDistance,validPlace,journeyStage} from '../src/service';
 const from={name:'서울역',latitude:37.55,longitude:126.97},to={name:'강남역',latitude:37.5,longitude:127.02};
 describe('서비스 화면 연결 계약',()=>{
   it('TMAP의 초와 미터, 경도/위도 순서를 화면 계약으로 변환',()=>{
@@ -18,4 +18,15 @@ describe('서비스 화면 연결 계약',()=>{
     await expect(searchRoutes('https://example.test/api/routes/transit',{},from,to,vi.fn().mockResolvedValue({ok:false,status:429}))).rejects.toThrow('한도');
   });
   it('기록이 없으면 실제 이동거리 0',()=>{expect(gpsDistance([])).toBe(0);});
+  it('서버 완료 응답 전에는 전송 완료를 여정 분석 완료로 표시하지 않음',()=>{
+    expect(journeyStage(3,'processing').step).toBe(0);
+    expect(journeyStage(0,'processing').step).toBe(1);
+    expect(journeyStage(0,'ready').step).toBe(2);
+    expect(journeyStage(undefined,undefined).step).toBe(0);
+    expect(journeyStage(0,'failed','분석 실패').failed).toBe(true);
+  });
+  it('TMAP의 구간 정류장 이름을 그대로 보존',()=>{
+    const result=parseRoutes({metaData:{plan:{itineraries:[{totalTime:120,totalDistance:500,legs:[{mode:'BUS',start:{name:'서울역'},end:{name:'시청'},sectionTime:120,distance:500}]}]}}},from,to);
+    expect(result[0].legs[0]).toMatchObject({startName:'서울역',endName:'시청',minutes:2,distance_m:500});
+  });
 });

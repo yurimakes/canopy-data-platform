@@ -2,7 +2,7 @@ import type { GpsEvent } from './types';
 
 export type Place = { name:string; latitude:number; longitude:number };
 export type Profile = { id:string; nickname:string; email:string; role:'user'|'developer'; campaignCode:'TEST'; home:Place|null; work:Place|null };
-export type RouteLeg = { mode:string; name:string; minutes:number; distance_m:number; points:Place[] };
+export type RouteLeg = { mode:string; name:string; minutes:number; distance_m:number; points:Place[]; startName?:string; endName?:string };
 export type PlannedRoute = { id:string; provider:'tmap'; searchedAt:string; minutes:number; distance_m:number; fare:number|null; legs:RouteLeg[]; from:Place; to:Place };
 export const developerProfile:Profile={id:'local-developer',nickname:'개발자',email:'canopydev',role:'developer',campaignCode:'TEST',home:null,work:null};
 export function validPlace(p:Place|null):p is Place {return !!p && !!p.name.trim() && Number.isFinite(p.latitude) && Math.abs(p.latitude)<=90 && Number.isFinite(p.longitude) && Math.abs(p.longitude)<=180;}
@@ -30,11 +30,20 @@ export function parseRoutes(raw:any,from:Place,to:Place):PlannedRoute[] {
   return itineraries.filter((r:any)=>amount(r.totalTime)&&amount(r.totalDistance)&&Array.isArray(r.legs)).map((r:any,i:number)=>({
     id:`tmap-${i}`,provider:'tmap',searchedAt:new Date().toISOString(),minutes:Math.ceil(r.totalTime/60),distance_m:r.totalDistance,
     fare:amount(r.fare?.regular?.totalFare)?r.fare.regular.totalFare:null,from,to,
-    legs:r.legs.map((leg:any)=>({mode:String(leg.mode??'UNKNOWN'),name:leg.route??(leg.mode==='WALK'?'도보':'이동'),minutes:Math.ceil((leg.sectionTime??0)/60),distance_m:leg.distance??0,
+    legs:r.legs.filter((leg:any)=>leg&&typeof leg==='object').map((leg:any)=>({mode:String(leg.mode??'UNKNOWN'),name:leg.route??(leg.mode==='WALK'?'도보':'이동'),minutes:amount(leg.sectionTime)?Math.ceil(leg.sectionTime/60):0,distance_m:amount(leg.distance)?leg.distance:0,startName:leg.start?.name,endName:leg.end?.name,
       points:(leg.passShape?.linestring?[leg.passShape.linestring]:(leg.steps??[]).map((s:any)=>s.linestring)).flatMap((line:any)=>typeof line==='string'?line.split(' ').filter(Boolean).map((pair:string)=>{
         const [longitude,latitude]=pair.split(',').map(Number);return {name:'경로',latitude,longitude};
       }).filter(validPlace):[])})),
   }));
+}
+
+// 화면 표시 전용 상태. 완료율이나 ML 진행률을 추정하지 않고 실제 응답만 사용
+export function journeyStage(pending:number|undefined,status:string|undefined,failedMessage?:string|null) {
+  if(status==='failed')return {step:1,title:'결과 처리를 마치지 못했어요',detail:failedMessage||'잠시 후 다시 시도해주세요.',failed:true};
+  if(status==='ready')return {step:2,title:'여정 분석 완료',detail:'서버에서 확정한 이동 결과입니다.',failed:false};
+  if(pending==null)return {step:0,title:'저장된 기록을 확인하고 있어요',detail:'휴대폰의 전송 상태를 확인하고 있습니다.',failed:false};
+  if(pending>0)return {step:0,title:'이동 기록을 전송 중이에요',detail:`남은 위치 ${pending}개를 전송하고 있습니다. 연결이 끊겨도 기록은 휴대폰에 남습니다.`,failed:false};
+  return {step:1,title:'서버에서 여정을 분석 중이에요',detail:'완료되면 결과가 자동으로 표시됩니다. 다른 화면으로 이동해도 괜찮아요.',failed:false};
 }
 
 export async function searchRoutes(url:string,headers:Record<string,string>,from:Place,to:Place,request:typeof fetch=fetch):Promise<PlannedRoute[]> {

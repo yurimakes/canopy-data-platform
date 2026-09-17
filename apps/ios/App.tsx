@@ -18,7 +18,13 @@ let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
   const identity = await db.identity();
-  const collector=new Collector(db,identity,ports); await collector.refresh();
+  const collector=new Collector(db,identity,{...ports,startTrip:async identity=>{
+    const remote=await ports.startTrip(identity);
+    // 서버 Trip ID가 정해진 직후 UI 소유 프로필 저장. GPS 시작 도중 종료돼도 여정 목록 복구
+    const context=await db.syncValue<{profile_id:string;route:PlannedRoute|null}>('ui:pending-journey');
+    if(context){await db.saveSync('ui:trip:'+remote.trip_id,context);await db.saveSync('ui:pending-journey',null);}
+    return remote;
+  }}); await collector.refresh();
   return {db, collector};
 })(); }
 export default function App() {
@@ -145,9 +151,10 @@ export default function App() {
   }
   async function changeProfile(p:Profile){await updateProfile(p);await service?.db.saveSync('ui:session',p);setProfile(p);}
   async function startJourney(){
-    setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
+    if(!service||!c||!profile||['starting','recording','stopping'].includes(c.phase)||c.trip?.status==='recording')return;
+    setError('');setTripError('');setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
+    await service.db.saveSync('ui:pending-journey',{profile_id:profile.id,route});
     await c?.start();
-    if(c?.trip&&profile)await service?.db.saveSync('ui:trip:'+c.trip.trip_id,{profile_id:profile.id,route});
   }
   function select(id:string){
     if(!ownedTrips.some(t=>t.trip_id===id))return;

@@ -39,7 +39,13 @@ export function RoutePlanner({profile,onChoose,onFree}:{profile:Profile;onChoose
     {routes?.length===0&&<Card><Text style={S.heading}>찾은 경로가 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
     {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityState={{selected:selected?.id===r.id}} onPress={()=>setSelected(r)} style={[S.card,selected?.id===r.id&&{borderColor:C.green,borderWidth:2}]}>
       <View style={S.between}><Text style={S.heading}>{r.minutes}분</Text><Text style={S.pill}>{km(r.distance_m)}</Text></View><Text style={S.label}>{r.legs.map(l=>l.name).join(' → ')}</Text><Note>{r.fare==null?'요금 정보 없음':`${r.fare.toLocaleString()}원`} / TMAP 제공</Note></Pressable>)}
-    {selected&&<><View style={{borderRadius:24,overflow:'hidden'}}><JourneyMap points={[]} route={selected}/></View><Card><View style={S.row}><Icon name="leaf-outline"/><Text style={S.heading}>나의 이동 기준</Text></View><Note>Baseline 조회 기능을 연결하면 비교 기준을 보여드릴게요. 선택한 경로의 예상 거리와 실제 이동 결과는 다를 수 있어요.</Note></Card><Button title="이 경로로 여정 준비" onPress={()=>onChoose(selected)}/></>}
+    {selected&&<><View style={{borderRadius:24,overflow:'hidden'}}><JourneyMap points={[]} route={selected}/></View>
+      <Card><Text style={S.heading}>이렇게 이동해요</Text><Text style={S.label}>{selected.from.name}</Text>
+        {selected.legs.map((leg,i)=><View key={i} style={[S.row,{alignItems:'flex-start'}]}>
+          <View style={{padding:10,borderRadius:14,backgroundColor:C.mint}}><Icon name={leg.mode==='WALK'?'walk-outline':leg.mode==='BUS'?'bus-outline':'train-outline'}/></View>
+          <View style={{flex:1,gap:5,paddingBottom:16,borderBottomWidth:1,borderColor:C.line}}><Text style={S.label}>{leg.name}</Text><Note>{leg.minutes}분 / {km(leg.distance_m)}</Note>{(leg.startName||leg.endName)&&<Note>{leg.startName??'출발'} → {leg.endName??'도착'}</Note>}</View>
+        </View>)}<Text style={S.label}>{selected.to.name}</Text><Note>검색 시각 {new Date(selected.searchedAt).toLocaleTimeString('ko-KR')} / 교통 상황에 따라 실제 소요 시간이 달라질 수 있어요.</Note>
+      </Card><Card><View style={S.row}><Icon name="leaf-outline"/><Text style={S.heading}>나의 이동 기준</Text></View><Note>Baseline 조회 기능을 연결하면 비교 기준을 보여드릴게요. 선택한 경로의 예상 거리와 실제 이동 결과는 다를 수 있어요.</Note></Card><Button title="이 경로로 여정 준비" onPress={()=>onChoose(selected)}/></>}
     <Button title="경로 없이 자유롭게 기록하기" quiet onPress={onFree}/><Note>경로 선택은 안내용입니다. 실제 이동은 GPS로 기록해요.</Note>
   </>;
 }
