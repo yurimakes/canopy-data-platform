@@ -13,7 +13,7 @@ FILES = [PIPELINES + "finalize_trip_pipeline.py", PIPELINES + "trip_prediction_w
            ("trip_carbon.py", "trip_processor.py", "mock_trip_processor.py", "cosmos_service.py")]]
 
 
-def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=None, secret_key=None, iphone=False, final_segment_table=None, upstream_pipeline_ids=()):
+def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=None, secret_key=None, iphone=False, final_segment_table=None):
     if not workspace_root.startswith("/Workspace/") or ".." in workspace_root.split("/"):
         raise ValueError("workspace_root must be an absolute Workspace directory")
     if "/pipeline_test/" not in gold_root or not gold_root.startswith("abfss://"):
@@ -63,16 +63,6 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
                     "--gold-path", gold_root + "/iphone_final_trips", "--queue-path", gold_root + "/iphone_wait",
                     "--cosmos-endpoint", cosmos_endpoint, "--secret-scope", secret_scope,
                     "--cosmos-secret-key", secret_key]}}]
-    if upstream_pipeline_ids:
-        if not iphone or len(upstream_pipeline_ids) != 3:
-            raise ValueError("phone orchestration requires ingestion, inference and finalization pipeline IDs")
-        names = ["ingest_gps", "infer_modes", "finalize_segments"]
-        upstream = [{"task_key": name, "pipeline_task": {"pipeline_id": pipeline_id, "full_refresh": False},
-                     "depends_on": [{"task_key": names[i-1]}] if i else [], "timeout_seconds": 1200}
-                    for i, (name, pipeline_id) in enumerate(zip(names, upstream_pipeline_ids))]
-        job["tasks"][0]["depends_on"] = [{"task_key": names[-1]}]
-        job["tasks"] = upstream + job["tasks"]
-        job["max_concurrent_runs"] = 1
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -95,8 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--secret-key")
     parser.add_argument("--final-segment-table", help="Agreed completed ML result table; no prediction fallback")
     parser.add_argument("--iphone", action="store_true", help="Package the existing Job for Event Hubs-triggered phone Trips")
-    parser.add_argument("--upstream-pipeline-ids", nargs=3, default=())
     parser.add_argument("--output", default=str(ROOT / "data/interim/trip-finalization.zip"))
     args = parser.parse_args()
     print(package(args.output, args.workspace_root, args.gold_root, args.cosmos_endpoint,
-                  args.secret_scope, args.secret_key, args.iphone, args.final_segment_table, args.upstream_pipeline_ids))
+                  args.secret_scope, args.secret_key, args.iphone, args.final_segment_table))

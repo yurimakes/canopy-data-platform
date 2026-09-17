@@ -22,7 +22,7 @@ def canonical(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False)
 
 
-def build_final_trip(envelope, allow_test_trip=False):
+def build_final_trip(envelope, allow_test_trip=False, lifecycle=None):
     """The envelope supplies lifecycle context; result uses existing ProcessorResult."""
     if set(envelope) != {"trip", "result", "completed_at"}:
         raise ValueError("expected trip, result and completed_at only")
@@ -63,6 +63,14 @@ def build_final_trip(envelope, allow_test_trip=False):
                     model_version=result["model_version"], is_mock=is_mock,
                     created_at=trip.get("created_at", trip["started_at"]), updated_at=completed_at,
                     failed_step=None, error_message=None, lease_until="", process_after="")
+    if lifecycle is not None:
+        for key in ("trip_id", "user_id", "campaign_id", "processing_generation"):
+            if lifecycle[key] != trip[key]:
+                raise ValueError("lifecycle identity differs: " + key)
+        if timestamp(lifecycle["ended_at"]) < timestamp(lifecycle["started_at"]):
+            raise ValueError("invalid lifecycle times")
+        document["lifecycle_started_at"] = lifecycle["started_at"]
+        document["lifecycle_ended_at"] = lifecycle["ended_at"]
     finalize_result(document, segments, completed_at)
     # Input time is stable across retries, making same-generation replays identical.
     document["finalization_hash"] = hashlib.sha256(canonical(document).encode()).hexdigest()
@@ -159,10 +167,11 @@ def publish_cosmos(store, document, allow_test_create=False):
                 if current.get("status") != "processing" or current.get("result_owner") != "databricks":
                     raise ValueError("Trip is not assigned to Databricks; refusing to replace another worker's result")
                 for key in ("user_id", "campaign_id", "started_at", "ended_at"):
-                    if (timestamp(current[key]) != timestamp(document[key]) if key in ("started_at", "ended_at")
+                    if (timestamp(current[key]) != timestamp(document.get("lifecycle_" + key, document[key])) if key in ("started_at", "ended_at")
                             else current.get(key) != document[key]):
                         raise ValueError("lifecycle context differs: " + key)
                 merged = {**current, **document}
+                merged.pop("wait_reason", None)
                 merged["created_at"] = current.get("created_at", document["created_at"])
                 store.replace(merged)
             saved = store.read(document["trip_id"], document["user_id"])

@@ -72,7 +72,7 @@ def main():
                 wait = spark.read.format("delta").load(args.queue_path).where(
                     key & (F.col("processing_generation") == event["processing_generation"])).first()
                 if wait.status == "ready":
-                    document = build_final_trip(json.loads(wait.envelope_json))
+                    document = build_final_trip(json.loads(wait.envelope_json), lifecycle=event)
                     save_gold(spark, args.gold_path, document)
                     break
                 if wait.status in ("timed_out", "failed", "ignored"):

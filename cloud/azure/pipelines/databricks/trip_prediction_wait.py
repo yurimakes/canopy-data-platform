@@ -21,10 +21,8 @@ def resolve(ended, candidates):
     if len(unique) != 1:
         return "conflicting_final_segments", None
     envelope = next(iter(unique.values()))
-    from services.trip_processor import timestamp
     trip = envelope["trip"]
-    if trip.get("campaign_id") != ended["campaign_id"] or any(
-        timestamp(trip[k]) != timestamp(ended[k]) for k in ("started_at", "ended_at")):
+    if trip.get("campaign_id") != ended["campaign_id"]:
         return "lifecycle_context_mismatch", None
     # 공통 검증과 탄소 계산을 통과한 완성 결과만 대기열에 고정
     build_final_trip(envelope)

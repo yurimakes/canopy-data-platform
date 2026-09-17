@@ -12,6 +12,8 @@
     "has_issue": {"type": ["boolean", "null"]},
     "feedback_id": {"type": ["string", "null"]},
     "feedback_updated_at": {"type": ["string", "null"], "format": "date-time"},
+    "lifecycle_started_at": {"type": "string", "format": "date-time", "description": "Original Trip start request time; distinct from ML observation time."},
+    "lifecycle_ended_at": {"type": "string", "format": "date-time", "description": "Original stop button time; distinct from the final GPS measurement."},
     "trip_id": {"type": "string", "minLength": 1},
     "user_id": {"type": "string", "minLength": 1},
     "campaign_id": {"type": "string", "minLength": 1},

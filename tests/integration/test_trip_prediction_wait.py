@@ -78,6 +78,17 @@ class FinalSegmentTests(unittest.TestCase):
         self.end["ended_at"] = "2026-09-17T00:20:00+00:00"
         self.assertEqual(resolve(self.end, [self.value])[0], "ready")
 
+    def test_ml_observation_times_need_not_equal_button_times(self):
+        self.end["started_at"] = "2026-09-17T09:00:33+09:00"
+        self.end["ended_at"] = "2026-09-17T09:20:00.202+09:00"
+        reason, payload = resolve(self.end, [self.value])
+        self.assertEqual(reason, "ready")
+        doc = build_final_trip(json.loads(payload), lifecycle=self.end)
+        self.assertEqual(doc["started_at"], self.value["trip"]["started_at"])
+        self.assertEqual(doc["ended_at"], self.value["trip"]["ended_at"])
+        self.assertEqual(doc["lifecycle_started_at"], self.end["started_at"])
+        self.assertEqual(doc["lifecycle_ended_at"], self.end["ended_at"])
+
     def test_timeout_and_bounded_attempts(self):
         now = datetime.now(timezone.utc)
         wait = {"attempts": 0, "deadline_at": now+timedelta(seconds=600)}
