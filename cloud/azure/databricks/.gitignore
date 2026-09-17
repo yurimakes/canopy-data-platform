@@ -8,3 +8,5 @@ htmlcov/
 dist/
 build/
 *.egg-info/
+
+codex_*.md
