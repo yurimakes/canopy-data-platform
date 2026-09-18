@@ -11,13 +11,6 @@ from .contracts import FEATURE_NAMES, MODE_BY_CLASS
 _VERSION_URI = re.compile(r"^models:/([^@]+)/(\d+)$")
 _ALIAS_URI = re.compile(r"^models:/([^@]+)@([^/]+)$")
 
-_MODEL_ARTIFACT = (
-    Path(__file__).resolve().parent
-    / "artifacts"
-    / "transition_lgbm_v1"
-    / "model.skops"
-)
-
 _SKOPS_TRUSTED_TYPES = [
     "collections.OrderedDict",
     "lightgbm.sklearn.LGBMClassifier",
@@ -48,17 +41,18 @@ def predict_pandas(model: Any, frame: Any) -> Any:
     return model.predict(frame.loc[:, list(FEATURE_NAMES)])
 
 
-def _load_driver_model() -> Any:
-    """Load the bundled native LGBMClassifier without MLflow runtime I/O."""
-    if not _MODEL_ARTIFACT.exists():
+def _load_driver_model(model_artifact_path: str) -> Any:
+    """Load the native LGBMClassifier directly from a UC Volume."""
+    artifact = Path(model_artifact_path)
+    if not artifact.exists():
         raise FileNotFoundError(
-            f"bundled model artifact is missing: {_MODEL_ARTIFACT}"
+            f"UC Volume model artifact is missing: {artifact}"
         )
 
     import skops.io as sio
 
     return sio.load(
-        _MODEL_ARTIFACT,
+        artifact,
         trusted=_SKOPS_TRUSTED_TYPES,
     )
 
@@ -74,16 +68,16 @@ def _load_worker_model(cache_key: str, model_bytes: bytes) -> Any:
     return model
 
 
-def _prediction_udf(model_uri: str) -> Any:
-    """Build a scalar Pandas UDF from the bundled native LightGBM model."""
+def _prediction_udf(model_uri: str, model_artifact_path: str) -> Any:
+    """Build a scalar Pandas UDF from the UC Volume LightGBM model."""
     import cloudpickle
     import pandas as pd
     from pyspark.sql.functions import PandasUDFType, pandas_udf
     from pyspark.sql.types import LongType, StructField, StructType, TimestampType
 
-    driver_model = _load_driver_model()
+    driver_model = _load_driver_model(model_artifact_path)
     model_bytes = cloudpickle.dumps(driver_model)
-    cache_key = f"{model_uri}:{_MODEL_ARTIFACT.name}"
+    cache_key = f"{model_uri}:{model_artifact_path}"
 
     result_schema = StructType([
         StructField("predicted_class", LongType(), nullable=False),
@@ -112,14 +106,19 @@ def _prediction_udf(model_uri: str) -> Any:
     return predict
 
 
-def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
-    """Apply the bundled model in-process on Python workers."""
+def infer_predictions(
+    features: Any,
+    spark: Any,
+    model_uri: str,
+    model_artifact_path: str,
+) -> Any:
+    """Apply the UC Volume model in-process on Python workers."""
     del spark
 
     from pyspark.sql import functions as F
 
     model_name, model_version = model_identity(model_uri)
-    predict = _prediction_udf(model_uri)
+    predict = _prediction_udf(model_uri, model_artifact_path)
 
     mapping_items = []
     for compact_class, mode in MODE_BY_CLASS.items():
