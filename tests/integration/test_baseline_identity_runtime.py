@@ -34,14 +34,14 @@ class IdentityAndRuntimeTests(unittest.TestCase):
     def test_cosmos_partition_reads_and_membership_priority(self):
         client = MagicMock()
         db = client.get_database_client.return_value
-        users, members = MagicMock(), MagicMock()
-        db.get_container_client.side_effect = lambda name: {"users": users, "campaign_memberships": members}[name]
-        users.read_item.return_value = {"id": "u", "user_id": "u", "created_at": "2020-01-01T00:00:00Z", "private_profile": "not needed"}
-        members.read_item.return_value = {"id": "c", "user_id": "u", "campaign_id": "c", "joined_at": "2026-09-01T00:00:00Z"}
+        users = MagicMock()
+        db.get_container_client.return_value = users
+        users.read_item.return_value = {"id": "u", "user_id": "u", "created_at": "2020-01-01T00:00:00Z",
+            "campaign_id": "c", "campaign_joined_at": "2026-09-01T00:00:00Z", "private_profile": "not needed"}
         with patch.dict(os.environ, {"CANOPY_COSMOS_DATABASE": "canopy-db"}, clear=True):
             data = load_identities(campaign_id="c", user_ids=["u", "u"], client=client)
         users.read_item.assert_called_once_with(item="u", partition_key="u")
-        members.read_item.assert_called_once_with(item="c", partition_key="u")
+        db.get_container_client.assert_called_once_with("users")
         self.assertNotIn("private_profile", data["users"][0])
         self.assertEqual(observation_context("u", "c", "2026-09-08T00:00:00Z", data), (7, "membership.joined_at", None))
         db.create_container_if_not_exists.assert_not_called()
@@ -66,6 +66,39 @@ class IdentityAndRuntimeTests(unittest.TestCase):
             path.write_text(json.dumps({"users": [user], "memberships": [membership, dict(membership, id="other", campaign_id="other")]}))
             data = load_identities(path, campaign_id="c", user_ids=["u"])
             self.assertEqual(data["memberships"], [membership])
+
+    def test_user_campaign_date_never_falls_back_to_signup(self):
+        user = {"user_id": "u", "created_at": "2020-01-01T00:00:00Z", "campaign_id": "c"}
+        self.assertEqual(observation_context("u", "c", "2026-09-08T00:00:00Z", {"users": [user]}),
+                         (None, None, "joined_at_missing"))
+        user["campaign_joined_at"] = "2026-09-01T00:00:00Z"
+        self.assertEqual(observation_context("u", "c", "2026-09-08T00:00:00Z", {"users": [user]})[0], 7)
+        self.assertEqual(observation_context("u", "other", "2026-09-08T00:00:00Z", {"users": [user]})[2], "joined_at_missing")
+
+    def test_sync_preserves_adls_contract_from_users(self):
+        from sync_campaign_membership import _strip_membership, read_memberships_from_cosmos
+        item = {"user_id": "u", "campaign_id": "c", "created_at": "2020-01-01T00:00:00Z",
+                "campaign_joined_at": "2026-09-01T00:00:00Z", "department_id": "dept"}
+        self.assertEqual(_strip_membership(item), {"user_id": "u", "campaign_id": "c",
+            "joined_at": item["campaign_joined_at"], "left_at": None, "department_id": "dept"})
+        with patch("sync_campaign_membership._get_container") as container:
+            container.return_value.query_items.return_value = [item]
+            self.assertEqual(read_memberships_from_cosmos("c"), [item])
+            self.assertEqual(container.return_value.query_items.call_args.kwargs["parameters"],
+                             [{"name": "@campaign_id", "value": "c"}])
+        del item["campaign_joined_at"]
+        with self.assertRaises(ValueError):
+            _strip_membership(item)
+
+    def test_user_schema_requires_campaign_participation_date(self):
+        from jsonschema import Draft202012Validator, FormatChecker, ValidationError
+        schema = json.loads((ROOT / "shared/schemas/user.schema.json").read_text())
+        validator = Draft202012Validator(schema, format_checker=FormatChecker())
+        user = {"id": "u", "user_id": "u", "created_at": "2020-01-01T00:00:00Z", "campaign_id": "c"}
+        with self.assertRaises(ValidationError):
+            validator.validate(user)
+        user["campaign_joined_at"] = "2026-09-01T00:00:00Z"
+        validator.validate(user)
 
     def test_packaged_yaml_loads_outside_repository_and_weekly_job_not_included(self):
         spec = importlib.util.spec_from_file_location("pack", ROOT / "tools/azure/package_baseline_eligibility.py")

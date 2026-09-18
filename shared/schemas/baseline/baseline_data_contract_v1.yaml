@@ -122,11 +122,11 @@ stages:
       eligible_status: ready
     identity_inputs:
       campaign_membership:
-        source: "Cosmos campaign_memberships"
+        source: "ADLS campaign_membership_raw (synced from Cosmos users)"
         required_fields: [user_id, campaign_id, joined_at]
       user:
         source: "Cosmos users"
-        required_fields: [user_id, created_at]
+        required_fields: [user_id, created_at, campaign_id, campaign_joined_at]
     runtime_invariant:
       CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED: "true"
     note: "This flag is valid because the upstream Trip set is already commute-only."

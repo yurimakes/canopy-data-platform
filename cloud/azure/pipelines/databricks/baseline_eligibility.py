@@ -96,7 +96,13 @@ def observation_context(user_id, campaign_id, evaluated_at, identities):
         candidates.extend((f"membership.{k}", members[0].get(k))
                           for k in ("campaign_joined_at", "joined_at"))
     if users:
-        candidates.extend((f"user.{k}", users[0].get(k)) for k in ("joined_at", "created_at"))
+        user = users[0]
+        if "campaign_id" in user:
+            if user.get("campaign_id") == campaign_id:
+                candidates.append(("user.campaign_joined_at", user.get("campaign_joined_at")))
+        else:
+            # 기존 오프라인 입력 계약 호환. 새 users 문서는 캠페인 참여일만 사용.
+            candidates.extend((f"user.{k}", user.get(k)) for k in ("joined_at", "created_at"))
     for field, value in candidates:
         if value is None:
             continue
@@ -139,20 +145,22 @@ def load_identities(path=None, *, campaign_id=None, user_ids=(), client=None):
         client = CosmosClient(endpoint, credential=credential)
     try:
         db = client.get_database_client(database)
-        members = db.get_container_client(os.environ.get("CANOPY_MEMBERSHIPS_CONTAINER", "campaign_memberships"))
         users = db.get_container_client(os.environ.get("CANOPY_USERS_CONTAINER", "users"))
         result = {"users": [], "memberships": []}
         for uid in sorted(set(user_ids)):
-            # Both containers use /user_id; all reads target one partition.
-            for container, item_id, target, fields in (
-                (members, campaign_id, "memberships", ("user_id", "campaign_id", "joined_at", "campaign_joined_at")),
-                (users, uid, "users", ("id", "user_id", "created_at", "joined_at")),
-            ):
-                try:
-                    item = container.read_item(item=item_id, partition_key=uid)
-                except exceptions.CosmosResourceNotFoundError:
-                    continue
-                result[target].append({k: item[k] for k in fields if k in item})
+            try:
+                item = users.read_item(item=uid, partition_key=uid)
+            except exceptions.CosmosResourceNotFoundError:
+                continue
+            if item.get("campaign_id") != campaign_id:
+                continue
+            fields = ("id", "user_id", "created_at", "campaign_id", "campaign_joined_at", "campaign_left_at", "department_id")
+            result["users"].append({k: item[k] for k in fields if k in item})
+            # 기존 계산 모듈 입력 형태 유지. 별도 Cosmos 멤버십 조회 없음.
+            result["memberships"].append({
+                "user_id": uid, "campaign_id": campaign_id,
+                "joined_at": item.get("campaign_joined_at"),
+            })
         return result
     finally:
         if owns_client:
