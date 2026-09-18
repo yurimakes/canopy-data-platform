@@ -59,5 +59,6 @@ predicted_mode STRING NOT NULL,
 confidence DOUBLE,
 model_name STRING NOT NULL,
 model_version STRING,
+features_processed_at TIMESTAMP NOT NULL,
 predicted_at TIMESTAMP NOT NULL
 """
