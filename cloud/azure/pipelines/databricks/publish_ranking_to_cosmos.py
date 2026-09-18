@@ -10,8 +10,14 @@ COSMOS_DATABASE = os.environ.get("CANOPY_COSMOS_DATABASE", "canopy-db")
 COSMOS_RANKING_SNAPSHOT_CONTAINER = os.environ.get("CANOPY_COSMOS_RANKING_SNAPSHOT_CONTAINER", "ranking-snapshots")
 COSMOS_USERS_CONTAINER = os.environ.get("CANOPY_COSMOS_USERS_CONTAINER", "users")
 
-GOLD_PERSONAL_RANKING_PATH = "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/ranking_personal/"
-GOLD_DEPARTMENT_RANKING_PATH = "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/ranking_department/"
+RANKING_TABLE = os.environ.get(
+    "CANOPY_RANKING_TABLE",
+    "dbw_canopy_dev.weekly_analysis_scaffold.ranking",
+)
+CAMPAIGN_MEMBERSHIP_PATH = os.environ.get(
+    "CANOPY_ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH",
+    "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
+)
 
 COSMOS_ENDPOINT = os.environ.get("CANOPY_COSMOS_ENDPOINT")
 
@@ -42,8 +48,21 @@ def publish_personal(spark, campaign_id, week):
     week_start, week_end = _week_label_to_bounds(week)
 
     df = (
-        spark.read.format("delta").load(GOLD_PERSONAL_RANKING_PATH)
-        .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week))
+        spark.read.table(RANKING_TABLE)
+        .filter(
+            (F.col("campaign_id") == campaign_id)
+            & (F.col("week") == week)
+            & (F.col("ranking_type") == "personal")
+        )
+        .select(
+            "campaign_id",
+            "week",
+            "user_id",
+            F.col("reward_points").alias("score"),
+            "rank",
+            "generated_at",
+            "policy_version",
+        )
         .orderBy("rank")
     )
     rows = df.collect()
@@ -88,13 +107,43 @@ def publish_department(spark, campaign_id, week):
     week_start, week_end = _week_label_to_bounds(week)
 
     df = (
-        spark.read.format("delta").load(GOLD_DEPARTMENT_RANKING_PATH)
-        .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week))
+        spark.read.table(RANKING_TABLE)
+        .filter(
+            (F.col("campaign_id") == campaign_id)
+            & (F.col("week") == week)
+            & (F.col("ranking_type") == "department")
+        )
+        .select(
+            "campaign_id",
+            "week",
+            "department_id",
+            F.col("reward_points").alias("score"),
+            "rank",
+            "generated_at",
+            "policy_version",
+        )
         .orderBy("rank")
     )
     rows = df.collect()
     if not rows:
         return 0
+
+    active_memberships = (
+        spark.read.format("delta").load(CAMPAIGN_MEMBERSHIP_PATH)
+        .filter(F.col("campaign_id") == campaign_id)
+        .filter(F.col("department_id").isNotNull())
+        .filter(F.to_date(F.col("joined_at")) <= F.to_date(F.lit(week_end)))
+        .filter(
+            F.col("left_at").isNull()
+            | (F.to_date(F.col("left_at")) > F.to_date(F.lit(week_end)))
+        )
+        .groupBy("department_id")
+        .agg(F.collect_set("user_id").alias("member_user_ids"))
+    )
+    members_by_department = {
+        row["department_id"]: list(row["member_user_ids"])
+        for row in active_memberships.collect()
+    }
 
     # TODO: 부서 표시명 소스가 아직 없음. 확인 전까지 department_id를 그대로 씀.
     entries = [
@@ -104,7 +153,7 @@ def publish_department(spark, campaign_id, week):
             "display_name": row["department_id"],
             "score": row["score"],
             # member_user_ids: is_me 계산에만 쓰는 내부 필드. 응답에는 노출 안 됨.
-            "member_user_ids": list(row["member_user_ids"]),
+            "member_user_ids": members_by_department.get(row["department_id"], []),
         }
         for row in rows
     ]
