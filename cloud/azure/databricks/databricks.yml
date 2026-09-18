@@ -34,7 +34,7 @@ variables:
   event_hubs_sas_policy_name:
     default: canopy-databricks-listen
   event_hubs_secret_scope:
-    default: canopy-dev
+    default: canopy-trial
   event_hubs_secret_key:
     default: canopy-databricks-listen
 
