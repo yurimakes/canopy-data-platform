@@ -2,9 +2,6 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from azure.cosmos import CosmosClient
-from azure.cosmos.exceptions import CosmosResourceExistsError
-
 COSMOS_DATABASE = os.environ.get("CANOPY_COSMOS_DATABASE", "canopy-db")
 COSMOS_REWARD_LEDGER_CONTAINER = os.environ.get("CANOPY_COSMOS_REWARD_LEDGER_CONTAINER", "rewards")
 GOLD_REWARD_LEDGER_HISTORY_PATH = os.environ.get(
@@ -36,6 +33,8 @@ COSMOS_KEY = _get_secret_or_env("canopy-scope", "cosmos-key", "CANOPY_COSMOS_KEY
 
 
 def _get_container():
+    from azure.cosmos import CosmosClient
+
     client = CosmosClient(COSMOS_ENDPOINT, COSMOS_KEY)
     database = client.get_database_client(COSMOS_DATABASE)
     return database.get_container_client(COSMOS_REWARD_LEDGER_CONTAINER)
@@ -51,6 +50,8 @@ def _week_label_to_start_date(week_label):
 
 
 def write_reward(container, result_row):
+    from azure.cosmos.exceptions import CosmosResourceExistsError
+
     if not result_row.get("payable"):
         return {"status": "skipped", "reason": "not_payable"}
 
