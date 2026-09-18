@@ -13,10 +13,8 @@ type RankingResponse={
 
 function rankingConfig(){
   const extra=Constants.expoConfig?.extra;
-  const base=typeof extra?.tripApiUrl==='string'?extra.tripApiUrl.trim().replace(/\/+$/,''):'';
-  const functionKey=typeof extra?.tripFunctionKey==='string'&&extra.tripFunctionKey
-    ?extra.tripFunctionKey
-    :typeof extra?.gpsFunctionKey==='string'?extra.gpsFunctionKey:'';
+  const base=typeof extra?.rankingApiUrl==='string'?extra.rankingApiUrl.trim().replace(/\/+$/,''):'';
+  const functionKey=typeof extra?.rankingFunctionKey==='string'?extra.rankingFunctionKey:'';
   const campaignId=typeof extra?.rankingCampaignId==='string'?extra.rankingCampaignId.trim():'';
   const week=typeof extra?.rankingWeek==='string'?extra.rankingWeek.trim():'';
   return {base,functionKey,campaignId,week};
@@ -26,7 +24,7 @@ export async function loadRanking(userId:string,request:typeof fetch=fetch):Prom
   const config=rankingConfig();
   if(!config.base||!config.functionKey)return {state:'unavailable'};
 
-  const url=new URL(config.base+'/users/me/ranking');
+  const url=new URL(config.base);
   if(config.campaignId)url.searchParams.set('campaign_id',config.campaignId);
   if(config.week)url.searchParams.set('week',config.week);
 

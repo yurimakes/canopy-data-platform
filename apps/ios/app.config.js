@@ -10,6 +10,8 @@ module.exports = ({config}) => ({
     tripApiUrl: preview ? '' : process.env.CANOPY_TRIP_API_URL || '',
     tripFunctionKey: preview ? '' : process.env.CANOPY_TRIP_FUNCTION_KEY || '',
     tripAllowLocalHttp: process.env.CANOPY_TRIP_ALLOW_LOCAL_HTTP === 'true',
+    rankingApiUrl: preview ? '' : process.env.CANOPY_RANKING_API_URL || '',
+    rankingFunctionKey: preview ? '' : process.env.CANOPY_RANKING_FUNCTION_KEY || '',
     rankingCampaignId: preview ? '' : process.env.CANOPY_RANKING_CAMPAIGN_ID || '',
     rankingWeek: preview ? '' : process.env.CANOPY_RANKING_WEEK || '',
   },
