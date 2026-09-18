@@ -13,7 +13,7 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
   const [visible,setVisible]=useState(false),[agreed,setAgreed]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [step,setStep]=useState(0),[home,setHome]=useState<Place|null>(null),[work,setWork]=useState<Place|null>(null);
   async function submit(){if(busy)return;setBusy(true);setError('');try{
-    if(page==='signup'&&!agreed)throw Error('기기 내 프로필 저장 안내를 확인해주세요.');
+    if(page==='signup'&&!agreed)throw Error('프로필 저장 안내를 확인해주세요.');
     if(page==='signup'&&step===0){
       if(!nickname.trim()||!/^\S+@\S+\.\S+$/.test(email.trim()))throw Error('이름과 이메일을 확인해주세요.');
       if(password.length<8)throw Error('비밀번호를 8자 이상 입력해주세요.');
@@ -47,12 +47,12 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
         <Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder={page==='signup'?'8자 이상 입력':'비밀번호 입력'} autoCapitalize="none" maxLength={128}/>
         <Pressable accessibilityRole="button" onPress={()=>setVisible(!visible)}><Text style={S.link}>{visible?'비밀번호 가리기':'비밀번호 보기'}</Text></Pressable>
         {page==='signup'&&<><Field label="캠페인 코드" value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="TEST" maxLength={20}/><Note>집과 직장 위치는 다음 화면에서 설정할 수 있어요.</Note>
-          <Pressable accessibilityRole="checkbox" aria-checked={agreed} accessibilityState={{checked:agreed}} onPress={()=>setAgreed(!agreed)} style={S.row}><Icon name={agreed?'checkbox':'square-outline'}/><Text style={[S.note,{flex:1}]}>프로필이 이 기기에 저장되는 테스트 버전임을 확인했습니다.</Text></Pressable></>}
+          <Pressable accessibilityRole="checkbox" aria-checked={agreed} accessibilityState={{checked:agreed}} onPress={()=>setAgreed(!agreed)} style={S.row}><Icon name={agreed?'checkbox':'square-outline'}/><Text style={[S.note,{flex:1}]}>닉네임과 캠페인 참여정보가 서버에 저장되는 테스트 버전임을 확인했습니다.</Text></Pressable></>}
         {!!(error||runtimeError)&&<Note error>{error||runtimeError}</Note>}
         <Button title={page==='signup'?'다음: 출퇴근 장소':'로그인'} busy={busy} disabled={!ready} onPress={()=>void submit()}/>
         <Button quiet title={page==='signup'?'이미 계정이 있어요':'처음이에요. 가입하기'} onPress={()=>navigate(page==='signup'?'login':'signup')}/>
       </>}
-      <Note>현재는 기기 내 프로필로 사용하는 테스트 버전입니다. 실제 회원가입과 계정 인증은 추후 연결됩니다.</Note>
+      <Note>아이폰 가입 시 닉네임과 참여일은 서버에 저장됩니다. 이메일, 비밀번호와 출퇴근 장소는 기기에 저장됩니다. 현재 서버 연결은 테스트 인증이며 개인별 로그인 인증은 추후 연결됩니다.</Note>
       </Fade>
     </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }

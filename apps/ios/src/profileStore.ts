@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import * as Crypto from 'expo-crypto';
 import {developerProfile,type Profile} from './service';
+import {tripConfig} from './backgroundLocationTask';
+import {registerServerUser} from './userRegistration';
 const key='canopy.local-profile.v1';
 type Saved={profile:Profile;salt:string;verifier:string};
 async function read():Promise<Saved|null>{const value=await SecureStore.getItemAsync(key);return value?JSON.parse(value):null;}
@@ -11,6 +13,7 @@ export async function registerProfile(profile:Profile,password:string,code:strin
   if(!profile.nickname.trim()||!/^\S+@\S+\.\S+$/.test(profile.email))throw Error('이름과 이메일을 확인해주세요.');
   if(password.length<8)throw Error('비밀번호를 8자 이상 입력해주세요.');
   if(await read())throw Error('이 기기에 저장된 프로필이 있습니다. 기존 이메일로 로그인해주세요.');
+  await registerServerUser(tripConfig(),profile.nickname,code);
   const salt=Crypto.randomUUID();await SecureStore.setItemAsync(key,JSON.stringify({profile,salt,verifier:await digest(salt,password)}));
   return profile;
 }

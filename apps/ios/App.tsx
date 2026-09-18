@@ -2,7 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Network from 'expo-network';
-import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
+import { getStorage, getUploader, getTripApi, tripConfig } from './src/backgroundLocationTask';
+import {registerServerUser} from './src/userRegistration';
 import { AuthScreen } from './src/ui/AuthScreen';
 import { ServiceScreen } from './src/ui/ServiceScreen';
 import { updateProfile } from './src/profileStore';
@@ -146,6 +147,7 @@ export default function App() {
   }
   async function enter(p:Profile) {
     if(!service)return;
+    if(p.role!=='developer')await registerServerUser(tripConfig(),p.nickname,p.campaignCode);
     await service.db.saveSync('ui:session',p);setProfile(p);
     if(c?.trip?.status!=='recording')c?.selectCollectionMode('user');
     setError('');setScreen(c?.collectionMode??'user');setEntered(true);
@@ -163,7 +165,7 @@ export default function App() {
     void service?.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+id).then(v=>setRoute(v?.route??null));
     void getTripApi().then(api=>api.refresh(id)).then(setServerTrip).catch(e=>setTripError(String(e)));
   }
-  if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile&&screen!==null)setEntered(true);}}
+  if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile)void enter(profile).catch(e=>setError(String(e)));}}
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
