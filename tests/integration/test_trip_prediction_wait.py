@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines/databricks"))
-from trip_prediction_wait import resolve, advance
+from trip_prediction_wait import resolve, advance, normalize_table_result
 from finalize_trip_pipeline import build_final_trip
 from services.trip_processor import ProcessingError
 
@@ -46,6 +46,19 @@ class FinalSegmentTests(unittest.TestCase):
         self.assertEqual(other["segments"][1]["confidence"], 0)
         self.assertFalse(doc["is_mock"])
 
+    def test_team_table_extra_columns_and_duplicate_identity(self):
+        row = copy.deepcopy(self.value)
+        row.update(trip_id=row["trip"]["trip_id"], processing_generation=1, model_name="team")
+        row["trip"]["status"] = "completed"
+        row["result"]["segments"][0].update(segment_index=1, start_sequence=1, end_sequence=12)
+        self.assertEqual(normalize_table_result(row), self.value)
+        row["result"]["segments"][0]["mode"] = "subway"
+        self.assertEqual(normalize_table_result(row)["result"]["segments"][0]["mode"], "rail")
+        self.assertEqual(row["result"]["segments"][0]["mode"], "subway")
+        row["processing_generation"] = 2
+        with self.assertRaises(ValueError):
+            normalize_table_result(row)
+
     def test_other_user_and_generations_never_satisfy_end(self):
         for key, value in [("user_id", "other"), ("trip_id", "other"), ("processing_generation", 2)]:
             wrong = copy.deepcopy(self.value)
@@ -64,6 +77,17 @@ class FinalSegmentTests(unittest.TestCase):
         self.assertEqual(resolve(self.end, [wrong])[0], "lifecycle_context_mismatch")
         self.end["ended_at"] = "2026-09-17T00:20:00+00:00"
         self.assertEqual(resolve(self.end, [self.value])[0], "ready")
+
+    def test_ml_observation_times_need_not_equal_button_times(self):
+        self.end["started_at"] = "2026-09-17T09:00:33+09:00"
+        self.end["ended_at"] = "2026-09-17T09:20:00.202+09:00"
+        reason, payload = resolve(self.end, [self.value])
+        self.assertEqual(reason, "ready")
+        doc = build_final_trip(json.loads(payload), lifecycle=self.end)
+        self.assertEqual(doc["started_at"], self.value["trip"]["started_at"])
+        self.assertEqual(doc["ended_at"], self.value["trip"]["ended_at"])
+        self.assertEqual(doc["lifecycle_started_at"], self.end["started_at"])
+        self.assertEqual(doc["lifecycle_ended_at"], self.end["ended_at"])
 
     def test_timeout_and_bounded_attempts(self):
         now = datetime.now(timezone.utc)

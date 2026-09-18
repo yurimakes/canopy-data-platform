@@ -20,29 +20,13 @@ export type MeasurementProps = {
   feedbackPending?:FeedbackInput;onFeedback(input:FeedbackInput):Promise<void>;
   onHistory?():void;
 };
-// Temporary entry point. Replace the selection with the team's authenticated role later.
-export function EntryScreen(p: {ready:boolean; error:string; onEnter(mode:'user'|'developer'):void}) {
-  return <SafeAreaView style={s.root}><View style={[s.content,{flex:1,justifyContent:'center'}]}>
-    <Text style={s.title}>Canopy</Text>
-    <Text style={s.note}>사용할 화면을 선택하세요.</Text>
-    <Pressable accessibilityRole="button" disabled={!p.ready} onPress={()=>p.onEnter('user')} style={[s.action,!p.ready&&s.disabled]}>
-      <Text style={s.actionText}>사용자용으로 시작</Text>
-    </Pressable>
-    <Text style={s.note}>이동 시작과 종료로 GPS를 기록합니다.</Text>
-    <Pressable accessibilityRole="button" disabled={!p.ready} onPress={()=>p.onEnter('developer')} style={[s.export,!p.ready&&s.disabled]}>
-      <Text style={s.modeText}>개발자용으로 시작</Text>
-    </Pressable>
-    <Text style={s.note}>이동수단 라벨을 선택해 데이터를 수집합니다.</Text>
-    {!!p.error && <Text accessibilityRole="alert" style={s.error}>{p.error}</Text>}
-  </View></SafeAreaView>;
-}
 export function MeasurementScreen(p: MeasurementProps) {
   const busy = p.active || ['starting','recording','stopping'].includes(p.phase);
   const developer = p.collectionMode !== "user";
   const switching = p.phase === 'starting' || p.phase === 'stopping';
   return <SafeAreaView style={s.root}>
     <ScrollView contentContainerStyle={s.content}>
-      <Pressable accessibilityRole="button" disabled={!!busy} onPress={p.onBack} style={busy&&s.disabled}><Text style={s.modeText}>← 화면 선택</Text></Pressable>
+      <Pressable accessibilityRole="button" disabled={!!busy} onPress={p.onBack} style={busy&&s.disabled}><Text style={s.modeText}>← 서비스 화면</Text></Pressable>
       <Text style={s.title}>{developer?'개발자 GPS 데이터 수집':'나의 이동 기록'}</Text>
       {!busy && <Pressable accessibilityRole="button" onPress={p.onHistory}><Text style={s.modeText}>이전 이동 결과 보기</Text></Pressable>}
       {!developer && <Text style={s.note}>이동을 시작할 때 시작 버튼을 누르고, 도착하면 종료하세요.</Text>}
@@ -64,9 +48,9 @@ export function MeasurementScreen(p: MeasurementProps) {
         {developer && <><View style={s.row}><Text>최근 GPS 라벨</Text><Text style={s.value}>{p.latestLabel ? MODES.find(m => m.value === currentMode(p.latestLabel!))?.title ?? '—' : '—'}</Text></View>
         {!!p.tripId && <Text selectable style={s.id}>Trip: {p.tripId}</Text>}
         {!!p.eventId && <Text selectable style={s.id}>Event: {p.eventId}{'\n'}측정 시각: {p.eventTime}</Text>}
-        <Text style={s.id}>Sequence: {p.sequence??0} · Background Location: {p.backgroundRunning?'등록됨':'꺼짐'}</Text>
+        <Text style={s.id}>Sequence: {p.sequence??0} / Background Location: {p.backgroundRunning?'등록됨':'꺼짐'}</Text>
         <Text selectable style={s.id}>마지막 GPS 수신: {p.lastReceived??'—'}</Text>
-        <Text style={s.id}>전송 대기: {p.pending??0}건 · 마지막 서버 확인: {p.lastSuccess??'—'}</Text>
+        <Text style={s.id}>전송 대기: {p.pending??0}건 / 마지막 서버 확인: {p.lastSuccess??'—'}</Text>
         {!!p.pending && <Text style={s.id}>가장 오래된 미전송 건의 실패 횟수: {p.retryCount??0}</Text>}
         {!!p.confirmedEvent && <Text selectable style={s.id}>이 Trip의 마지막 API 접수 확인{'\n'}Event: {p.confirmedEvent.event_id}{'\n'}Trip: {p.confirmedEvent.trip_id}{'\n'}Sequence: {p.confirmedEvent.sequence}</Text>}
       </>}

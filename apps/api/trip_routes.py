@@ -26,6 +26,12 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
         if method == "POST" and path == "/api/users/register":
             result, created = (registration_api or user_registration()).register(user_id, body)
             return (201 if created else 200), result
+        if method == "POST" and path == "/api/routes/transit":
+            from services.transit_routes import transit_routes
+            return 200, transit_routes(user_id, body)
+        if method == "POST" and path == "/api/routes/places":
+            from services.transit_routes import search_places
+            return 200, search_places(user_id, body)
         api = trip_service or service()
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
@@ -41,6 +47,12 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             raise ApiError(410, "correction_retired", "Direct correction is retired; submit Trip feedback instead")
         if stop == "/stop" and method == "POST":
             trip = api.stop(trip_id, user_id, body)
+            if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
+                try:
+                    from services.trip_dispatch import recover
+                    recover(api.store)
+                except Exception as exc:
+                    logging.warning("trip_dispatch_deferred trip_id=%s error_type=%s", trip_id, type(exc).__name__)
             return (202 if trip["status"] == "processing" else 200), public(trip)
         if not stop and method == "GET":
             return 200, public(api.get(trip_id, user_id))
@@ -65,6 +77,16 @@ def user_register(req: func.HttpRequest) -> func.HttpResponse:
 
 @bp.route(route="trips/start", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def trip_start(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="routes/places", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def place_search(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="routes/transit", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def transit_route_search(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 

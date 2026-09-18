@@ -14,6 +14,21 @@ const options: Location.LocationTaskOptions = {
 let starting: Promise<void> | undefined;
 export const foregroundOnly = Constants.appOwnership === 'expo';
 export const ports: CollectorPorts = {
+  finalLocation: since => new Promise((resolve,reject)=>{
+    let subscription: Location.LocationSubscription | undefined;
+    let settled=false;
+    const finish=(raw?:Location.LocationObject,error?:unknown)=>{
+      if(settled)return;
+      settled=true;clearTimeout(timer);subscription?.remove();
+      if(raw)resolve(raw);else reject(error);
+    };
+    const timer=setTimeout(()=>finish(undefined,new Error('final_location_timeout')),8000);
+    Location.watchPositionAsync(options,raw=>{
+      if(Number.isFinite(raw.timestamp) && raw.timestamp>=since)finish(raw);
+    },error=>finish(undefined,new Error(error))).then(value=>{
+      subscription=value;if(settled)value.remove();
+    }).catch(error=>finish(undefined,error));
+  }),
   async startTrip(identity) {return (await getTripApi()).start(identity);},
   async permission() {
     if (Platform.OS!=='ios' || (!foregroundOnly && !(await TaskManager.isAvailableAsync())))

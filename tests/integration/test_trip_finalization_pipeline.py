@@ -113,6 +113,20 @@ class PipelineTests(unittest.TestCase):
         self.store.create(trip)
         self.assertEqual(pipeline.publish_cosmos(self.store, self.document), "published")
 
+    def test_ml_times_are_saved_without_overwriting_button_times(self):
+        value = envelope()
+        lifecycle = {**value["trip"], "started_at": "2026-09-16T01:00:33+00:00",
+                     "ended_at": "2026-09-16T01:10:00.202+00:00"}
+        doc = pipeline.build_final_trip(value, allow_test_trip=True, lifecycle=lifecycle)
+        self.store.create({**lifecycle, "id": doc["id"], "status": "processing", "result_owner": "databricks", "wait_reason": "lifecycle_context_mismatch"})
+        self.assertEqual(pipeline.publish_cosmos(self.store, doc), "published")
+        saved = self.store.read(doc["id"], doc["user_id"])
+        self.assertEqual(saved["started_at"], value["trip"]["started_at"])
+        self.assertNotIn("wait_reason", saved)
+        self.assertEqual(saved["lifecycle_started_at"], lifecycle["started_at"])
+        self.assertEqual(saved["lifecycle_ended_at"], lifecycle["ended_at"])
+        self.assertEqual(pipeline.publish_cosmos(self.store, doc), "already_published")
+
     def test_missing_production_trip_and_stale_generation_are_rejected(self):
         with self.assertRaises(ValueError):
             pipeline.publish_cosmos(self.store, self.document)

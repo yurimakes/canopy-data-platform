@@ -73,7 +73,12 @@ def recover(store, api=None, now=None):
             if now >= datetime.fromisoformat(trip["ended_at"]) + timedelta(seconds=1800):
                 failure = "databricks_timeout"
             elif not dispatch or dispatch.get("event_id") != event.get("event_id"):
-                continue  # The Event Hubs trigger must first record the actual receipt.
+                # 발행 성공이 저장된 종료 이벤트로 유실된 트리거 복구. 원본 event_id로 중복 실행 방지.
+                if trip.get("trip_end_outbox", {}).get("status") != "published":
+                    continue
+                dispatch = {"event_id": event["event_id"], "source": "published_outbox",
+                            "received_at": now.isoformat(), "attempts": 0,
+                            "run_id": api.submit(event)}
             elif dispatch.get("run_id") is None:
                 dispatch = {**dispatch, "run_id": api.submit(event)}
             else:

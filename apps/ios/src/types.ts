@@ -31,6 +31,7 @@ export type Trip = Identity & {
   server?: { api_url: string; request_id: string };
   trip_id: string; schema_version: typeof SCHEMA | typeof LEGACY_SCHEMA; started_at: string; ended_at: string | null;
   status: 'recording' | 'completed' | 'interrupted'; interruption_reason: string | null;
+  button_started_at?: string;
   recovered_at: string | null; foreground_only: boolean;
   collection_settings: Record<string, unknown>; environment: Record<string, unknown>;
 };

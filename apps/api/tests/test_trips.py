@@ -205,7 +205,7 @@ class TripTests(unittest.TestCase):
         app = func.FunctionApp()
         app.register_functions(bp)
         self.assertEqual({f.get_function_name() for f in app.get_functions()},
-                         {"user_register", "trip_start", "trip_stop", "trip_get", "trip_confirm", "trip_feedback", "trip_worker"})
+                         {"user_register", "trip_start", "trip_stop", "trip_get", "trip_confirm", "trip_feedback", "trip_worker", "transit_route_search", "place_search"})
 
     def fixture(self):
         from services.mock_trip_processor import ConfirmationFixtureProcessor

@@ -143,7 +143,7 @@ async function setup(path=':memory:',request:typeof fetch=fetch,background=false
     watch:async cb=>{callback=cb;return {remove(){}};},
     background:background?{start:async()=>{running=true;},stop:async()=>{running=false;},isRunning:async()=>running}:undefined};
   const collector=new Collector(db,identity,ports);await collector.selectMode('walk');
-  return {db,native,api,collector,emit:()=>callback(location()),identity};
+  return {db,native,api,collector,ports,emit:(raw=location())=>callback(raw),identity};
 }
 async function acceptGps(db:Storage) {
   const events:any[]=[];
@@ -272,4 +272,45 @@ it('user background Trip refresh preserves null labels',async()=>{
   expect(s.collector.collectionMode).toBe('user');expect(s.collector.mode).toBeNull();
   expect(s.collector.latest).toMatchObject({collection_mode:'user',label:null});
   await s.collector.stop();
+});
+
+
+it('excludes cached fixes from before the start button and appends a fresh stop fix',async()=>{
+  const s=await setup();await s.collector.start();
+  const start=Date.parse(s.collector.trip!.button_started_at!);
+  s.emit({...location(),timestamp:start-33000});
+  s.emit({...location(),timestamp:start+1});
+  let stopFix=0;
+  s.ports.finalLocation=async since=>{stopFix=since+1;return {...location(),timestamp:stopFix};};
+  await s.collector.stop();
+  const sent=await acceptGps(s.db);
+  expect(sent).toHaveLength(2);
+  expect(sent.map(e=>e.sequence)).toEqual([1,2]);
+  expect(sent[1].event_time).toBe(new Date(stopFix).toISOString());
+  expect(Date.parse(s.collector.trip!.ended_at!)).toBeLessThan(stopFix);
+});
+
+it('keeps the saved GPS and stops after the final fix deadline',async()=>{
+  const s=await setup();await s.collector.start();s.emit();
+  s.ports.finalLocation=()=>new Promise(()=>{});
+  vi.useFakeTimers();
+  try {
+    const stopping=s.collector.stop();
+    await vi.advanceTimersByTimeAsync(8001);await stopping;
+    expect(s.collector.phase).toBe('idle');
+    expect((await s.db.summary(s.collector.trip!.trip_id)).gps_count).toBe(1);
+  } finally {vi.useRealTimers();}
+});
+
+it('stores a fresh final background fix after the stop boundary but excludes late background callbacks',async()=>{
+  const s=await setup(':memory:',fetch,true);await s.collector.start();
+  await s.db.appendBackground([location()],new Date().toISOString(),randomUUID);
+  s.ports.finalLocation=async since=>{
+    await s.db.appendBackground([{...location(),timestamp:since+1}],new Date().toISOString(),randomUUID);
+    return {...location(),timestamp:since+2};
+  };
+  await s.collector.stop();
+  const sent=await acceptGps(s.db);expect(sent).toHaveLength(2);
+  expect(sent.map(e=>e.sequence)).toEqual([1,2]);
+  expect(await s.db.active()).toBeNull();
 });
