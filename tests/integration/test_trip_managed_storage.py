@@ -3,7 +3,10 @@ import argparse
 from pathlib import Path
 from types import SimpleNamespace
 import sys
+import json
+import tempfile
 import unittest
+import zipfile
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "cloud/azure/pipelines/databricks"))
@@ -44,6 +47,21 @@ class ManagedStorageTests(unittest.TestCase):
         self.assertEqual(storage.target_arg(args, "gold"), "canopy.sandbox.final_trips")
         with self.assertRaises(SystemExit):
             parser.parse_args(["--gold-table", "canopy.sandbox.final_trips", "--gold-path", "/old"])
+
+    def test_phone_package_contains_managed_targets_and_storage_module(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/azure"))
+        from package_trip_pipeline import package
+        with tempfile.TemporaryDirectory() as directory:
+            path = package(Path(directory) / "trip.zip", "/Workspace/test", None,
+                "https://example.documents.azure.com", "scope", "key", iphone=True,
+                gold_table="canopy.sandbox.final_trips", queue_table="canopy.sandbox.trip_wait")
+            with zipfile.ZipFile(path) as archive:
+                job = json.loads(archive.read("trip_finalization_job.json"))
+                parameters = job["tasks"][0]["spark_python_task"]["parameters"]
+                self.assertIn("--gold-table", parameters)
+                self.assertIn("--queue-table", parameters)
+                self.assertNotIn("--gold-path", parameters)
+                self.assertIn("cloud/azure/pipelines/databricks/trip_delta_store.py", archive.namelist())
 
 
 if __name__ == "__main__":
