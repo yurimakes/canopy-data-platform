@@ -31,6 +31,7 @@ CONFIG = ModeInferenceConfig(
     input_observations_name=_conf("input_observations_table"),
     output_predictions_name=_conf("output_predictions_table"),
     model_uri=_conf("transition_model_uri"),
+    model_artifact_path=_conf("transition_model_artifact_path"),
     state_timeout=_conf("state_timeout"),
     timezone=_spark().conf.get("spark.sql.session.timeZone"),
 )
@@ -42,4 +43,9 @@ CONFIG = ModeInferenceConfig(
 def mode_predictions():
     observations = _spark().readStream.table(CONFIG.input_table)
     features = stateful_feature_rows(observations)
-    return infer_predictions(features, _spark(), CONFIG.model_uri)
+    return infer_predictions(
+        features,
+        _spark(),
+        CONFIG.model_uri,
+        CONFIG.model_artifact_path,
+    )
