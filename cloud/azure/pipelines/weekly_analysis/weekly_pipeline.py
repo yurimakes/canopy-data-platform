@@ -2,7 +2,7 @@
 
 최종 Trip 읽기 → 주간 집계 → weekly_gold 저장까지 실제 코드 연결.
 이후 블록은 컬럼과 연결 관계만 정의한 0행 결과 반환. 담당 계산 코드 입력 필요.
-현재 입력은 개발용 Final Trip 경로이며 Mock 결과 포함 가능. 운영 출퇴근 입력과 구분.
+현재 입력은 개발용 Final Trip Managed Table이며 Mock 결과 포함 가능. 운영 출퇴근 입력과 구분.
 각 블록의 empty_result(...) 부분을 담당자의 계산 코드와 결과 DataFrame 반환으로 교체.
 입력 테이블 조회 → 계산 → 결과 DataFrame 반환 순서로 작성.
 함수 내부에서 직접 저장, Cosmos 호출, 다른 Job 실행 제외.
@@ -266,7 +266,7 @@ def empty_result(schema, *parents):
 
 
 # 기존 개발용 Final Trip 저장 경로. 운영 입력으로 전환 시 담당자와 경로 확인
-FINAL_TRIP_PATH = "abfss://curated@stcanopydev5dt.dfs.core.windows.net/pipeline_test/trip_finalization/iphone_final_trips"
+FINAL_TRIP_TABLE = spark.conf.get("canopy.final_trip_table", "dbw_canopy_dev.sandbox.final_trips")
 MODES = ["walk", "bike", "car", "bus", "rail"]
 LOW_CARBON_MODES = ["walk", "bike", "bus", "rail"]
 TRANSIT_MODES = ["bus", "rail"]
@@ -290,7 +290,7 @@ def final_trip_gold_input():
     # 기존 개발용 Final Trip 저장 결과 입력. Cosmos 조회 제외
     # 동일 사용자와 Trip의 최신 버전 선택 후 완료 상태 필터
     # 전체 저장 이력을 주차별 집계. 이번 주는 진행 중 집계이며 마감 결과와 구분 필요
-    trips = spark.read.format("delta").load(FINAL_TRIP_PATH)
+    trips = spark.read.table(FINAL_TRIP_TABLE)
     latest = Window.partitionBy("campaign_id", "user_id", "trip_id").orderBy(
         F.to_timestamp("updated_at").desc())
     return (trips.withColumn("_latest", F.row_number().over(latest))

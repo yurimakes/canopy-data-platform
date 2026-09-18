@@ -38,6 +38,7 @@ def main():
     parser.add_argument('phase', choices=['generate', 'seed', 'verify'])
     parser.add_argument('--input', required=True)
     parser.add_argument('--workspace-root', required=True)
+    parser.add_argument('--gold-table', default='dbw_canopy_dev.sandbox.final_trips')
     args = parser.parse_args()
     root = Path(args.workspace_root)
     sys.path[:0] = [str(root / 'apps/api'), str(root / 'cloud/azure/pipelines/databricks'),
@@ -52,7 +53,10 @@ def main():
     campaign = payload['campaign_id']
     if not campaign.startswith('pipeline_test_weekly_'):
         raise ValueError('Test campaign required')
-    gold_path = 'abfss://curated@stcanopydev5dt.dfs.core.windows.net/pipeline_test/trip_finalization/iphone_final_trips'
+    import trip_delta_store as storage
+    gold_path = storage.table_name(args.gold_table)
+    if not storage.test_target(gold_path):
+        raise ValueError('Test schema required')
     membership_path = 'abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/'
     if args.phase == 'seed':
         from azure.cosmos import CosmosClient
@@ -82,12 +86,13 @@ def main():
                 raise ValueError('Existing user differs; no overwrite')
         schema = gold_frame(spark, docs[0]).drop('document_json').schema
         frame = spark.createDataFrame([(canonical(d),) for d in docs], 'document_json string').withColumn('body', F.from_json('document_json', schema)).select('body.*', 'document_json')
-        target = DeltaTable.forPath(spark, gold_path)
+        storage.initialize(spark, gold_path, frame)
+        target = storage.delta(spark, gold_path)
         mismatches = target.toDF().alias('t').join(frame.alias('s'), ['user_id', 'trip_id']).where(F.col('t.finalization_hash') != F.col('s.finalization_hash')).limit(1).count()
         if mismatches:
             raise ValueError('Existing test Trip differs; no overwrite')
         target.alias('t').merge(frame.alias('s'), 't.trip_id=s.trip_id AND t.user_id=s.user_id').whenNotMatchedInsertAll().execute()
-        assert spark.read.format('delta').load(gold_path).where(F.col('campaign_id') == campaign).count() == len(docs)
+        assert storage.read(spark, gold_path).where(F.col('campaign_id') == campaign).count() == len(docs)
         sync_members(campaign, endpoint='https://cosmos-canopy-dev.documents.azure.com:443/', secret_scope='canopy-trip-pipeline-test', secret_key='cosmos-key')
         print(json.dumps({'phase': 'seed', 'campaign_id': campaign, 'users':len(payload['users']), 'trips':len(docs)}))
         return
