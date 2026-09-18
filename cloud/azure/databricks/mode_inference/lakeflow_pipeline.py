@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession
 
 from mode_inference.configuration import ModeInferenceConfig
 from mode_inference.contracts import MODE_PREDICTIONS_SCHEMA_DDL
@@ -34,27 +34,12 @@ CONFIG = ModeInferenceConfig(
     state_timeout=_conf("state_timeout"),
     timezone=_spark().conf.get("spark.sql.session.timeZone"),
 )
-_FEATURE_TABLE = "mode_inference_features"
-
-
-@dp.table(
-    name=_FEATURE_TABLE,
-    private=True,
-    comment="Private 17-feature pointwise model input produced from per-trip state.",
-)
-def mode_inference_features():
-    observations = _spark().readStream.table(CONFIG.input_table)
-    return stateful_feature_rows(observations).withColumn(
-        "features_processed_at",
-        F.current_timestamp(),
-    )
-
-
 @dp.table(
     name=CONFIG.output_table,
     schema=MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Raw pointwise LightGBM transportation-mode predictions; no smoothing or segmentation.",
 )
 def mode_predictions():
-    features = _spark().readStream.table(_FEATURE_TABLE)
+    observations = _spark().readStream.table(CONFIG.input_table)
+    features = stateful_feature_rows(observations)
     return infer_predictions(features, _spark(), CONFIG.model_uri)
