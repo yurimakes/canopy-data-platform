@@ -54,12 +54,11 @@ def _prediction_udf(model_uri: str) -> Any:
     from pyspark.sql.types import LongType
 
     @pandas_udf(LongType())
-    def predict(*columns: pd.Series) -> pd.Series:
-        frame = pd.concat(columns, axis=1)
-        frame.columns = list(FEATURE_NAMES)
+    def predict(frame: pd.DataFrame) -> pd.Series:
+        ordered = frame.loc[:, list(FEATURE_NAMES)]
         model = _load_worker_model(model_uri)
-        values = predict_pandas(model, frame)
-        return pd.Series(values, index=frame.index, dtype="int64")
+        values = predict_pandas(model, ordered)
+        return pd.Series(values, index=ordered.index, dtype="int64")
 
     return predict
 
@@ -80,7 +79,9 @@ def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
 
     predicted = features.withColumn(
         "predicted_class",
-        predict(*[F.col(name) for name in FEATURE_NAMES]).cast("int"),
+        predict(
+            F.struct(*[F.col(name).alias(name) for name in FEATURE_NAMES])
+        ).cast("int"),
     )
 
     return predicted.select(
