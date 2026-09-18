@@ -43,6 +43,6 @@ targets:
     default: true
     mode: development
     workspace:
-      host: https://adb-7405612422597045.4.azuredatabricks.net
+      host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
