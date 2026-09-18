@@ -1,0 +1,33 @@
+permissions:
+  contents: read
+
+name: Integrated Function package
+on:
+  pull_request:
+    paths:
+      - 'apps/api/**'
+      - 'cloud/azure/functions/func_canopy_dev/**'
+      - 'tools/azure/*function*'
+      - 'tools/azure/package_trip_api.py'
+      - 'tests/test_function_package.py'
+      - '.github/workflows/function-package-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - 'cloud/azure/functions/func_canopy_dev/**'
+      - 'tools/azure/**'
+jobs:
+  verify-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r apps/api/requirements.txt -r cloud/azure/functions/func_canopy_dev/requirements.txt pytest
+      - run: python -m pytest -q tests/test_function_package.py apps/api/tests cloud/azure/functions/func_canopy_dev/tests
+        env:
+          PYTHONPATH: apps/api:cloud/azure/functions/func_canopy_dev

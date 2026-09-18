@@ -23,9 +23,6 @@ if ($currentSub -ne $SubscriptionId) {
 }
 
 Write-Host "[3/7] Checking required tools..."
-if (-not (Get-Command func -ErrorAction SilentlyContinue)) {
-    throw "Azure Functions Core Tools command 'func' was not found."
-}
 if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
     throw "Python command was not found."
 }
@@ -39,8 +36,11 @@ try {
         throw "Carbon unit tests failed. Deployment stopped."
     }
 
-    Write-Host "[5/7] Publishing the whole func-canopy-dev deployment unit as Python..."
-    func azure functionapp publish $FunctionAppName --python
+    Write-Host "[5/7] Publishing the integrated Function App including accounts and Trips..."
+    $repoRoot = (Resolve-Path (Join-Path $functionRoot "../../../..")).Path
+    python -m pip install -r (Join-Path $repoRoot "apps/api/requirements.txt")
+    if ($LASTEXITCODE -ne 0) { throw "Integrated API dependencies could not be installed." }
+    python (Join-Path $repoRoot "tools/azure/deploy_function_app.py") --deploy --resource-group $ResourceGroup --name $FunctionAppName
     if ($LASTEXITCODE -ne 0) {
         throw "Azure Functions publish failed."
     }
