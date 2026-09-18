@@ -203,8 +203,7 @@ def build_personal_baseline(
         .cast("long")
         .alias("confirmed_trip_count"),
 
-        # 현재 Eligibility 출력 schema에는 observation_source가 없음.
-        F.lit(None)
+        F.col("e.observation_source")
         .cast("string")
         .alias("observation_source"),
 
