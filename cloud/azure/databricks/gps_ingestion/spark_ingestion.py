@@ -69,7 +69,8 @@ event_hub_partition INT,
 event_hub_offset BIGINT,
 event_hub_enqueued_at TIMESTAMP,
 bronze_ingested_at TIMESTAMP NOT NULL,
-parsed_at TIMESTAMP NOT NULL
+parsed_at TIMESTAMP NOT NULL,
+validated_at TIMESTAMP NOT NULL
 """
 
 QUARANTINE_SCHEMA_DDL = """
@@ -469,6 +470,7 @@ def valid_observation_rows(parsed_events: Any) -> Any:
         "collection_mode", "label", "event_hub_topic", "event_hub_partition",
         "event_hub_offset", "event_hub_enqueued_at",
         F.col("ingested_at").alias("bronze_ingested_at"), "parsed_at",
+        F.current_timestamp().alias("validated_at"),
     )
 
 
