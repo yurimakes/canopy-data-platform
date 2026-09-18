@@ -41,10 +41,12 @@ def _rank_column(tie_method):
     raise ValueError(f"unsupported tie_handling.method: {tie_method}")
 
 
-def build_ranking(paid_rewards_df, membership_df, policy):
-    """Pure function: takes already-filtered paid rewards + membership DataFrames
-    and a loaded policy dict, returns (personal_result_df, department_result_df).
-    No table reads, no writes - fully testable in isolation.
+def build_ranking(reward_ledger_df, membership_df, policy):
+    """Build weekly personal/department ranking from Reward Ledger rows.
+
+    The transform is Lakeflow-safe: no table reads, writes, or driver actions.
+    Reward status selection and weekly aggregation semantics come from
+    ranking_policy.yaml.
     """
     tie_method = policy["tie_handling"]["method"]
     dept_method = policy["department_scoring"]["method"]
@@ -52,7 +54,22 @@ def build_ranking(paid_rewards_df, membership_df, policy):
     policy_version = policy["policy_version"]
     generated_at = datetime.now(timezone.utc)
 
-    deduped_rewards = paid_rewards_df.dropDuplicates(["reward_id"])
+    status_filter = policy["score_source"]["status_filter"]
+    if isinstance(status_filter, str):
+        status_filter = [status_filter]
+
+    deduped_rewards = (
+        reward_ledger_df
+        .filter(F.col("status").isin(status_filter))
+        .select(
+            "reward_id",
+            "campaign_id",
+            "user_id",
+            F.col("week_label").alias("week"),
+            "points",
+        )
+        .dropDuplicates(["reward_id"])
+    )
 
     personal_scores = deduped_rewards.groupBy("campaign_id", "week", "user_id").agg(
         F.sum("points").alias("score"),
@@ -79,10 +96,6 @@ def build_ranking(paid_rewards_df, membership_df, policy):
         F.col("left_at").isNull() | (F.to_date(F.col("left_at")) > F.to_date(F.col("week_end_date")))
     )
 
-    no_dept_count = with_membership.filter(F.col("department_id").isNull()).count()
-    if no_dept_count > 0:
-        print(f"[build_ranking] {no_dept_count}명이 department_id 없음 - 부서 랭킹에서 제외, 개인 랭킹에는 포함됨")
-
     with_dept = with_membership.filter(F.col("department_id").isNotNull())
 
     dept_grouped = with_dept.groupBy("campaign_id", "week", "department_id").agg(
@@ -91,9 +104,6 @@ def build_ranking(paid_rewards_df, membership_df, policy):
     )
 
     if minimum_participants is not None:
-        excluded_small = dept_grouped.filter(F.col("member_count") < minimum_participants).count()
-        if excluded_small > 0:
-            print(f"[build_ranking] 부서 {excluded_small}개가 최소인원({minimum_participants}명) 미달로 부서 랭킹에서 제외")
         dept_grouped = dept_grouped.filter(F.col("member_count") >= minimum_participants)
 
     if dept_method == "sum_of_member_points":
@@ -153,17 +163,16 @@ def write_snapshot(spark, df, path, campaign_id, week):
 def run(campaign_id, week, policy):
     spark = SparkSession.builder.getOrCreate()
 
-    paid_rewards_df = (
+    reward_ledger_df = (
         spark.read.table("reward_ledger_history")
         .filter(
             (F.col("campaign_id") == campaign_id)
             & (F.col("week_label") == week)
-            & (F.col("status").isin(["paid", "adjusted"]))
         )
     )
     membership_df = spark.read.table("campaign_membership_raw").filter(F.col("campaign_id") == campaign_id)
 
-    personal_result, department_result = build_ranking(paid_rewards_df, membership_df, policy)
+    personal_result, department_result = build_ranking(reward_ledger_df, membership_df, policy)
 
     write_snapshot(spark, personal_result, GOLD_PERSONAL_RANKING_PATH, campaign_id, week)
     write_snapshot(spark, department_result, GOLD_DEPARTMENT_RANKING_PATH, campaign_id, week)
