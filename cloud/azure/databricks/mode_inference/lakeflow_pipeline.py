@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pyspark import pipelines as dp
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, functions as F
 
 from mode_inference.configuration import ModeInferenceConfig
 from mode_inference.contracts import MODE_PREDICTIONS_SCHEMA_DDL
@@ -44,7 +44,10 @@ _FEATURE_TABLE = "mode_inference_features"
 )
 def mode_inference_features():
     observations = _spark().readStream.table(CONFIG.input_table)
-    return stateful_feature_rows(observations)
+    return stateful_feature_rows(observations).withColumn(
+        "features_processed_at",
+        F.current_timestamp(),
+    )
 
 
 @dp.table(
