@@ -197,7 +197,8 @@ PROFILE_SCHEMA = """
 PERSONAL_ELIGIBILITY_SCHEMA = """
     user_id STRING, campaign_id STRING, week STRING,
     status STRING, policy_version STRING, observation_days BIGINT,
-    confirmed_trip_count BIGINT, reasons ARRAY<STRING>
+    confirmed_trip_count BIGINT, observation_source STRING,
+    reasons ARRAY<STRING>
 """
 GLOBAL_ELIGIBILITY_SCHEMA = """
     campaign_id STRING, week STRING, status STRING,
@@ -311,17 +312,38 @@ def weekly_gold():
     return spark.read.table("weekly_summary").select(*T.StructType.fromDDL(WEEKLY_SCHEMA).fieldNames())
 
 
-@dp.temporary_view(comment="Baseline 계산 대상 판정 코드 입력 위치")
+@dp.temporary_view(comment="가입/캠페인 참여 이력과 이전 완료 주를 이용한 Baseline 대상 판정")
 def baseline_eligibility():
-    weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
-    
+    weekly_df = spark.read.table(
+        "dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold"
+    )
+
+    membership_path = os.environ.get(
+        "CANOPY_ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
+    )
+
+    membership_df = _read_optional_delta(
+        membership_path,
+        """
+        user_id STRING,
+        campaign_id STRING,
+        department_id STRING,
+        joined_at STRING,
+        left_at STRING
+        """,
+        "campaign_membership_raw",
+    )
+
     return build_baseline_eligibility(
         weekly_df=weekly_df,
+        membership_df=membership_df,
         policy=policy,
         PERSONAL_ELIGIBILITY_SCHEMA=PERSONAL_ELIGIBILITY_SCHEMA,
         week_evaluation_time=week_evaluation_time,
         observation_context=observation_context,
-        evaluate_personal_eligibility=evaluate_personal_eligibility
+        evaluate_personal_eligibility=evaluate_personal_eligibility,
+        commute_scope_verified=COMMUTE_SCOPE_VERIFIED,
     )
 
 
