@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
 import pandas as pd
-from pyspark.sql import functions as F
+from pyspark.sql import DataFrame, SparkSession, functions as F
 
 BEHAVIOR_CHANGE_POLICY = {
     "policy_version": "behavior-change-policy-v1",
@@ -90,9 +90,12 @@ def _compute_rolling_for_user(pdf, before_weeks, after_weeks, minimum_delta, pol
     return pd.DataFrame(out_rows)
 
 
-def behavior_change():
-    weekly_gold = spark.read.table("weekly_gold")  # noqa: F821
+def build_behavior_change(weekly_gold: DataFrame) -> DataFrame:
+    """Build the observed weekly Behavior Change KPI from Weekly Gold.
 
+    This is an observational before/after KPI. It does not estimate a causal
+    effect of CANOPY interventions.
+    """
     policy = BEHAVIOR_CHANGE_POLICY
     before_weeks = policy["before_period_weeks"]
     after_weeks = policy["after_period_weeks"]
@@ -100,11 +103,34 @@ def behavior_change():
     policy_version = policy["policy_version"]
 
     metric_df = weekly_gold.select(
-        "user_id", "campaign_id", "week",
+        "user_id",
+        "campaign_id",
+        "week",
         F.col("total_kg_co2e").alias("metric_value"),
     )
 
     def _apply(pdf):
-        return _compute_rolling_for_user(pdf, before_weeks, after_weeks, minimum_delta, policy_version)
+        return _compute_rolling_for_user(
+            pdf,
+            before_weeks,
+            after_weeks,
+            minimum_delta,
+            policy_version,
+        )
 
-    return metric_df.groupBy("user_id", "campaign_id").applyInPandas(_apply, schema=RESULT_SCHEMA)
+    return (
+        metric_df
+        .groupBy("user_id", "campaign_id")
+        .applyInPandas(_apply, schema=RESULT_SCHEMA)
+    )
+
+
+def behavior_change() -> DataFrame:
+    """Backward-compatible standalone wrapper."""
+    spark = SparkSession.getActiveSession()
+    if spark is None:
+        spark = SparkSession.builder.getOrCreate()
+
+    return build_behavior_change(
+        spark.read.table("weekly_gold")
+    )
