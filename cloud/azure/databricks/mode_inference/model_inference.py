@@ -80,8 +80,8 @@ def _prediction_udf(model_uri: str, model_artifact_path: str) -> Any:
     cache_key = f"{model_uri}:{model_artifact_path}"
 
     result_schema = StructType([
-        StructField("predicted_class", LongType(), nullable=False),
-        StructField("predicted_at", TimestampType(), nullable=False),
+        StructField("predicted_class", LongType(), nullable=True),
+        StructField("predicted_at", TimestampType(), nullable=True),
     ])
 
     @pandas_udf(result_schema, PandasUDFType.SCALAR)
