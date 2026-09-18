@@ -27,6 +27,9 @@ class ProjectionTest(SparkTestCase):
         self.assertEqual(row.event_hub_partition, 3)
         self.assertEqual(row.event_hub_offset, 101)
         self.assertIsNotNone(row.event_hub_enqueued_at)
+        self.assertIsNotNone(row.bronze_ingested_at)
+        self.assertIsNotNone(row.parsed_at)
+        self.assertIsNotNone(row.validated_at)
 
     def test_quarantine_retains_body_all_reasons_and_provenance(self):
         payload = load_fixture("gps_v0_2_developer_valid.json")
