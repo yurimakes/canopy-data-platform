@@ -12,6 +12,13 @@ GOLD_REWARD_LEDGER_HISTORY_PATH = os.environ.get(
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_ledger_history/",
 )
 
+LEDGER_HISTORY_SCHEMA = (
+    "id string, reward_id string, adjusts_reward_id string, user_id string, "
+    "campaign_id string, week string, week_label string, label string, "
+    "points double, status string, occurred_at string, policy_version string"
+)
+LEDGER_HISTORY_STATUSES = ("paid", "adjusted")
+
 
 def _get_secret_or_env(scope, secret_key, env_var):
     try:
@@ -95,26 +102,122 @@ def create_adjustment(container, original_reward_id, user_id, campaign_id, week,
     return item
 
 
+def _ledger_history_frame(spark, records):
+    if records:
+        return spark.createDataFrame(records, schema=LEDGER_HISTORY_SCHEMA)
+    return spark.createDataFrame([], schema=LEDGER_HISTORY_SCHEMA)
+
+
 def write_ledger_history(spark, outcomes):
+    """Upsert paid reward outcomes without deleting existing adjustments."""
     records = [o["record"] for o in outcomes if o["status"] in ("created", "already_exists")]
     if not records:
         return 0
 
-    schema = (
-        "id string, reward_id string, user_id string, campaign_id string, week string, week_label string, "
-        "label string, points double, status string, occurred_at string, policy_version string"
-    )
-    df = spark.createDataFrame(records, schema=schema)
+    from delta.tables import DeltaTable
 
-    (
+    df = _ledger_history_frame(spark, records)
+    if DeltaTable.isDeltaTable(spark, GOLD_REWARD_LEDGER_HISTORY_PATH):
+        (
+            DeltaTable.forPath(spark, GOLD_REWARD_LEDGER_HISTORY_PATH)
+            .alias("target")
+            .merge(df.alias("source"), "target.reward_id = source.reward_id")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
+        )
+    else:
+        (
+            df.write.format("delta")
+            .mode("overwrite")
+            .partitionBy("campaign_id", "week_label")
+            .save(GOLD_REWARD_LEDGER_HISTORY_PATH)
+        )
+    return len(records)
+
+
+def read_ledger_partition(container, campaign_id, week):
+    """Read the authoritative paid/adjusted Reward Ledger partition from Cosmos."""
+    query = """
+        SELECT c.id, c.reward_id, c.adjusts_reward_id, c.user_id,
+               c.campaign_id, c.week, c.week_label, c.label, c.points,
+               c.status, c.occurred_at, c.policy_version
+        FROM c
+        WHERE c.campaign_id = @campaign_id
+          AND c.week_label = @week_label
+          AND (c.status = "paid" OR c.status = "adjusted")
+    """
+    parameters = [
+        {"name": "@campaign_id", "value": campaign_id},
+        {"name": "@week_label", "value": week},
+    ]
+    records = list(
+        container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True,
+        )
+    )
+
+    normalized = []
+    for item in records:
+        reward_id = item.get("reward_id") or item.get("id")
+        if not reward_id:
+            raise ValueError("Reward Ledger row missing reward_id")
+        if item.get("campaign_id") != campaign_id or item.get("week_label") != week:
+            raise ValueError("Reward Ledger row outside requested campaign/week")
+        if item.get("status") not in LEDGER_HISTORY_STATUSES:
+            raise ValueError("Reward Ledger row has unsupported status")
+        normalized.append(
+            {
+                "id": item.get("id") or reward_id,
+                "reward_id": reward_id,
+                "adjusts_reward_id": item.get("adjusts_reward_id"),
+                "user_id": item.get("user_id"),
+                "campaign_id": item.get("campaign_id"),
+                "week": item.get("week"),
+                "week_label": item.get("week_label"),
+                "label": item.get("label"),
+                "points": item.get("points"),
+                "status": item.get("status"),
+                "occurred_at": item.get("occurred_at"),
+                "policy_version": item.get("policy_version"),
+            }
+        )
+    return normalized
+
+
+def write_ledger_partition(spark, campaign_id, week, records):
+    """Idempotently replace one campaign/week Gold partition from the ledger source."""
+    from delta.tables import DeltaTable
+
+    for record in records:
+        if record.get("campaign_id") != campaign_id or record.get("week_label") != week:
+            raise ValueError("Reward Ledger history write contains a foreign partition")
+
+    df = _ledger_history_frame(spark, records)
+    predicate = (
+        "campaign_id = '" + campaign_id.replace("'", "''")
+        + "' AND week_label = '" + week.replace("'", "''") + "'"
+    )
+
+    writer = (
         df.write.format("delta")
-        .mode("overwrite")
-        .option("partitionOverwriteMode", "dynamic")
         .option("mergeSchema", "true")
         .partitionBy("campaign_id", "week_label")
-        .save(GOLD_REWARD_LEDGER_HISTORY_PATH)
     )
+    if DeltaTable.isDeltaTable(spark, GOLD_REWARD_LEDGER_HISTORY_PATH):
+        writer.mode("overwrite").option("replaceWhere", predicate).save(
+            GOLD_REWARD_LEDGER_HISTORY_PATH
+        )
+    else:
+        writer.mode("overwrite").save(GOLD_REWARD_LEDGER_HISTORY_PATH)
     return len(records)
+
+
+def sync_ledger_history_from_cosmos(spark, container, campaign_id, week):
+    records = read_ledger_partition(container, campaign_id, week)
+    return write_ledger_partition(spark, campaign_id, week, records)
 
 
 def run(campaign_id, week, reward_calc_path):
@@ -131,7 +234,12 @@ def run(campaign_id, week, reward_calc_path):
     container = _get_container()
     outcomes = process_reward_batch(container, result_rows)
 
-    history_count = write_ledger_history(spark, outcomes)
+    history_count = sync_ledger_history_from_cosmos(
+        spark,
+        container,
+        campaign_id,
+        week,
+    )
 
     created = sum(1 for o in outcomes if o["status"] == "created")
     existed = sum(1 for o in outcomes if o["status"] == "already_exists")
