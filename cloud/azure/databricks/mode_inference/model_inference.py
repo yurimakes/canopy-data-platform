@@ -58,5 +58,6 @@ def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
         F.lit(None).cast("double").alias("confidence"),
         F.lit(model_name).alias("model_name"),
         F.lit(model_version).cast("string").alias("model_version"),
+        F.col("features_processed_at"),
         F.current_timestamp().alias("predicted_at"),
     )
