@@ -1,7 +1,7 @@
 import type { GpsEvent } from './types';
 
 export type Place = { name:string; latitude:number; longitude:number; address?:string; id?:string };
-export type Profile = { id:string; nickname:string; email:string; role:'user'|'developer'; campaignCode:'TEST'; home:Place|null; work:Place|null };
+export type Profile = { id:string; nickname:string; email:string; role:'user'|'developer'; campaignCode:string; campaign_id?:string; home:Place|null; work:Place|null };
 export type RouteLeg = { mode:string; name:string; minutes:number; distance_m:number; points:Place[]; startName?:string; endName?:string };
 export type PlannedRoute = { id:string; provider:'tmap'; searchedAt:string; minutes:number; distance_m:number; fare:number|null; legs:RouteLeg[]; from:Place; to:Place };
 export const developerProfile:Profile={id:'local-developer',nickname:'개발자',email:'canopydev',role:'developer',campaignCode:'TEST',home:null,work:null};

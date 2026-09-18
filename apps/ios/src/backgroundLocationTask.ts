@@ -6,6 +6,7 @@ import type { LocationObject } from 'expo-location';
 import { Storage } from './storage';
 import { Uploader, type ApiConfig } from './upload';
 import { TripApi, type TripConfig } from './tripApi';
+import {loadSession,session} from './accountSession';
 
 export const LOCATION_TASK = 'canopy-gps-background-v1';
 let storage: Promise<Storage> | undefined;
@@ -25,10 +26,12 @@ export async function getUploader() {return uploader ??= new Uploader(await getS
 let tripApi: TripApi | undefined;
 export function tripConfig():TripConfig|null {
   const extra=Constants.expoConfig?.extra;
-  return extra?.tripApiUrl ? {url:extra.tripApiUrl,token:extra.tripAccessToken??'',
+  const saved=session();
+  const matches=saved?.api_url===extra?.tripApiUrl?.replace(/\/+$/,'');
+  return extra?.tripApiUrl ? {url:extra.tripApiUrl,token:matches?saved!.access_token:'',userId:matches?saved!.profile.id:undefined,
     functionKey:extra.tripFunctionKey||extra.gpsFunctionKey,allowLocalHttp:__DEV__ && extra.tripAllowLocalHttp===true}:null;
 }
-export async function getTripApi() {return tripApi ??= new TripApi(await getStorage(),tripConfig,Crypto.randomUUID);}
+export async function getTripApi() {await loadSession();return tripApi ??= new TripApi(await getStorage(),tripConfig,Crypto.randomUUID);}
 
 // Imported by index.ts before React mounts; works when iOS wakes the JS task alone.
 TaskManager.defineTask<{locations:LocationObject[]}>(LOCATION_TASK, async ({data,error}) => {

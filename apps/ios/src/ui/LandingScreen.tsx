@@ -32,7 +32,7 @@ export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error}
         {nickname&&onContinue&&<Button title={`${nickname}님으로 계속하기`} disabled={!ready} onPress={onContinue}/>}
         <Button title={nickname?'다른 계정으로 로그인':'로그인'} quiet={!!nickname} onPress={onLogin}/>
         <Button title="회원가입" quiet onPress={onSignup}/>
-        <Text style={[S.note,{fontSize:11,textAlign:'center',marginTop:8}]}>현재는 기기에 저장되는 테스트 프로필을 사용합니다.</Text>
+        <Text style={[S.note,{fontSize:11,textAlign:'center',marginTop:8}]}>나의 계정으로 여정과 캠페인을 이어가세요.</Text>
       </View>
     </ScrollView>
   </SafeAreaView>;

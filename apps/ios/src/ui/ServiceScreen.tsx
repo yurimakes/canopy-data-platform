@@ -15,7 +15,7 @@ export type ServiceProps=MeasurementProps&{profile:Profile;trips:Summary[];event
   onCollectionMode(mode:'user'|'developer'):void;onProfile(p:Profile):Promise<void>;onRoute(p:PlannedRoute|null):void;onSelect(id:string):void;preview?:boolean;baseline?:RemotePanel<BaselineView>;missions?:RemotePanel<MissionView>;ranking?:RemotePanel<RankingView>;rewards?:RemotePanel<RewardView>;onRefreshCommunity?:()=>void};
 type Tab='home'|'route'|'journey'|'history'|'profile'|'missions'|'ranking'|'result'|'rewards'|'preview'|'baseline'|'tripdetail'|'notifications';
 export function ServiceScreen(p:ServiceProps){
-  const [tab,setTab]=useState<Tab>(p.active?'journey':'home'),[tools,setTools]=useState(p.collectionMode==='developer'&&!!p.active),[stopOpen,setStopOpen]=useState(false),[edit,setEdit]=useState(false),[logout,setLogout]=useState(false);
+  const [tab,setTab]=useState<Tab>(p.active?'journey':'home'),[tools,setTools]=useState(p.collectionMode==='developer'),[stopOpen,setStopOpen]=useState(false),[edit,setEdit]=useState(false),[logout,setLogout]=useState(false);
   const [direction,setDirection]=useState<'outbound'|'return'>('outbound');
   const [draft,setDraft]=useState(p.profile),[saveError,setSaveError]=useState(''),[saving,setSaving]=useState(false);
   const wasActive=useRef(!!p.active);
@@ -98,7 +98,7 @@ export function ServiceScreen(p:ServiceProps){
 
         {([['이동 기록','history','time-outline'],['리워드 내역','rewards','gift-outline'],['나의 미션','missions','flag-outline'],['캠페인 랭킹','ranking','podium-outline']] as const).map(([label,target,icon])=><Pressable key={target} accessibilityRole="button" onPress={()=>setTab(target)} style={[S.between,{paddingVertical:14,borderBottomWidth:1,borderColor:C.line}]}><View style={S.row}><Icon name={icon}/><Text style={S.label}>{label}</Text></View><Icon name="chevron-forward" size={18}/></Pressable>)}
         {p.profile.role==='developer'&&<><Button title="개발자 GPS 수집 도구" quiet disabled={busy} onPress={()=>{p.onCollectionMode('developer');setTools(true);}}/><Button title="화면 상태 미리보기" quiet onPress={()=>setTab('preview')}/></>}
-        <Button title="로그아웃" quiet disabled={busy} onPress={()=>setLogout(true)}/><Note>프로필은 이 기기에만 저장됩니다. 측정 중에는 로그아웃할 수 없어요.</Note>
+        <Button title="로그아웃" quiet disabled={busy} onPress={()=>setLogout(true)}/><Note>프로필은 계정에 저장됩니다. 측정 중에는 로그아웃할 수 없어요.</Note>
       </>}
       </Fade>}
     </ScrollView>
