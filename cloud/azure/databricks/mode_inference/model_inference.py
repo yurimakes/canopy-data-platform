@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from .contracts import FEATURE_NAMES, MODE_BY_CLASS
@@ -10,9 +11,20 @@ from .contracts import FEATURE_NAMES, MODE_BY_CLASS
 _VERSION_URI = re.compile(r"^models:/([^@]+)/(\d+)$")
 _ALIAS_URI = re.compile(r"^models:/([^@]+)@([^/]+)$")
 
-# Python workers are reused across Arrow batches. Keep one loaded pyfunc model
-# per URI in each worker process instead of constructing an MLflow Spark UDF
-# environment for every streaming query.
+_MODEL_ARTIFACT = (
+    Path(__file__).resolve().parent
+    / "artifacts"
+    / "transition_lgbm_v1"
+    / "model.skops"
+)
+
+_SKOPS_TRUSTED_TYPES = [
+    "collections.OrderedDict",
+    "lightgbm.sklearn.LGBMClassifier",
+    "lightgbm.sklearn.LGBMRegressor",
+    "lightgbm.basic.Booster",
+]
+
 _MODEL_CACHE: dict[str, Any] = {}
 
 
@@ -36,8 +48,23 @@ def predict_pandas(model: Any, frame: Any) -> Any:
     return model.predict(frame.loc[:, list(FEATURE_NAMES)])
 
 
+def _load_driver_model() -> Any:
+    """Load the bundled native LGBMClassifier without MLflow runtime I/O."""
+    if not _MODEL_ARTIFACT.exists():
+        raise FileNotFoundError(
+            f"bundled model artifact is missing: {_MODEL_ARTIFACT}"
+        )
+
+    import skops.io as sio
+
+    return sio.load(
+        _MODEL_ARTIFACT,
+        trusted=_SKOPS_TRUSTED_TYPES,
+    )
+
+
 def _load_worker_model(cache_key: str, model_bytes: bytes) -> Any:
-    """Deserialize an already-resolved model once per Python worker."""
+    """Deserialize the bundled native estimator once per Python worker."""
     model = _MODEL_CACHE.get(cache_key)
     if model is None:
         import cloudpickle
@@ -48,18 +75,15 @@ def _load_worker_model(cache_key: str, model_bytes: bytes) -> Any:
 
 
 def _prediction_udf(model_uri: str) -> Any:
-    """Build a scalar Pandas UDF with driver-resolved model bytes."""
+    """Build a scalar Pandas UDF from the bundled native LightGBM model."""
     import cloudpickle
-    import mlflow.lightgbm
     import pandas as pd
     from pyspark.sql.functions import PandasUDFType, pandas_udf
     from pyspark.sql.types import LongType, StructField, StructType, TimestampType
 
-    # Resolve the Unity Catalog model on the pipeline driver, where the
-    # Databricks registry/artifact context exists. Workers never call models:/.
-    driver_model = mlflow.lightgbm.load_model(model_uri)
+    driver_model = _load_driver_model()
     model_bytes = cloudpickle.dumps(driver_model)
-    cache_key = model_uri
+    cache_key = f"{model_uri}:{_MODEL_ARTIFACT.name}"
 
     result_schema = StructType([
         StructField("predicted_class", LongType(), nullable=False),
@@ -72,8 +96,6 @@ def _prediction_udf(model_uri: str) -> Any:
         model = _load_worker_model(cache_key, model_bytes)
         values = predict_pandas(model, ordered)
 
-        # Wall-clock completion time of this Arrow prediction batch.
-        # Session timezone is UTC, so return UTC as timezone-naive Spark timestamp.
         completed_at = pd.Timestamp.now(tz="UTC").tz_localize(None)
 
         return pd.DataFrame(
@@ -91,7 +113,7 @@ def _prediction_udf(model_uri: str) -> Any:
 
 
 def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
-    """Apply the registered model in-process on Python workers."""
+    """Apply the bundled model in-process on Python workers."""
     del spark
 
     from pyspark.sql import functions as F
