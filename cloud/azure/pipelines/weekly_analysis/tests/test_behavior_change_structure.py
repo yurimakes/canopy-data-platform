@@ -82,7 +82,12 @@ class BehaviorChangeStructureTest(unittest.TestCase):
 
     def test_behavior_change_reads_weekly_gold(self):
         function = find_function(self.pipeline_tree, "behavior_change")
-        self.assertIn('"weekly_gold"', ast.unparse(function))
+        string_constants = {
+            node.value
+            for node in ast.walk(function)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        }
+        self.assertIn("weekly_gold", string_constants)
 
 
 if __name__ == "__main__":

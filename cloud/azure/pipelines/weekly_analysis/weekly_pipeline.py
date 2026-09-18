@@ -14,6 +14,7 @@
 import sys
 import os
 import pandas as pd
+import yaml
 from pyspark import pipelines as dp
 from pyspark.sql.functions import pandas_udf
 from pyspark.sql import SparkSession, Window, functions as F, types as T
@@ -32,6 +33,7 @@ for module_path in (weekly_analysis_path, databricks_module_path):
 # 파이프라인 실행에 필요한 함수 및 모듈 임포트
 from build_personal_baseline import load_policy as load_baseline_policy
 from build_behavior_change import build_behavior_change as build_behavior_change_df
+from build_ranking import build_ranking as build_ranking_df
 
 from helpers.spark_baseline import (
     build_personal_baseline as build_personal_baseline_df,
@@ -61,9 +63,12 @@ BASELINE_POLICY = load_baseline_policy(
 )
 BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
 
-# 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산
+with open(os.path.join(databricks_module_path, "ranking_policy.yaml"), "r", encoding="utf-8") as _ranking_policy_file:
+    RANKING_POLICY = yaml.safe_load(_ranking_policy_file)
+
+# 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산 목적인데 현재는 test를 위해서 아래값으로. (변경필요할시 말해주세요 [민철 수정])
 COMMUTE_SCOPE_VERIFIED = (
-    os.environ.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED") == "true"
+    spark.conf.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED", "false") == "true"
 )
 
 # 기존 계약: shared/schemas/baseline/weekly_user_gold.schema.json
@@ -423,11 +428,74 @@ def next_week_missions():
     return empty_result(MISSION_BUNDLE_SCHEMA, "weekly_user_profile")
 
 
-@dp.materialized_view(schema=RANKING_DRAFT_SCHEMA, comment="계산 미연결. 랭킹 컬럼 초안, 담당자 확정 필요")
+@dp.materialized_view(schema=RANKING_DRAFT_SCHEMA, comment="주간 Reward Ledger 기반 개인/부서 Ranking")
 def ranking():
-    # 실제 보상 지급 이력과 소속 정보 연결 → 사용자 및 부서별 랭킹 반환. 초기 연결선 조정 필요
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(RANKING_DRAFT_SCHEMA, "weekly_user_profile")
+    reward_ledger_path = os.environ.get(
+        "CANOPY_GOLD_REWARD_LEDGER_HISTORY_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_ledger_history/",
+    )
+    membership_path = os.environ.get(
+        "CANOPY_ADLS_CAMPAIGN_MEMBERSHIP_RAW_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/curated/campaign_membership_raw/",
+    )
+
+    reward_ledger_df = _read_optional_delta(
+        reward_ledger_path,
+        """
+        reward_id STRING,
+        user_id STRING,
+        campaign_id STRING,
+        week STRING,
+        week_label STRING,
+        points DOUBLE,
+        status STRING
+        """,
+        "reward_ledger_history",
+    )
+
+    membership_df = _read_optional_delta(
+        membership_path,
+        """
+        user_id STRING,
+        campaign_id STRING,
+        department_id STRING,
+        joined_at STRING,
+        left_at STRING
+        """,
+        "campaign_membership_raw",
+    )
+
+    personal_result, department_result = build_ranking_df(
+        reward_ledger_df,
+        membership_df,
+        RANKING_POLICY,
+    )
+
+    personal = personal_result.select(
+        "campaign_id",
+        "week",
+        F.lit("personal").alias("ranking_type"),
+        F.col("user_id").cast("string").alias("user_id"),
+        F.lit(None).cast("string").alias("department_id"),
+        F.col("score").cast("double").alias("reward_points"),
+        F.col("rank").cast("long").alias("rank"),
+        F.col("policy_version").cast("string").alias("policy_version"),
+        F.col("generated_at").cast("timestamp").alias("generated_at"),
+    )
+
+    department = department_result.select(
+        "campaign_id",
+        "week",
+        F.lit("department").alias("ranking_type"),
+        F.lit(None).cast("string").alias("user_id"),
+        F.col("department_id").cast("string").alias("department_id"),
+        F.col("score").cast("double").alias("reward_points"),
+        F.col("rank").cast("long").alias("rank"),
+        F.col("policy_version").cast("string").alias("policy_version"),
+        F.col("generated_at").cast("timestamp").alias("generated_at"),
+    )
+
+    return personal.unionByName(department)
 
 
 def _read_optional_delta(path, schema, input_name):

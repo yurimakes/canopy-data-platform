@@ -1,14 +1,15 @@
 policy_version: "ranking-policy-v1"
 
 score_source:
-  metric: paid_reward_points
+  metric: weekly_reward_points
   source_dataset: reward_ledger_history
-  status_filter: paid
-  note: "지급 확정(paid)된 points만 점수로 씀. calculate_reward.py의 계산 예정 points는 지급 완료가 아니므로 절대 여기에 안 씀."
+  status_filter: [paid, adjusted]
+  note: "해당 주의 지급 확정(paid) 및 승인된 조정(adjusted) points를 합산한다. 계산 예정 points는 포함하지 않는다."
 
 aggregation_period:
-  scope: campaign_to_date
-  note: "누적 지급 총액 기준. 특정 몇 주만 보는 게 아니라 캠페인 시작부터 지금까지 전부."
+  scope: weekly
+  key: [campaign_id, week]
+  note: "캠페인·리워드·미션 통계와 동일하게 주 단위로 집계한다. 각 주 Snapshot에는 해당 주에 누적된 points만 반영하고 다음 주는 새 주차로 집계한다."
 
 snapshot_vs_live:
   weekly_snapshot: "매주 확정 시점에 한 번 생성, 이후 변경 안 됨"
