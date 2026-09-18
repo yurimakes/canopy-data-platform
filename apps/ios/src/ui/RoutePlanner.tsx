@@ -3,10 +3,11 @@ import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
+import {session} from '../accountSession';
 import {type Place,type Profile,type PlannedRoute,searchRoutes,searchPlaces,routeApiUrl,km,validPlace} from '../service';
 import {Button,Card,Field,Icon,Note,S,C} from './theme';
 import JourneyMap from './JourneyMap';
-function searchConfig(){const extra=Constants.expoConfig?.extra??{};const token=extra.tripAccessToken,key=extra.tripFunctionKey||extra.gpsFunctionKey;return {url:routeApiUrl(extra),headers:{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})} as Record<string,string>};}
+function searchConfig(){const extra=Constants.expoConfig?.extra??{},saved=session();const token=saved?.api_url===extra.tripApiUrl?.replace(/\/+$/,'')?saved?.access_token:undefined,key=extra.tripFunctionKey||extra.gpsFunctionKey;return {url:routeApiUrl(extra),headers:{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})} as Record<string,string>};}
 export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;onPick(p:Place):void}) {
   const [open,setOpen]=useState(false),[query,setQuery]=useState(''),[results,setResults]=useState<Place[]>([]),[selected,setSelected]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[searched,setSearched]=useState(false);
   const requestId=useRef(0);

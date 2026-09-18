@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://canopy.local/schemas/user.schema.json",
   "title": "Canopy user profile",
-  "description": "canopy-db/users, partition /user_id. id equals user_id. One current campaign per user. Registration with a campaign sets created_at and campaign_joined_at to the same server timestamp. Preserve both timestamps on retries and later Trips. Eligibility separately checks observation duration and minimum Trip count. Never infer participation from GPS or accept client-supplied dates. Authentication credentials belong to the authentication provider.",
+  "description": "canopy-db/users, partition /user_id. id equals user_id. One current campaign per user. Registration with a campaign sets created_at and campaign_joined_at to the same server timestamp. Preserve both timestamps on retries and later Trips. Eligibility separately checks observation duration and minimum Trip count. Never infer participation from GPS or accept client-supplied dates. Server account credentials use salted PBKDF2-HMAC-SHA256 with 600000 iterations. Sessions store token digests only. Never include credentials, sessions or login_failures in client responses or analytics exports. Existing test users without credentials remain unchanged.",
   "type": "object",
   "required": [
     "id",
@@ -60,6 +60,71 @@
         "string",
         "null"
       ]
+    },
+    "email": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "login_name": {
+      "type": "string"
+    },
+    "role": {
+      "enum": [
+        "user",
+        "developer"
+      ]
+    },
+    "account_disabled": {
+      "type": "boolean"
+    },
+    "campaign_code": {
+      "type": "string"
+    },
+    "home": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "work": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "credentials": {
+      "type": "object",
+      "writeOnly": true,
+      "required": [
+        "algorithm",
+        "iterations",
+        "salt",
+        "hash"
+      ],
+      "properties": {
+        "algorithm": {
+          "const": "pbkdf2_sha256"
+        },
+        "iterations": {
+          "const": 600000
+        },
+        "salt": {
+          "type": "string"
+        },
+        "hash": {
+          "type": "string"
+        }
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "writeOnly": true
+    },
+    "login_failures": {
+      "type": "array",
+      "writeOnly": true
     }
   },
   "additionalProperties": true,

@@ -26,8 +26,8 @@ export type ServerTrip = {
   segments:FinalSegment[];original_segments?:FinalSegment[];confirmed_segments?:FinalSegment[];
   confirmation_status?:'pending'|'confirmed';revision?:number;confirmed_at?:string;confirmed_trip?:ConfirmedTrip;
 };
-export type TripConfig = {url:string;token:string;functionKey?:string;allowLocalHttp?:boolean};
-type StartIntent = {request_id:string;device_id:string;api_url:string};
+export type TripConfig = {url:string;token:string;userId?:string;functionKey?:string;allowLocalHttp?:boolean};
+type StartIntent = {request_id:string;device_id:string;api_url:string;user_id?:string};
 type Sync = {result?:ServerTrip;error?:string;retry_at?:number;attempts?:number;retry_request_id?:string;confirmation?:ConfirmIntent;legacy_confirmation?:ConfirmIntent;feedback?:FeedbackIntent;feedback_draft?:FeedbackInput};
 class TripHttpError extends Error {
   constructor(public status:number,public code:string,message:string){super(`Trip API ${status}: ${message}`);}
@@ -69,12 +69,14 @@ export class TripApi {
     const config=this.configuration();
     let intent=await this.db.syncValue<StartIntent>('start');
     if(!intent) {
-      intent={request_id:this.uuid(),device_id:identity.device_id,api_url:config.url};
+      intent={request_id:this.uuid(),device_id:identity.device_id,api_url:config.url,user_id:config.userId};
       await this.db.saveSync('start',intent); // Persist BEFORE HTTP; reuse after a timeout/restart.
     }
     if(intent.device_id!==identity.device_id) throw new Error('대기 중인 시작 요청의 기기가 다릅니다.');
+    if(config.userId&&intent.user_id!==config.userId)throw Error('이전 계정의 시작 요청이 남아 있습니다. 해당 계정으로 로그인해주세요.');
     const result=await this.call('/trips/start','POST',{request_id:intent.request_id,device_id:intent.device_id},intent.api_url);
     if(result.device_id!==intent.device_id) throw new Error('시작 응답의 기기 ID가 일치하지 않습니다.');
+    if(config.userId&&result.user_id!==config.userId)throw Error('로그인한 계정과 여정 소유자가 다릅니다.');
     if(result.status!=='collecting') throw new Error('이 시작 요청의 Trip은 이미 종료됐습니다. 저장된 Trip 상태를 확인하세요.');
     // Storage clears this start intent atomically when the local Trip is saved.
     return {trip_id:result.trip_id,user_id:result.user_id,started_at:result.started_at,
@@ -144,6 +146,8 @@ export class TripApi {
     if(this.busy)return;this.busy=true;this.error='';
     try {
       for(const trip of await this.db.list()) {
+        const config=this.config();
+        if(!config?.token || (config.userId&&trip.user_id!==config.userId))continue;
         if(!trip.server || trip.status==='recording')continue;
         const state=await this.result(trip.trip_id) ?? {};
         if(this.confirming.has(trip.trip_id))continue;

@@ -77,7 +77,7 @@ class TripService:
             raise ApiError(403, "forbidden", "cannot access another user's trip")
         return item
 
-    def start(self, user_id: str, body: dict) -> tuple[dict, bool]:
+    def start(self, user_id: str, body: dict, *, campaign_id=None) -> tuple[dict, bool]:
         request_id, device_id = required(body, "request_id"), required(body, "device_id")
         if "user_id" in body and body["user_id"] != user_id:
             raise ApiError(403, "forbidden", "user_id differs from authenticated user")
@@ -86,7 +86,7 @@ class TripService:
         fingerprint = hashlib.sha256(device_id.encode()).hexdigest()
         now = iso(self.clock())
         item = {"id": trip_id, "type": "trip", "trip_id": trip_id, "user_id": user_id, "device_id": device_id,
-                "campaign_id": self.campaign_id, "planned_route": None,
+                "campaign_id": campaign_id or self.campaign_id, "planned_route": None,
                 "start_request_id": request_id, "start_fingerprint": fingerprint,
                 "status": "collecting", "started_at": now, "ended_at": None, "created_at": now, "updated_at": now,
                 "segments": [], "model_version": None, "failed_step": None, "error_message": None,

@@ -2,11 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Network from 'expo-network';
-import { getStorage, getUploader, getTripApi, tripConfig } from './src/backgroundLocationTask';
-import {registerServerUser} from './src/userRegistration';
+import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
 import { AuthScreen } from './src/ui/AuthScreen';
 import { ServiceScreen } from './src/ui/ServiceScreen';
-import { updateProfile } from './src/profileStore';
+import { updateProfile,restoreProfile,logoutProfile } from './src/profileStore';
 import type { Profile, PlannedRoute } from './src/service';
 import { Collector } from './src/collector';
 import { Storage } from './src/storage';
@@ -50,7 +49,17 @@ export default function App() {
   const [evidence,setEvidence]=useState<Awaited<ReturnType<Storage['deliveryEvidence']>>>();
   useEffect(() => {
     let alive=true;
-    void initialize().then(async s=>{ const saved=await s.db.syncValue<Profile>('ui:session'); if(!alive)return; setService(s); if(s.collector.trip){const meta=await s.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+s.collector.trip.trip_id);if(alive)setRoute(meta?.route??null);} if(saved){setProfile(saved);if(s.collector.trip?.status==='recording'){setScreen(s.collector.collectionMode);setEntered(true);}else{s.collector.selectCollectionMode('user');setScreen('user');}} s.collector.changed=()=>redraw(n=>n+1); }).catch(e=>setError(String(e)));
+    void initialize().then(async s=>{
+      if(!alive)return;setService(s);s.collector.changed=()=>redraw(n=>n+1);
+      const saved=await restoreProfile();if(!alive)return;
+      if(saved){
+        setProfile(saved);
+        const active=s.collector.trip;
+        if(active?.status==='recording'&&active.user_id===saved.id){setScreen(s.collector.collectionMode);setEntered(true);}
+        else {const mode=saved.role==='developer'?'developer':'user';s.collector.selectCollectionMode(mode);setScreen(mode);}
+        if(active?.user_id===saved.id){const meta=await s.db.syncValue<{route:PlannedRoute|null}>('ui:trip:'+active.trip_id);if(alive)setRoute(meta?.route??null);}
+      }
+    }).catch(e=>setError(String(e)));
     const timer=setInterval(()=>setNow(Date.now()),1000);
     const sub=AppState.addEventListener('change',state=>{void runtime?.then(s=>s.collector.appStateChanged(state));});
     return ()=>{alive=false;clearInterval(timer);sub.remove();void runtime?.then(s=>{s.collector.changed=()=>{};void s.collector.interrupt('화면 종료');});};
@@ -65,10 +74,11 @@ export default function App() {
         await service!.collector.refresh();
         const uploader=await getUploader(); await uploader.tick();
         const tripApi=await getTripApi(); await tripApi.tick(wake);
-        const id=selectedTrip ?? service!.collector.trip?.trip_id ?? (await service!.db.list())[0]?.trip_id;
-        const summary=id ? await service!.db.summary(id) : undefined;
         const list=await service!.db.list();
-        const owned=[];for(const t of list){const owner=await service!.db.syncValue<{profile_id:string}>('ui:trip:'+t.trip_id);if(owner?.profile_id===profile?.id)owned.push(t);}
+        const owned=list.filter(t=>t.user_id===profile?.id);
+        const activeId=service!.collector.trip?.user_id===profile?.id?service!.collector.trip?.trip_id:undefined;
+        const id=selectedTrip ?? activeId ?? owned[0]?.trip_id;
+        const summary=id ? await service!.db.summary(id) : undefined;
         if(trackRef.current.id!==(id??''))trackRef.current={id:id??'',events:[]};
         const previous=trackRef.current.events;
         const extra=id?await service!.db.eventPage(id,previous.at(-1)?.sequence??0,2000):[];
@@ -88,8 +98,10 @@ export default function App() {
     return ()=>{alive=false;clearInterval(timer);app.remove();network.remove();};
   },[service,selectedTrip,profile?.id]);
   useEffect(()=>{if(service && c?.phase!=='recording' && c?.phase!=='starting') void service.db.list().then(setTrips).catch(e=>setError(String(e)));},[service,c?.phase]);
-  const trip=c?.trip; const seconds=trip ? Math.max(0,Math.floor(((trip.ended_at ? Date.parse(trip.ended_at) : trip.status==='recording' ? now : Date.parse(c?.latest?.received_at ?? trip.started_at))-Date.parse(trip.started_at))/1000)) : 0;
-  const resultMatches=(profile?.role==='developer'||ownedTrips.some(t=>t.trip_id===resultTrip?.trip_id)) && (selectedTrip?selectedTrip===resultTrip?.trip_id:(!trip || trip.trip_id===resultTrip?.trip_id)) && (resultTrip?.collection_mode??'developer')===screen;
+  const ownsCurrent=!!profile&&c?.trip?.user_id===profile.id;
+  const latest=ownsCurrent?c?.latest:undefined;
+  const trip=ownsCurrent?c?.trip:undefined; const seconds=trip ? Math.max(0,Math.floor(((trip.ended_at ? Date.parse(trip.ended_at) : trip.status==='recording' ? now : Date.parse(c?.latest?.received_at ?? trip.started_at))-Date.parse(trip.started_at))/1000)) : 0;
+  const resultMatches=ownedTrips.some(t=>t.trip_id===resultTrip?.trip_id) && (selectedTrip?selectedTrip===resultTrip?.trip_id:(!trip || trip.trip_id===resultTrip?.trip_id)) && (resultTrip?.collection_mode??'developer')===screen;
   const duration=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
   async function share(id:string) {
     if(!service||sharing)return;setSharing(true);setError('');
@@ -97,7 +109,7 @@ export default function App() {
   }
   function chooseExport(offset=0) {
     // A native selection dialog keeps older recordings accessible without another page.
-    const saved=trips.filter(t=>t.status!=='recording');
+    const saved=ownedTrips.filter(t=>t.status!=='recording');
     Alert.alert('GPS JSONL 내보내기','저장된 측정을 선택하세요.',[
       ...saved.slice(offset,offset+5).map(t=>({text:new Date(t.started_at).toLocaleString('ko-KR')+' / '+t.gps_count+'개',onPress:()=>void share(t.trip_id)})),
       ...(saved.length>offset+5 ? [{text:'이전 기록 더 보기',onPress:()=>chooseExport(offset+5)}] : []),
@@ -105,7 +117,7 @@ export default function App() {
     ]);
   }
   async function shareEvent() {
-    const event=(resultMatches?evidence?.sent:null) ?? c?.latest;
+    const event=(resultMatches?evidence?.sent:null) ?? latest;
     if(!event || sharing)return;
     setSharing(true);
     try {
@@ -136,7 +148,7 @@ export default function App() {
     }
   }
   function history(offset=0) {
-    const saved=trips.filter(t=>t.server&&t.status!=='recording'&&(t.collection_mode??'developer')===screen);
+    const saved=ownedTrips.filter(t=>t.server&&t.status!=='recording'&&(t.collection_mode??'developer')===screen);
     Alert.alert('이전 이동 결과',saved.length?'이동을 선택하면 서버에서 최신 결과를 조회합니다.':'저장된 이동이 없습니다.',[
       ...saved.slice(offset,offset+5).map(t=>({text:new Date(t.started_at).toLocaleString('ko-KR'),onPress:()=>{
         setSelectedTrip(t.trip_id);setServerTrip(undefined);setFeedbackPending(undefined);setTripError('');
@@ -147,12 +159,15 @@ export default function App() {
   }
   async function enter(p:Profile) {
     if(!service)return;
-    if(p.role!=='developer')await registerServerUser(tripConfig(),p.nickname,p.campaignCode);
+    const verified=await restoreProfile();
+    if(!verified||verified.id!==p.id)throw Error('다시 로그인해주세요.');
+    p=verified;
+    if(c?.trip?.status==='recording'&&c.trip.user_id!==p.id)throw Error('측정 중인 계정으로 먼저 로그인해주세요.');
     await service.db.saveSync('ui:session',p);setProfile(p);
-    if(c?.trip?.status!=='recording')c?.selectCollectionMode('user');
+    if(c?.trip?.status!=='recording')c?.selectCollectionMode(p.role==='developer'?'developer':'user');
     setError('');setScreen(c?.collectionMode??'user');setEntered(true);
   }
-  async function changeProfile(p:Profile){await updateProfile(p);await service?.db.saveSync('ui:session',p);setProfile(p);}
+  async function changeProfile(p:Profile){const saved=await updateProfile(p);await service?.db.saveSync('ui:session',saved);setProfile(saved);}
   async function startJourney(){
     if(!service||!c||!profile||['starting','recording','stopping'].includes(c.phase)||c.trip?.status==='recording')return;
     setError('');setTripError('');setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
@@ -167,22 +182,22 @@ export default function App() {
   }
   if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile)void enter(profile).catch(e=>setError(String(e)));}}
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
-  return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen
+  return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen key={profile.id}
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
     trips={ownedTrips} onSelect={select}
-    onCollectionMode={mode=>{c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}
-    collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))void service?.db.saveSync('ui:session',null).then(()=>{setProfile(null);setScreen(null);setEntered(false);setSelectedTrip(undefined);setRoute(null);});}}
-    ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={c?.count??0} duration={duration}
-    accuracy={c?.latest?.accuracy??null} latestLabel={c?.latest?.label} tripId={trip?.trip_id}
+    onCollectionMode={mode=>{if(mode==='developer'&&profile.role!=='developer')return;c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}
+    collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))void logoutProfile().then(()=>service?.db.saveSync('ui:session',null)).then(()=>{setProfile(null);setScreen(null);setEntered(false);setSelectedTrip(undefined);setRoute(null);setEvents([]);setOwnedTrips([]);}).catch(e=>setError(String(e))); }}
+    ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={ownsCurrent?c?.count??0:0} duration={duration}
+    accuracy={latest?.accuracy??null} latestLabel={latest?.label} tripId={trip?.trip_id}
     error={error||c?.error||''} onMode={mode=>{void c?.selectMode(mode).catch(e=>setError(String(e)));}} onStart={()=>{void startJourney().catch(e=>setError(String(e)));}}
-    onStop={()=>{void c?.stop().catch(e=>setError(String(e)));}} canExport={trips.some(t=>t.status!=='recording')}
+    onStop={()=>{void c?.stop().catch(e=>setError(String(e)));}} canExport={ownedTrips.some(t=>t.status!=='recording')}
     sharing={sharing} onExport={()=>chooseExport()} active={trip?.status==='recording'} backgroundRunning={c?.backgroundRunning}
-    lastReceived={c?.lastReceived} sequence={c?.latest?.sequence} pending={resultMatches?delivery?.pending:undefined} lastSuccess={resultMatches?delivery?.last_success:undefined}
+    lastReceived={ownsCurrent?c?.lastReceived:undefined} sequence={latest?.sequence} pending={resultMatches?delivery?.pending:undefined} lastSuccess={resultMatches?delivery?.last_success:undefined}
     uploadError={uploadError} onResume={()=>{void c?.resume();}} onSettings={()=>{void Linking.openSettings();}}
-    foregroundOnly={foregroundOnly} eventId={c?.latest?.event_id} eventTime={c?.latest?.event_time}
+    foregroundOnly={foregroundOnly} eventId={latest?.event_id} eventTime={latest?.event_time}
     confirmedEvent={resultMatches?evidence?.sent??undefined:undefined} retryCount={resultMatches?evidence?.head?.retry_count:undefined}
     resultTrip={resultMatches?resultTrip:undefined} sent={delivery?.sent} blocked={delivery?.blocked} onShareCheck={()=>{void shareCheck();}}
-    canShareEvent={!!((resultMatches&&evidence?.sent)||c?.latest)} onShareEvent={()=>{void shareEvent();}}
+    canShareEvent={!!((resultMatches&&evidence?.sent)||latest)} onShareEvent={()=>{void shareEvent();}}
     serverTrip={resultMatches && serverTrip?.trip_id===resultTrip?.trip_id?serverTrip:undefined} tripError={tripError}
     feedbackPending={feedbackPending} onFeedback={feedback} onHistory={()=>history()}
     onRetryTrip={()=>{if(resultTrip)void getTripApi().then(api=>api.retry(resultTrip.trip_id)).catch(e=>setError(String(e)));}}

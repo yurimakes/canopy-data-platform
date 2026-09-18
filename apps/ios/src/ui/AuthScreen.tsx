@@ -16,11 +16,11 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
     if(page==='signup'&&!agreed)throw Error('프로필 저장 안내를 확인해주세요.');
     if(page==='signup'&&step===0){
       if(!nickname.trim()||!/^\S+@\S+\.\S+$/.test(email.trim()))throw Error('이름과 이메일을 확인해주세요.');
-      if(password.length<8)throw Error('비밀번호를 8자 이상 입력해주세요.');
-      if(code.trim().toUpperCase()!=='TEST')throw Error('현재는 TEST 캠페인 코드로 참여할 수 있어요.');
+      if(password.length<12)throw Error('비밀번호를 12자 이상 입력해주세요.');
+      if(!code.trim())throw Error('캠페인 코드를 입력해주세요.');
       setStep(1);return;
     }
-    const result=page==='signup'?await registerProfile({id:Crypto.randomUUID(),nickname:nickname.trim(),email:email.trim().toLowerCase(),role:'user',campaignCode:'TEST',home,work},password,code):await loginProfile(email.trim(),password);
+    const result=page==='signup'?await registerProfile({id:Crypto.randomUUID(),nickname:nickname.trim(),email:email.trim().toLowerCase(),role:'user',campaignCode:code.trim().toUpperCase(),home,work},password,code):await loginProfile(email.trim(),password);
     onEnter(result);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   function navigate(p:typeof page){setPage(p);setStep(0);setError('');setPassword('');}
@@ -32,7 +32,7 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
       {page==='signup'&&step===1?<>
         <Text style={S.pill}>2 / 2  출퇴근 장소</Text>
         <Text style={S.title}>매일의 출발과{ '\n'}도착을 알려주세요.</Text>
-        <Note>저장한 장소로 출퇴근 경로를 빠르게 찾을 수 있어요. 나중에 설정하거나 다른 목적지로 이동해도 괜찮아요.</Note>
+        <Note>현재 위치를 지정하거나 나중에 설정할 수 있어요. 장소명 검색은 가입 후 마이페이지에서 이용해주세요.</Note>
         <PlacePicker title="집" value={home} onPick={setHome}/><PlacePicker title="직장" value={work} onPick={setWork}/>
         <Note>출근은 집 → 직장, 퇴근은 직장 → 집으로 안내합니다. 장소를 입력해도 이동이 자동으로 시작되지는 않아요.</Note>
         {!!(error||runtimeError)&&<Note error>{error||runtimeError}</Note>}
@@ -44,15 +44,15 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
         <Note>{page==='signup'?'프로필을 만들고 TEST 캠페인에 참여하세요.':'나의 일상 속 초록빛 여정을 이어가세요.'}</Note>
         {page==='signup'&&<Field label="이름 또는 닉네임" value={nickname} onChangeText={setNickname} placeholder="어떻게 불러드릴까요?" maxLength={30}/>}
         <Field label={page==='login'?'이메일 또는 개발자 ID':'이메일'} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="canopy@example.com" maxLength={120}/>
-        <Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder={page==='signup'?'8자 이상 입력':'비밀번호 입력'} autoCapitalize="none" maxLength={128}/>
+        <Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder={page==='signup'?'12자 이상 입력':'비밀번호 입력'} autoCapitalize="none" maxLength={128}/>
         <Pressable accessibilityRole="button" onPress={()=>setVisible(!visible)}><Text style={S.link}>{visible?'비밀번호 가리기':'비밀번호 보기'}</Text></Pressable>
         {page==='signup'&&<><Field label="캠페인 코드" value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="TEST" maxLength={20}/><Note>집과 직장 위치는 다음 화면에서 설정할 수 있어요.</Note>
-          <Pressable accessibilityRole="checkbox" aria-checked={agreed} accessibilityState={{checked:agreed}} onPress={()=>setAgreed(!agreed)} style={S.row}><Icon name={agreed?'checkbox':'square-outline'}/><Text style={[S.note,{flex:1}]}>닉네임과 캠페인 참여정보가 서버에 저장되는 테스트 버전임을 확인했습니다.</Text></Pressable></>}
+          <Pressable accessibilityRole="checkbox" aria-checked={agreed} accessibilityState={{checked:agreed}} onPress={()=>setAgreed(!agreed)} style={S.row}><Icon name={agreed?'checkbox':'square-outline'}/><Text style={[S.note,{flex:1}]}>계정, 캠페인 참여정보와 설정한 출퇴근 장소의 서버 저장에 동의합니다.</Text></Pressable></>}
         {!!(error||runtimeError)&&<Note error>{error||runtimeError}</Note>}
         <Button title={page==='signup'?'다음: 출퇴근 장소':'로그인'} busy={busy} disabled={!ready} onPress={()=>void submit()}/>
         <Button quiet title={page==='signup'?'이미 계정이 있어요':'처음이에요. 가입하기'} onPress={()=>navigate(page==='signup'?'login':'signup')}/>
       </>}
-      <Note>아이폰 가입 시 닉네임과 참여일은 서버에 저장됩니다. 이메일, 비밀번호와 출퇴근 장소는 기기에 저장됩니다. 현재 서버 연결은 테스트 인증이며 개인별 로그인 인증은 추후 연결됩니다.</Note>
+      <Note>가입한 계정으로 다른 기기에서도 로그인할 수 있습니다. 비밀번호는 원문으로 저장하지 않습니다.</Note>
       </Fade>
     </ScrollView></KeyboardAvoidingView></SafeAreaView>;
 }

@@ -8,7 +8,6 @@ module.exports = ({config}) => ({
     gpsApiUrl: preview ? '' : process.env.CANOPY_GPS_API_URL || '',
     gpsFunctionKey: preview ? '' : process.env.CANOPY_GPS_FUNCTION_KEY || '',
     tripApiUrl: preview ? '' : process.env.CANOPY_TRIP_API_URL || '',
-    tripAccessToken: preview ? '' : process.env.CANOPY_TRIP_ACCESS_TOKEN || '',
     tripFunctionKey: preview ? '' : process.env.CANOPY_TRIP_FUNCTION_KEY || '',
     tripAllowLocalHttp: process.env.CANOPY_TRIP_ALLOW_LOCAL_HTTP === 'true',
   },

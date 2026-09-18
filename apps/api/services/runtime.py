@@ -16,6 +16,12 @@ def local_mode():
 
 
 @lru_cache
+def accounts():
+    from .accounts import Accounts, CampaignRegistry
+    return Accounts(user_registration().container, CampaignRegistry.from_env())
+
+
+@lru_cache
 def user_registration():
     from azure.cosmos import CosmosClient
     from azure.identity import DefaultAzureCredential
@@ -82,6 +88,10 @@ def authenticate(headers) -> str:
     if not authorization.startswith("Bearer "):
         raise ApiError(401, "unauthorized", "login required")
     token = authorization[7:]
+    if token.startswith("canopy1."):
+        if os.getenv("CANOPY_ACCOUNT_AUTH_ENABLED", "false").lower() != "true":
+            raise ApiError(503, "auth_unavailable", "계정 로그인이 아직 활성화되지 않았습니다.")
+        return accounts().authenticated(token)["user_id"]
     if os.getenv("TRIP_AUTH_MODE", "jwt") == "test":
         # Explicit, expiring internal-test credentials; not registration or role assignment.
         if os.getenv("APP_ENV") != "test":

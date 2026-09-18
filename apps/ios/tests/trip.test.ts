@@ -314,3 +314,20 @@ it('stores a fresh final background fix after the stop boundary but excludes lat
   expect(sent.map(e=>e.sequence)).toEqual([1,2]);
   expect(await s.db.active()).toBeNull();
 });
+
+it('keeps another account\'s pending Trip untouched after account switching',async()=>{
+  const s=await setup();await s.collector.start();s.emit();await s.collector.stop();await acceptGps(s.db);
+  const request=vi.fn();
+  const other=new TripApi(s.db,()=>({...config(),userId:'bob'}),randomUUID,request);
+  await other.tick(true);expect(request).not.toHaveBeenCalled();
+  expect(await s.api.result(s.collector.trip!.trip_id)).toBeNull();
+});
+
+it('does not reuse a start request from another logged-in account',async()=>{
+  const {db}=database();await db.init(randomUUID,new Date().toISOString());
+  const identity=await db.identity();
+  await db.saveSync('start',{request_id:'owned-by-alice',device_id:identity.device_id,api_url:base,user_id:'alice'});
+  const request=vi.fn();
+  const other=new TripApi(db,()=>({...config(),userId:'bob'}),randomUUID,request);
+  await expect(other.start(identity)).rejects.toThrow('이전 계정');expect(request).not.toHaveBeenCalled();
+});
