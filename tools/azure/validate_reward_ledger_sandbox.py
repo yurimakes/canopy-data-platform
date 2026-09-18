@@ -20,8 +20,20 @@ TEST_WEEK = "2026-W38"
 
 
 def _repo_root() -> Path:
-    here = Path(__file__).resolve()
-    return here.parents[2]
+    """Resolve repository root in both normal Python and Databricks File Run."""
+    candidates = []
+    if "__file__" in globals():
+        candidates.append(Path(globals()["__file__"]).resolve().parent)
+    candidates.append(Path.cwd().resolve())
+
+    for start in candidates:
+        for path in (start, *start.parents):
+            if (path / "cloud" / "azure" / "pipelines").exists():
+                return path
+
+    raise RuntimeError(
+        "Repository root not found. Run this file from the canopy-data-platform Git Folder."
+    )
 
 
 def _reward_module():
