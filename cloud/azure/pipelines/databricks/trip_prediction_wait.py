@@ -30,7 +30,7 @@ def resolve(ended, candidates):
     return "ready", canonical(envelope)
 
 
-def advance(wait, reason, envelope_json, now, max_attempts=12):
+def advance(wait, reason, envelope_json, now, max_attempts=12, poll_interval_seconds=None):
     """최대 대기시간과 시도 횟수 적용. 만료 후에는 명시적 재시도 필요."""
     attempts = wait["attempts"] + 1
     deadline = wait["deadline_at"]
@@ -40,12 +40,13 @@ def advance(wait, reason, envelope_json, now, max_attempts=12):
         status = "ignored"
     elif reason in ("no_gps", "conflicting_final_segments", "lifecycle_context_mismatch", "invalid_final_segments"):
         status = "failed"
-    elif now >= deadline or (attempts >= max_attempts and reason != "ready"):
+    elif now >= deadline or (max_attempts is not None and attempts >= max_attempts and reason != "ready"):
         status = "timed_out"
     else:
         status = "ready" if reason == "ready" else "waiting"
     return {"attempts": attempts, "status": status, "reason": reason,
-            "next_check_at": now + timedelta(seconds=min(60, 10 * 2 ** min(attempts - 1, 3))),
+            "next_check_at": now + timedelta(seconds=poll_interval_seconds if poll_interval_seconds is not None
+                                             else min(60, 10 * 2 ** min(attempts - 1, 3))),
             "checked_at": now, "envelope_json": envelope_json if status == "ready" else None}
 
 
@@ -107,11 +108,24 @@ def read_candidates(spark, table, ended):
     return [normalize_table_result(json.loads(row.payload)) for row in rows]
 
 
-def poll(spark, queue_path, final_segment_table, now, max_attempts=12, event=None):
+def should_persist(wait, changes, now, heartbeat_seconds=0):
+    """완료·오류는 즉시 저장, 같은 대기 상태는 주기적으로만 저장."""
+    if changes["status"] != "waiting" or changes["reason"] != wait.get("reason"):
+        return True
+    checked = wait.get("checked_at")
+    if checked is None:
+        return True
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    return (now - checked).total_seconds() >= heartbeat_seconds
+
+
+def poll(spark, queue_path, final_segment_table, now, max_attempts=12, event=None,
+         poll_interval_seconds=None, heartbeat_seconds=0, queue_target=None):
     """완성 결과 테이블만 조회. 대기열 외 ML 데이터와 GPS 원본 변경 없음."""
     from delta.tables import DeltaTable
     from pyspark.sql import functions as F
-    target = storage.delta(spark, queue_path)
+    target = queue_target if queue_target is not None else storage.delta(spark, queue_path)
     due = target.toDF().where((F.col("status") == "waiting") & (F.col("next_check_at") <= F.lit(now)))
     if event:
         for key in KEYS:
@@ -127,7 +141,12 @@ def poll(spark, queue_path, final_segment_table, now, max_attempts=12, event=Non
             reason, envelope = resolve(ended, payloads)
         except (ValueError, TypeError, KeyError, ProcessingError):
             reason, envelope = "invalid_final_segments", None
-        changes = advance(wait, reason, envelope, now, max_attempts)
+        changes = advance(wait, reason, envelope, now, max_attempts, poll_interval_seconds)
+        print(json.dumps({"trip_id": wait["trip_id"], "stage": "final_segments_checked",
+                          "checked_at": datetime.now(timezone.utc).isoformat(),
+                          "status": changes["status"], "reason": reason}), flush=True)
+        if not should_persist(wait, changes, now, heartbeat_seconds):
+            continue
         condition = (F.col("status") == "waiting") & (F.col("attempts") == wait["attempts"]) & (
             F.col("retry_request_id").eqNullSafe(F.lit(wait["retry_request_id"])))
         for key in KEYS:

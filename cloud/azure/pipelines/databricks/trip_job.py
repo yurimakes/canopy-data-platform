@@ -24,7 +24,13 @@ def main():
     parser.add_argument("--secret-scope", required=True)
     parser.add_argument("--cosmos-secret-key", required=True)
     parser.add_argument("--final-segment-table", help="ML completed output: catalog.schema.table")
+    parser.add_argument("--poll-interval-seconds", type=int, default=5)
+    parser.add_argument("--wait-heartbeat-seconds", type=int, default=30)
     args = parser.parse_args()
+    if not 1 <= args.poll_interval_seconds <= 60:
+        parser.error("--poll-interval-seconds must be between 1 and 60")
+    if not args.poll_interval_seconds <= args.wait_heartbeat_seconds <= 60:
+        parser.error("--wait-heartbeat-seconds must be between poll interval and 60")
     args.gold_path = storage.target_arg(args, "gold")
     args.queue_path = storage.target_arg(args, "queue")
     if args.input_mode == "ml" and not args.final_segment_table:
@@ -61,32 +67,38 @@ def main():
             # 완료 결과 테이블의 접근 권한과 구조를 먼저 확인
             print(json.dumps({"trip_id": event["trip_id"], "stage": "checking_final_segments",
                               "final_segment_table": args.final_segment_table}), flush=True)
-            spark.table(args.final_segment_table).select("trip.trip_id", "trip.user_id",
-                "trip.processing_generation", "result.segments", "completed_at").limit(1).collect()
+            # 실제 조회는 아래 poll에서 수행. 권한 오류를 대기로 숨기지 않고 전달
             fields = ["user_id", "trip_id", "processing_generation", "event_id", "campaign_id", "started_at",
                       "ended_at", "expected_last_sequence", "result_owner"]
             schema = "user_id string, trip_id string, processing_generation long, event_id string, campaign_id string, started_at timestamp, ended_at timestamp, expected_last_sequence long, result_owner string"
             values = {**event, **{k: datetime.fromisoformat(event[k].replace("Z", "+00:00")) for k in ("started_at", "ended_at")}}
             ends = spark.createDataFrame([tuple(values[k] for k in fields)], schema)
             register(spark, ends, args.queue_path, datetime.now(timezone.utc))
+            # 저장 대상 유형 확인은 한 번만 수행. 데이터는 각 조회에서 최신 스냅샷 사용
+            queue_target = storage.delta(spark, args.queue_path)
             while True:
                 now = datetime.now(timezone.utc)
-                poll(spark, args.queue_path, args.final_segment_table, now, event=event)
+                # 조회 빈도가 높아져도 기존 10분 제한시간 유지. 대기열 쓰기는 별도 주기로 제한
+                poll(spark, args.queue_path, args.final_segment_table, now, event=event,
+                     max_attempts=None, poll_interval_seconds=args.poll_interval_seconds,
+                     heartbeat_seconds=args.wait_heartbeat_seconds, queue_target=queue_target)
                 wait = storage.read(spark, args.queue_path).where(
                     key & (F.col("processing_generation") == event["processing_generation"])).first()
                 if wait.status == "ready":
                     document = build_final_trip(json.loads(wait.envelope_json), lifecycle=event)
                     save_gold(spark, args.gold_path, document)
+                    print(json.dumps({"trip_id": event["trip_id"], "stage": "gold_saved",
+                                      "observed_at": datetime.now(timezone.utc).isoformat()}), flush=True)
                     break
                 if wait.status in ("timed_out", "failed", "ignored"):
                     if wait.status != "ignored":
                         publish_wait_failure(store, wait.asDict())
                     print(json.dumps({"trip_id": event["trip_id"], "status": wait.status, "reason": wait.reason}))
                     return
-                due = wait.next_check_at.replace(tzinfo=timezone.utc)
-                time.sleep(max(1, min(60, (due - datetime.now(timezone.utc)).total_seconds())))
+                time.sleep(args.poll_interval_seconds)
         status = publish_cosmos(store, document)
         print(json.dumps({"trip_id": event["trip_id"], "user_id": event["user_id"], "status": status,
+                          "observed_at": datetime.now(timezone.utc).isoformat(),
                           "is_mock": document["is_mock"], "gold_path": args.gold_path}))
     except Exception:
         publish_wait_failure(store, {**event, "status": "failed", "reason": "downstream_execution_failed"})

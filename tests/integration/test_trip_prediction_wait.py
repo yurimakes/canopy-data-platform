@@ -8,7 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "cloud/azure/pipelines/databricks"))
-from trip_prediction_wait import resolve, advance, normalize_table_result
+from trip_prediction_wait import resolve, advance, normalize_table_result, should_persist
 from finalize_trip_pipeline import build_final_trip
 from services.trip_processor import ProcessingError
 
@@ -115,6 +115,37 @@ class FinalSegmentTests(unittest.TestCase):
                 mutation(value)
                 with self.assertRaises((ValueError, ProcessingError)):
                     build_final_trip(value)
+
+    def test_fast_poll_keeps_full_deadline_and_does_not_expire_at_twelve_checks(self):
+        now = datetime.now(timezone.utc)
+        wait = {"attempts": 0, "deadline_at": now + timedelta(seconds=600),
+                "reason": "waiting_for_final_segments", "checked_at": now}
+        writes = 0
+        for seconds in range(5, 600, 5):
+            checked = now + timedelta(seconds=seconds)
+            changes = advance(wait, "waiting_for_final_segments", None, checked,
+                              max_attempts=None, poll_interval_seconds=5)
+            self.assertEqual(changes["status"], "waiting")
+            self.assertEqual(changes["next_check_at"], checked + timedelta(seconds=5))
+            if should_persist(wait, changes, checked, 30):
+                wait.update(changes)
+                writes += 1
+        self.assertEqual(writes, 19)
+        expired = advance(wait, "waiting_for_final_segments", None, now + timedelta(seconds=600),
+                          max_attempts=None, poll_interval_seconds=5)
+        self.assertEqual(expired["status"], "timed_out")
+        self.assertTrue(should_persist(wait, expired, now + timedelta(seconds=600), 30))
+
+    def test_ready_and_failure_bypass_wait_write_throttling(self):
+        now = datetime.now(timezone.utc)
+        wait = {"attempts": 20, "deadline_at": now + timedelta(seconds=600),
+                "reason": "waiting_for_final_segments", "checked_at": now.replace(tzinfo=None)}
+        self.assertFalse(should_persist(wait, {"status": "waiting", "reason": wait["reason"]}, now, 30))
+        for reason in ("ready", "invalid_final_segments", "conflicting_final_segments"):
+            changes = advance(wait, reason, "{}" if reason == "ready" else None, now,
+                              max_attempts=None, poll_interval_seconds=5)
+            self.assertTrue(should_persist(wait, changes, now, 30))
+        self.assertEqual(advance(wait, "ready", "{}", now, max_attempts=None)["status"], "ready")
 
 
 if __name__ == "__main__":
