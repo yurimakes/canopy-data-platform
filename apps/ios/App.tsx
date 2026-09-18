@@ -16,6 +16,8 @@ import type { Summary, GpsEvent } from './src/types';
 import type { FeedbackInput, ServerTrip } from './src/tripApi';
 import { loadRanking } from './src/rankingClient';
 import type { RemotePanel, RankingView } from './src/ui/CommunityPanels';
+import { RankingE2EScreen } from './src/ui/RankingE2EScreen';
+import Constants from 'expo-constants';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -30,6 +32,9 @@ function initialize() { return runtime ??= (async () => {
   return {db, collector};
 })(); }
 export default function App() {
+  if (Constants.expoConfig?.extra?.rankingE2E === true) {
+    return <SafeAreaProvider><StatusBar barStyle="dark-content"/><RankingE2EScreen/></SafeAreaProvider>;
+  }
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);

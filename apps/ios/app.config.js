@@ -14,5 +14,6 @@ module.exports = ({config}) => ({
     rankingFunctionKey: preview ? '' : process.env.CANOPY_RANKING_FUNCTION_KEY || '',
     rankingCampaignId: preview ? '' : process.env.CANOPY_RANKING_CAMPAIGN_ID || '',
     rankingWeek: preview ? '' : process.env.CANOPY_RANKING_WEEK || '',
+    rankingE2E: process.env.CANOPY_RANKING_E2E === 'true',
   },
 });
