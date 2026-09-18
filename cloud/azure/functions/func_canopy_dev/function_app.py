@@ -19,10 +19,12 @@ from carbon_calculator import (
     result_to_dict,
 )
 from mission_assignment_api import bp as mission_bp
+from ranking_api import bp as ranking_bp
 
 
 app = func.FunctionApp()
 app.register_functions(mission_bp)
+app.register_functions(ranking_bp)
 
 BASE_DIR = Path(__file__).resolve().parent
 CARBON_POLICY = load_policy(BASE_DIR / "carbon_policy.yaml")
