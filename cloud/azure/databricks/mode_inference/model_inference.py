@@ -50,11 +50,11 @@ def _load_worker_model(model_uri: str) -> Any:
 def _prediction_udf(model_uri: str) -> Any:
     """Build a scalar Pandas UDF without MLflow Spark-UDF sandbox setup."""
     import pandas as pd
-    from pyspark.sql.functions import pandas_udf
+    from pyspark.sql.functions import PandasUDFType, pandas_udf
     from pyspark.sql.types import LongType
 
-    @pandas_udf(LongType())
-    def predict(frame: pd.DataFrame) -> pd.Series:
+    @pandas_udf(LongType(), PandasUDFType.SCALAR)
+    def predict(frame):
         ordered = frame.loc[:, list(FEATURE_NAMES)]
         model = _load_worker_model(model_uri)
         values = predict_pandas(model, ordered)
