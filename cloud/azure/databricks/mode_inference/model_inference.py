@@ -50,14 +50,14 @@ def _load_worker_model(cache_key: str, model_bytes: bytes) -> Any:
 def _prediction_udf(model_uri: str) -> Any:
     """Build a scalar Pandas UDF with driver-resolved model bytes."""
     import cloudpickle
-    import mlflow.pyfunc
+    import mlflow.lightgbm
     import pandas as pd
     from pyspark.sql.functions import PandasUDFType, pandas_udf
     from pyspark.sql.types import LongType, StructField, StructType, TimestampType
 
     # Resolve the Unity Catalog model on the pipeline driver, where the
     # Databricks registry/artifact context exists. Workers never call models:/.
-    driver_model = mlflow.pyfunc.load_model(model_uri)
+    driver_model = mlflow.lightgbm.load_model(model_uri)
     model_bytes = cloudpickle.dumps(driver_model)
     cache_key = model_uri
 
