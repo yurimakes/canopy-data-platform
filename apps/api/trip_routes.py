@@ -5,15 +5,15 @@ import re
 import os
 from typing import List
 import azure.functions as func
-from services.runtime import authenticate, service, feedback_service, user_registration
+from services.runtime import authenticate, service, feedback_service, user_registration, accounts
 from services.trip_service import ApiError, public
 
 bp = func.Blueprint()
 
 
-def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, feedback_api=None, registration_api=None):
+def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, feedback_api=None, registration_api=None, account_api=None):
     try:
-        user_id = auth({key.lower(): value for key, value in headers.items()})
+        headers = {key.lower(): value for key, value in headers.items()}
         limit = 262144 if path.endswith("/confirm") else 16384
         if len(raw) > limit:
             raise ApiError(413, "payload_too_large", "Trip request exceeds the size limit")
@@ -23,6 +23,29 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             raise ApiError(400, "invalid_json", "body must be JSON") from exc
         if not isinstance(body, dict):
             raise ApiError(400, "invalid_json", "body must be a JSON object")
+        if path.startswith("/api/auth/"):
+            if account_api is None and os.getenv("CANOPY_ACCOUNT_AUTH_ENABLED", "false").lower() != "true":
+                raise ApiError(503, "auth_unavailable", "계정 로그인이 아직 활성화되지 않았습니다.")
+            account = account_api or accounts()
+            if method == "POST" and path == "/api/auth/signup":
+                return 201, account.signup(body)
+            if method == "POST" and path == "/api/auth/login":
+                return 200, account.login(body)
+            token = headers.get("authorization", "").removeprefix("Bearer ")
+            doc = account.authenticated(token)
+            if method == "GET" and path == "/api/auth/me":
+                return 200, account.public(doc)
+            if method == "PATCH" and path == "/api/auth/me":
+                return 200, account.update(token, body)
+            if method == "POST" and path == "/api/auth/logout":
+                account.logout(token)
+                return 200, {"status": "signed_out"}
+            if method == "GET" and path == "/api/auth/developer":
+                if doc.get("role") != "developer":
+                    raise ApiError(403, "forbidden", "개발자 계정이 필요합니다.")
+                return 200, {"role": "developer"}
+            raise ApiError(404, "not_found", "route not found")
+        user_id = auth(headers)
         if method == "POST" and path == "/api/users/register":
             result, created = (registration_api or user_registration()).register(user_id, body)
             return (201 if created else 200), result
@@ -34,7 +57,15 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             return 200, search_places(user_id, body)
         api = trip_service or service()
         if method == "POST" and path == "/api/trips/start":
-            trip, created = api.start(user_id, body)
+            if headers.get("authorization", "").startswith("Bearer canopy1."):
+                doc = (account_api or accounts()).authenticated(headers["authorization"][7:])
+                if not doc.get("campaign_id") or doc.get("campaign_left_at"):
+                    raise ApiError(403, "campaign_required", "참여 중인 캠페인이 필요합니다.")
+                if "campaign_id" in body and body["campaign_id"] != doc["campaign_id"]:
+                    raise ApiError(403, "campaign_mismatch", "가입한 캠페인으로만 여정을 시작할 수 있습니다.")
+                trip, created = api.start(user_id, body, campaign_id=doc["campaign_id"])
+            else:
+                trip, created = api.start(user_id, body)
             return (201 if created else 200), public(trip)
         match = re.fullmatch(r"/api/trips/([a-zA-Z0-9_-]{1,100})(/stop|/confirm|/feedback)?", path)
         if not match:
@@ -67,7 +98,13 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
 def response(req):
     from urllib.parse import urlsplit
     status, body = dispatch(req.method, urlsplit(req.url).path, req.headers, req.get_body())
-    return func.HttpResponse(json.dumps(body, ensure_ascii=False), status_code=status, mimetype="application/json")
+    return func.HttpResponse(json.dumps(body, ensure_ascii=False), status_code=status, mimetype="application/json",
+                             headers={"Cache-Control": "no-store"})
+
+
+@bp.route(route="auth/{action}", methods=["GET", "POST", "PATCH"], auth_level=func.AuthLevel.FUNCTION)
+def account_auth(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
 
 
 @bp.route(route="users/register", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)

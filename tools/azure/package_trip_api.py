@@ -8,7 +8,7 @@ import zipfile
 def patch_deployed(source: Path, output: Path, root: Path):
     """Preserve the live team package; replace only our Trip integration modules."""
     owned = ["trip_routes.py", *["services/" + n for n in
-        ("runtime.py", "trip_service.py", "cosmos_service.py", "trip_lifecycle.py", "trip_dispatch.py", "user_registration.py")]]
+        ("runtime.py", "trip_service.py", "cosmos_service.py", "trip_lifecycle.py", "trip_dispatch.py", "user_registration.py", "accounts.py")]]
     with zipfile.ZipFile(source) as previous, zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as target:
         for info in previous.infolist():
             if info.filename not in owned:
