@@ -74,6 +74,7 @@ class BaselineHelperStructureTest(unittest.TestCase):
             "select_personal_ready_users",
             "build_global_eligibility",
             "build_global_baseline",
+            "build_baseline_gold",
         }
 
         actual = {
@@ -187,6 +188,35 @@ class BaselineHelperStructureTest(unittest.TestCase):
                 "eligibility",
                 "baseline_policy_version",
                 "eligibility_policy",
+            },
+        )
+
+
+    def test_baseline_gold_pipeline_calls_helper(self):
+        function = find_function(
+            self.pipeline_tree,
+            "baseline_gold",
+        )
+
+        self.assertIn(
+            "build_baseline_gold_df",
+            called_names(function),
+        )
+        self.assertNotIn(
+            "empty_result",
+            called_names(function),
+        )
+
+        self.assertEqual(
+            call_keywords(
+                function,
+                "build_baseline_gold_df",
+            ),
+            {
+                "personal",
+                "global_baseline",
+                "personal_fields",
+                "global_fields",
             },
         )
 

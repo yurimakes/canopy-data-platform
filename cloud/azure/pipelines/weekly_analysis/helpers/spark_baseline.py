@@ -486,3 +486,133 @@ def build_global_baseline(
         F.col("_eligibility_policy_version")
         .alias("eligibility_policy_version"),
     )
+
+
+def build_baseline_gold(
+    personal: DataFrame,
+    global_baseline: DataFrame,
+    *,
+    personal_fields: list[str],
+    global_fields: list[str],
+) -> DataFrame:
+    """Combine Personal and Global Baseline snapshots at user/campaign/week grain.
+
+    The outer row is one Personal snapshot. The matching campaign/week Global
+    snapshot is embedded as a struct so the two different grains are not
+    flattened or unioned together.
+
+    This is a pure Spark transform: no reads, writes, driver actions, or
+    external calls.
+    """
+
+    personal_keys = ["user_id", "campaign_id", "week"]
+    global_keys = ["campaign_id", "week"]
+
+    missing_personal = [
+        field
+        for field in [*personal_keys, *personal_fields]
+        if field not in personal.columns
+    ]
+    if missing_personal:
+        raise ValueError(
+            "personal_baseline missing required columns: "
+            + ", ".join(sorted(set(missing_personal)))
+        )
+
+    missing_global = [
+        field
+        for field in [*global_keys, *global_fields]
+        if field not in global_baseline.columns
+    ]
+    if missing_global:
+        raise ValueError(
+            "global_baseline missing required columns: "
+            + ", ".join(sorted(set(missing_global)))
+        )
+
+    personal_checked = (
+        personal
+        .withColumn(
+            "_baseline_personal_snapshot_count",
+            F.count("*").over(
+                Window.partitionBy(*personal_keys)
+            ),
+        )
+        .filter(
+            F.when(
+                F.col("_baseline_personal_snapshot_count") == 1,
+                F.lit(True),
+            ).otherwise(
+                F.raise_error(
+                    "Duplicate Personal Baseline snapshot for user/campaign/week"
+                ).cast("boolean")
+            )
+        )
+        .drop("_baseline_personal_snapshot_count")
+    )
+
+    global_checked = (
+        global_baseline
+        .withColumn(
+            "_baseline_global_snapshot_count",
+            F.count("*").over(
+                Window.partitionBy(*global_keys)
+            ),
+        )
+        .filter(
+            F.when(
+                F.col("_baseline_global_snapshot_count") == 1,
+                F.lit(True),
+            ).otherwise(
+                F.raise_error(
+                    "Duplicate Global Baseline snapshot for campaign/week"
+                ).cast("boolean")
+            )
+        )
+        .drop("_baseline_global_snapshot_count")
+    )
+
+    joined = (
+        personal_checked.alias("p")
+        .join(
+            global_checked.alias("g"),
+            [
+                F.col("p.campaign_id") == F.col("g.campaign_id"),
+                F.col("p.week") == F.col("g.week"),
+            ],
+            "left",
+        )
+        .filter(
+            F.when(
+                F.col("g.campaign_id").isNotNull()
+                & F.col("g.week").isNotNull(),
+                F.lit(True),
+            ).otherwise(
+                F.raise_error(
+                    "Missing Global Baseline snapshot for Personal campaign/week"
+                ).cast("boolean")
+            )
+        )
+    )
+
+    personal_struct = F.struct(
+        *[
+            F.col(f"p.{field}").alias(field)
+            for field in personal_fields
+        ]
+    ).alias("personal")
+
+    global_struct = F.struct(
+        *[
+            F.col(f"g.{field}").alias(field)
+            for field in global_fields
+        ]
+    ).alias("global")
+
+    return joined.select(
+        F.col("p.campaign_id").alias("campaign_id"),
+        F.col("p.user_id").alias("user_id"),
+        F.col("p.week").alias("week"),
+        personal_struct,
+        global_struct,
+    )
