@@ -31,6 +31,7 @@ for module_path in (weekly_analysis_path, databricks_module_path):
 
 # 파이프라인 실행에 필요한 함수 및 모듈 임포트
 from build_personal_baseline import load_policy as load_baseline_policy
+from build_behavior_change import build_behavior_change as build_behavior_change_df
 
 from helpers.spark_baseline import (
     build_personal_baseline as build_personal_baseline_df,
@@ -369,11 +370,11 @@ def baseline_gold():
     return empty_result(BASELINE_GOLD_SCHEMA, "personal_baseline", "global_baseline")
 
 
-@dp.temporary_view(comment="계산 미연결. 행동 변화 컬럼 초안, 담당자 확정 필요")
+@dp.temporary_view(comment="Weekly Gold 기반 Behavior Change 관측 KPI")
 def behavior_change():
-    # 담당 코드에서 필요한 주간 이력, Baseline, 미션 이력 연결 → 행동 변화 결과 반환
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(BEHAVIOR_DRAFT_SCHEMA, "weekly_gold", "baseline_gold")
+    return build_behavior_change_df(
+        spark.read.table("weekly_gold")
+    )
 
 
 @dp.temporary_view(comment="계산 미연결. 기존 미션 프로필 Gold 출력 컬럼")
