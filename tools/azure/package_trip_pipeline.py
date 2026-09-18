@@ -6,23 +6,33 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PIPELINES = "cloud/azure/pipelines/databricks/"
-FILES = [PIPELINES + "finalize_trip_pipeline.py", PIPELINES + "trip_prediction_wait.py", PIPELINES + "trip_job.py",
+FILES = [PIPELINES + "finalize_trip_pipeline.py", PIPELINES + "trip_prediction_wait.py", PIPELINES + "trip_job.py", PIPELINES + "trip_delta_store.py",
          "cloud/azure/functions/func_canopy_dev/carbon_calculator.py",
          "cloud/azure/functions/func_canopy_dev/carbon_policy.yaml",
          *["apps/api/services/" + name for name in
            ("trip_carbon.py", "trip_processor.py", "mock_trip_processor.py", "cosmos_service.py")]]
 
 
-def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=None, secret_key=None, iphone=False, final_segment_table=None):
+def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=None, secret_key=None, iphone=False, final_segment_table=None, gold_table=None, queue_table=None):
     if not workspace_root.startswith("/Workspace/") or ".." in workspace_root.split("/"):
         raise ValueError("workspace_root must be an absolute Workspace directory")
-    if "/pipeline_test/" not in gold_root or not gold_root.startswith("abfss://"):
+    if not gold_table and (not gold_root or "/pipeline_test/" not in gold_root or not gold_root.startswith("abfss://")):
         raise ValueError("use an isolated abfss://.../pipeline_test/... Gold root")
     if bool(secret_scope) != bool(secret_key):
         raise ValueError("both secret scope and key are required")
-    workspace_root, gold_root = workspace_root.rstrip("/"), gold_root.rstrip("/")
+    import sys
+    sys.path.insert(0, str(ROOT / PIPELINES))
+    from trip_delta_store import table_name, test_target
+    if gold_table:
+        table_name(gold_table)
+        if not test_target(gold_table):
+            raise ValueError("test package requires sandbox/pipeline_test schema")
+        if iphone:
+            table_name(queue_table)
+    workspace_root, gold_root = workspace_root.rstrip("/"), (gold_root or "").rstrip("/")
     runner = workspace_root + "/" + PIPELINES + "finalize_trip_pipeline.py"
-    gold = gold_root + "/final_trips"
+    gold = gold_table or gold_root + "/final_trips"
+    gold_option = "--gold-table" if gold_table else "--gold-path"
     trip_id, user_id, campaign = "pipeline_test_trip_1", "pipeline_test_user_1", "pipeline_test_campaign_1"
     sample = {"completed_at": "2026-09-16T01:11:00+00:00", "trip": {
         "trip_id": trip_id, "user_id": user_id, "campaign_id": campaign,
@@ -37,7 +47,7 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
                 "max_retries": 0, "depends_on": [{"task_key": d} for d in dependencies],
                 "spark_python_task": {"python_file": runner, "source": "WORKSPACE",
                                       "parameters": parameters}}
-    publish = ["publish", "--gold-path", gold, "--trip-id", trip_id, "--user-id", user_id,
+    publish = ["publish", gold_option, gold, "--trip-id", trip_id, "--user-id", user_id,
                "--allow-test-create", "--cosmos-endpoint", cosmos_endpoint,
                "--cosmos-database", "canopy-db", "--cosmos-container", "trips"]
     if secret_scope:
@@ -46,7 +56,7 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
            "timeout_seconds": 1800, "performance_target": "STANDARD",
            "environments": [{"environment_key": "trip_env", "spec": {"environment_version": "4",
                "dependencies": ["PyYAML==6.0.3", "azure-cosmos==4.17.0", "azure-identity==1.25.3"]}}],
-           "tasks": [task("finalize_gold", ["finalize", "--gold-path", gold, "--input", workspace_root + "/sample_input.json", "--allow-test-create"]),
+           "tasks": [task("finalize_gold", ["finalize", gold_option, gold, "--input", workspace_root + "/sample_input.json", "--allow-test-create"]),
                      task("publish_cosmos", publish, ["finalize_gold"])]}
     if iphone:
         if not secret_scope:
@@ -60,7 +70,8 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
                 "parameters": ["--end-event", "{{job.parameters.end_event}}",
                     "--input-mode", "{{job.parameters.input_mode}}",
                     "--final-segment-table", "{{job.parameters.final_segment_table}}",
-                    "--gold-path", gold_root + "/iphone_final_trips", "--queue-path", gold_root + "/iphone_wait",
+                    gold_option, gold_table or gold_root + "/iphone_final_trips",
+                    "--queue-table" if gold_table else "--queue-path", queue_table or gold_root + "/iphone_wait",
                     "--cosmos-endpoint", cosmos_endpoint, "--secret-scope", secret_scope,
                     "--cosmos-secret-key", secret_key]}}]
     output = Path(output)
@@ -79,7 +90,9 @@ def package(output, workspace_root, gold_root, cosmos_endpoint, secret_scope=Non
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace-root", required=True)
-    parser.add_argument("--gold-root", required=True)
+    parser.add_argument("--gold-root", help="기존 경로 패키지 생성용")
+    parser.add_argument("--gold-table", help="Managed Table: catalog.schema.table")
+    parser.add_argument("--queue-table", help="Managed 처리 대기열")
     parser.add_argument("--cosmos-endpoint", required=True)
     parser.add_argument("--secret-scope")
     parser.add_argument("--secret-key")
@@ -88,4 +101,4 @@ if __name__ == "__main__":
     parser.add_argument("--output", default=str(ROOT / "data/interim/trip-finalization.zip"))
     args = parser.parse_args()
     print(package(args.output, args.workspace_root, args.gold_root, args.cosmos_endpoint,
-                  args.secret_scope, args.secret_key, args.iphone, args.final_segment_table))
+                  args.secret_scope, args.secret_key, args.iphone, args.final_segment_table, args.gold_table, args.queue_table))
