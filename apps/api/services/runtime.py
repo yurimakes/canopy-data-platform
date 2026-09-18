@@ -16,6 +16,18 @@ def local_mode():
 
 
 @lru_cache
+def user_registration():
+    from azure.cosmos import CosmosClient
+    from azure.identity import DefaultAzureCredential
+    from .user_registration import UserRegistration
+    client = CosmosClient(os.environ["COSMOS_ENDPOINT"], credential=DefaultAzureCredential())
+    container = client.get_database_client(os.environ["COSMOS_TRIPS_DATABASE"]).get_container_client("users")
+    if container.read()["partitionKey"]["paths"] != ["/user_id"]:
+        raise RuntimeError("users partition key must be /user_id")
+    return UserRegistration(container, os.environ["TRIP_CAMPAIGN_ID"])
+
+
+@lru_cache
 def feedback_service():
     # Lazy: feedback storage does not add initialization work to Trip stop.
     from .trip_feedback import CosmosFeedbackStore, SQLiteFeedbackStore, TripFeedbackService

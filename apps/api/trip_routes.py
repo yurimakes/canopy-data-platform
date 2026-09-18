@@ -5,13 +5,13 @@ import re
 import os
 from typing import List
 import azure.functions as func
-from services.runtime import authenticate, service, feedback_service
+from services.runtime import authenticate, service, feedback_service, user_registration
 from services.trip_service import ApiError, public
 
 bp = func.Blueprint()
 
 
-def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, feedback_api=None):
+def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, feedback_api=None, registration_api=None):
     try:
         user_id = auth({key.lower(): value for key, value in headers.items()})
         limit = 262144 if path.endswith("/confirm") else 16384
@@ -23,6 +23,9 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             raise ApiError(400, "invalid_json", "body must be JSON") from exc
         if not isinstance(body, dict):
             raise ApiError(400, "invalid_json", "body must be a JSON object")
+        if method == "POST" and path == "/api/users/register":
+            result, created = (registration_api or user_registration()).register(user_id, body)
+            return (201 if created else 200), result
         api = trip_service or service()
         if method == "POST" and path == "/api/trips/start":
             trip, created = api.start(user_id, body)
@@ -53,6 +56,11 @@ def response(req):
     from urllib.parse import urlsplit
     status, body = dispatch(req.method, urlsplit(req.url).path, req.headers, req.get_body())
     return func.HttpResponse(json.dumps(body, ensure_ascii=False), status_code=status, mimetype="application/json")
+
+
+@bp.route(route="users/register", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
+def user_register(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
 
 
 @bp.route(route="trips/start", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
