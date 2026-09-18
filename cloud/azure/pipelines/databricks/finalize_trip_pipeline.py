@@ -16,6 +16,7 @@ from services.trip_carbon import finalize_result
 from services.trip_processor import timestamp, validate_result
 from services.mock_trip_processor import ConfirmationFixtureProcessor
 from services.cosmos_service import Conflict, CosmosTripStore
+import trip_delta_store as storage
 
 
 def canonical(value):
@@ -115,12 +116,9 @@ def _save_gold(spark, path, document):
     from pyspark.sql import functions as F
     verify_document(document)
     frame = gold_frame(spark, document)
-    if not DeltaTable.isDeltaTable(spark, path):
-        frame.write.format("delta").mode("ignore").save(path)
-        # Another Trip may have initialized the table while we were creating it.
-        # Continue through MERGE so this Trip is never silently skipped.
-    if DeltaTable.isDeltaTable(spark, path):
-        table = DeltaTable.forPath(spark, path)
+    storage.initialize(spark, path, frame)
+    if storage.exists(spark, path):
+        table = storage.delta(spark, path)
         rows = table.toDF().filter((F.col("trip_id") == document["trip_id"]) &
                                   (F.col("user_id") == document["user_id"])).select(
                                       "processing_generation", "finalization_hash").collect()
@@ -140,7 +138,7 @@ def _save_gold(spark, path, document):
 
 def read_gold(spark, path, trip_id, user_id):
     from pyspark.sql import functions as F
-    rows = spark.read.format("delta").load(path).filter(
+    rows = storage.read(spark, path).filter(
         (F.col("trip_id") == trip_id) & (F.col("user_id") == user_id)).select("document_json").limit(2).collect()
     if len(rows) != 1:
         raise ValueError("expected exactly one canonical Gold Trip")
@@ -219,7 +217,7 @@ def publish_wait_failure(store, wait):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("phase", choices=("finalize", "publish", "publish-wait-failure"))
-    parser.add_argument("--gold-path")
+    storage.add_target(parser, "gold", required=False)
     parser.add_argument("--input", help="one JSON envelope in an accessible Workspace file")
     parser.add_argument("--ready-path", help="Delta wait queue containing a frozen ready envelope")
     parser.add_argument("--trip-id")
@@ -231,8 +229,9 @@ def main():
     parser.add_argument("--cosmos-secret-scope")
     parser.add_argument("--cosmos-secret-key")
     args = parser.parse_args()
+    args.gold_path = storage.target_arg(args, "gold")
     if args.phase != "publish-wait-failure" and not args.gold_path:
-        parser.error("--gold-path is required")
+        parser.error("--gold-table or --gold-path is required")
     from pyspark.sql import SparkSession
     spark = SparkSession.builder.getOrCreate()
     if args.phase == "finalize":
@@ -251,8 +250,8 @@ def main():
         else:
             envelope = json.loads(Path(args.input).read_text(encoding="utf-8"))
         document = build_final_trip(envelope, allow_test_trip=args.allow_test_create)
-        if document["is_mock"] and "/pipeline_test/" not in args.gold_path:
-            raise ValueError("Mock Gold must be stored under /pipeline_test/")
+        if document["is_mock"] and not storage.test_target(args.gold_path):
+            raise ValueError("Mock Gold requires a sandbox/pipeline_test table or pipeline_test path")
         save_gold(spark, args.gold_path, document)
         print(canonical({"trip_id": document["trip_id"], "phase": "gold_saved", "hash": document["finalization_hash"]}))
     elif args.phase in ("publish", "publish-wait-failure"):

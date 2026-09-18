@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta, timezone
 from finalize_trip_pipeline import build_final_trip, canonical
 from services.trip_processor import ProcessingError
+import trip_delta_store as storage
 
 KEYS = ["user_id", "trip_id", "processing_generation"]
 
@@ -69,14 +70,12 @@ def register(spark, ends, queue_path, now, timeout_seconds=600):
         "deadline_at", F.timestamp_micros(F.unix_micros(instant) + timeout_seconds * 1000000)).withColumn(
         "checked_at", F.lit(None).cast("timestamp")).withColumn("envelope_json", F.lit(None).cast("string")).withColumn(
         "retry_request_id", F.lit(None).cast("string"))
-    if not DeltaTable.isDeltaTable(spark, queue_path):
-        rows.write.format("delta").mode("error").save(queue_path)
-    else:
-        target = DeltaTable.forPath(spark, queue_path)
-        same = F.struct(*[F.col("t."+k) for k in fields]).eqNullSafe(F.struct(*[F.col("s."+k) for k in fields]))
-        target.alias("t").merge(rows.alias("s"), " AND ".join("t."+k+"=s."+k for k in KEYS)).whenMatchedUpdate(
-            condition=(F.col("t.status") == "waiting") & (~same | (F.col("s.status") == "failed")),
-            set={"status": F.lit("failed"), "reason": F.lit("conflicting_end_events")}).whenNotMatchedInsertAll().execute()
+    storage.initialize(spark, queue_path, rows)
+    target = storage.delta(spark, queue_path)
+    same = F.struct(*[F.col("t."+k) for k in fields]).eqNullSafe(F.struct(*[F.col("s."+k) for k in fields]))
+    target.alias("t").merge(rows.alias("s"), " AND ".join("t."+k+"=s."+k for k in KEYS)).whenMatchedUpdate(
+        condition=(F.col("t.status") == "waiting") & (~same | (F.col("s.status") == "failed")),
+        set={"status": F.lit("failed"), "reason": F.lit("conflicting_end_events")}).whenNotMatchedInsertAll().execute()
 
 
 def normalize_table_result(row):
@@ -112,7 +111,7 @@ def poll(spark, queue_path, final_segment_table, now, max_attempts=12, event=Non
     """완성 결과 테이블만 조회. 대기열 외 ML 데이터와 GPS 원본 변경 없음."""
     from delta.tables import DeltaTable
     from pyspark.sql import functions as F
-    target = DeltaTable.forPath(spark, queue_path)
+    target = storage.delta(spark, queue_path)
     due = target.toDF().where((F.col("status") == "waiting") & (F.col("next_check_at") <= F.lit(now)))
     if event:
         for key in KEYS:
@@ -141,7 +140,7 @@ def retry(spark, queue_path, user_id, trip_id, generation, request_id, now, time
     from pyspark.sql import functions as F
     if not request_id or not request_id.strip():
         raise ValueError("retry request ID is required")
-    target = DeltaTable.forPath(spark, queue_path)
+    target = storage.delta(spark, queue_path)
     condition = ((F.col("user_id") == user_id) & (F.col("trip_id") == trip_id) &
                  (F.col("processing_generation") == generation) & (F.col("status") == "timed_out") &
                  (~F.col("retry_request_id").eqNullSafe(F.lit(request_id))))
