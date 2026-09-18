@@ -15,7 +15,7 @@ resources:
         dependencies:
           - -r ${workspace.file_path}/requirements.lakeflow.txt
       configuration:
-        pipelines.trigger.interval: "5 seconds"
+        pipelines.trigger.interval: "1 second"
         canopy.catalog: ${var.catalog}
         canopy.silver_schema: ${var.silver_schema}
         canopy.input_observations_table: ${var.input_observations_table}
