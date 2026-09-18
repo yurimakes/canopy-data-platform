@@ -66,7 +66,7 @@ BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
 with open(os.path.join(databricks_module_path, "ranking_policy.yaml"), "r", encoding="utf-8") as _ranking_policy_file:
     RANKING_POLICY = yaml.safe_load(_ranking_policy_file)
 
-# 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산
+# 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산 목적인데 현재는 test를 위해서 아래값으로. (변경필요할시 말해주세요 [민철 수정])
 COMMUTE_SCOPE_VERIFIED = (
     spark.conf.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED", "false") == "true"
 )
