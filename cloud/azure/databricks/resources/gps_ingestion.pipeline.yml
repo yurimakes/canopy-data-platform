@@ -1,11 +1,11 @@
 resources:
   pipelines:
-    gps_streaming_pipeline:
-      name: canopy-gps-streaming-pipeline-${bundle.target}
+    generic_event_ingestion_pipeline:
+      name: canopy-generic-event-ingestion-${bundle.target}
       serverless: true
       channel: CURRENT
       catalog: ${var.catalog}
-      schema: ${var.silver_schema}
+      schema: ${var.schema}
       root_path: ${workspace.file_path}
       libraries:
         - file:
@@ -13,11 +13,11 @@ resources:
       configuration:
         spark.sql.session.timeZone: UTC
         canopy.catalog: ${var.catalog}
-        canopy.bronze_schema: ${var.bronze_schema}
-        canopy.silver_schema: ${var.silver_schema}
+        canopy.schema: ${var.schema}
         canopy.bronze_events_table: ${var.bronze_events_table}
-        canopy.observations_table: ${var.observations_table}
-        canopy.quarantine_table: ${var.quarantine_table}
+        canopy.gps_observations_table: ${var.gps_observations_table}
+        canopy.gps_quarantine_table: ${var.gps_quarantine_table}
+        canopy.trip_ended_events_table: ${var.trip_ended_events_table}
         canopy.deduplication_watermark: ${var.deduplication_watermark}
         canopy.event_hubs.namespace: ${var.event_hubs_namespace}
         canopy.event_hubs.topic: ${var.event_hubs_topic}

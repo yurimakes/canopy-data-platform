@@ -1,5 +1,5 @@
 bundle:
-  name: canopy-gps-streaming
+  name: canopy-generic-event-ingestion
 
 include:
   - resources/*.yml
@@ -10,17 +10,17 @@ sync:
 
 variables:
   catalog:
-    default: dbw_canopy_dev
-  bronze_schema:
-    default: bronze
-  silver_schema:
-    default: silver
+    default: dbw_canopy_trial
+  schema:
+    default: sandbox
   bronze_events_table:
-    default: gps_events
-  observations_table:
-    default: gps_observations
-  quarantine_table:
-    default: gps_quarantine
+    default: bronze_events
+  gps_observations_table:
+    default: silver_gps_observations
+  gps_quarantine_table:
+    default: silver_gps_quarantine
+  trip_ended_events_table:
+    default: silver_trip_ended_events
   deduplication_watermark:
     description: Development default for bounded event_id deduplication state; tune per environment.
     default: 1 day
@@ -29,7 +29,8 @@ variables:
   event_hubs_topic:
     default: evh-canopy-gps-dev
   event_hubs_consumer_group:
-    default: canopy-databricks
+    description: Keep Trial isolated from the legacy consumer group while both pipelines run.
+    default: canopy-databricks-trial
   event_hubs_sas_policy_name:
     default: canopy-databricks-listen
   event_hubs_secret_scope:
@@ -38,10 +39,10 @@ variables:
     default: canopy-databricks-listen
 
 targets:
-  dev:
+  trial:
     default: true
     mode: development
     workspace:
-      host: https://adb-7405605578654524.4.azuredatabricks.net
-      profile: CANOPY_DEV
+      host: https://adb-7405612422597045.4.azuredatabricks.net
+      profile: CANOPY_TRIAL
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

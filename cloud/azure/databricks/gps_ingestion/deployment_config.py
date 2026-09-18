@@ -1,4 +1,4 @@
-"""Deployment-owned Unity Catalog names for GPS ingestion Pipeline A."""
+"""Deployment-owned Unity Catalog names for generic Canopy ingestion."""
 
 from __future__ import annotations
 
@@ -10,50 +10,46 @@ _RESERVED_SCHEMAS = {"default", "information_schema"}
 
 
 @dataclass(frozen=True)
-class GpsIngestionTableConfig:
-    """Build the three Pipeline A table names without using ``default``.
+class EventIngestionTableConfig:
+    """Build sandbox table names while preserving intended medallion hierarchy."""
 
-    The development defaults match the verified ``dbw-canopy-dev`` workspace.
-    Every value can be replaced by an Asset Bundle target or pipeline setting.
-    """
-
-    catalog: str = "dbw_canopy_dev"
-    bronze_schema: str = "bronze"
-    silver_schema: str = "silver"
-    bronze_events_name: str = "gps_events"
-    observations_name: str = "gps_observations"
-    quarantine_name: str = "gps_quarantine"
+    catalog: str = "dbw_canopy_trial"
+    schema: str = "sandbox"
+    bronze_events_name: str = "bronze_events"
+    gps_observations_name: str = "silver_gps_observations"
+    gps_quarantine_name: str = "silver_gps_quarantine"
+    trip_ended_events_name: str = "silver_trip_ended_events"
 
     def __post_init__(self) -> None:
         values = (
             self.catalog,
-            self.bronze_schema,
-            self.silver_schema,
+            self.schema,
             self.bronze_events_name,
-            self.observations_name,
-            self.quarantine_name,
+            self.gps_observations_name,
+            self.gps_quarantine_name,
+            self.trip_ended_events_name,
         )
         for value in values:
             if not _IDENTIFIER.fullmatch(value):
                 raise ValueError(f"invalid Unity Catalog identifier: {value!r}")
-        schemas = (self.bronze_schema, self.silver_schema)
-        for schema in schemas:
-            if schema.lower() in _RESERVED_SCHEMAS:
-                raise ValueError(f"pipeline schema cannot be {schema!r}")
-        if len(set(schemas)) != len(schemas):
-            raise ValueError("bronze and silver schemas must be distinct")
+        if self.schema.lower() in _RESERVED_SCHEMAS:
+            raise ValueError(f"pipeline schema cannot be {self.schema!r}")
 
     @property
     def bronze_table(self) -> str:
-        return self._table(self.bronze_schema, self.bronze_events_name)
+        return self._table(self.bronze_events_name)
 
     @property
     def observations_table(self) -> str:
-        return self._table(self.silver_schema, self.observations_name)
+        return self._table(self.gps_observations_name)
 
     @property
     def quarantine_table(self) -> str:
-        return self._table(self.silver_schema, self.quarantine_name)
+        return self._table(self.gps_quarantine_name)
 
-    def _table(self, schema: str, name: str) -> str:
-        return f"{self.catalog}.{schema}.{name}"
+    @property
+    def trip_ended_events_table(self) -> str:
+        return self._table(self.trip_ended_events_name)
+
+    def _table(self, name: str) -> str:
+        return f"{self.catalog}.{self.schema}.{name}"
