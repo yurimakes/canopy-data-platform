@@ -15,7 +15,7 @@ from pyspark.sql import SparkSession, functions as F
 
 
 SANDBOX_TARGET = "table:dbw_canopy_dev.sandbox.reward_ledger_history"
-TEST_CAMPAIGN = "pipeline_test_reward_ledger_20260918"
+TEST_CAMPAIGN = "pipeline_test_weekly_20260918"
 TEST_WEEK = "2026-W38"
 
 
@@ -64,7 +64,7 @@ def _rows():
         {
             "id": "reward-test-u01",
             "reward_id": "reward-test-u01",
-            "user_id": "pipeline_test_reward_u01",
+            "user_id": "pipeline_test_weekly_20260918_u01",
             "campaign_id": TEST_CAMPAIGN,
             "week": "2026-09-14",
             "week_label": TEST_WEEK,
@@ -77,7 +77,7 @@ def _rows():
         {
             "id": "reward-test-u02",
             "reward_id": "reward-test-u02",
-            "user_id": "pipeline_test_reward_u02",
+            "user_id": "pipeline_test_weekly_20260918_u02",
             "campaign_id": TEST_CAMPAIGN,
             "week": "2026-09-14",
             "week_label": TEST_WEEK,
@@ -91,7 +91,7 @@ def _rows():
             "id": "adjustment-reward-test-u01",
             "reward_id": "adjustment-reward-test-u01",
             "adjusts_reward_id": "reward-test-u01",
-            "user_id": "pipeline_test_reward_u01",
+            "user_id": "pipeline_test_weekly_20260918_u01",
             "campaign_id": TEST_CAMPAIGN,
             "week": "2026-09-14",
             "week_label": TEST_WEEK,
