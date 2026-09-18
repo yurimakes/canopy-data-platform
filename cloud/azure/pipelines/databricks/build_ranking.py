@@ -75,8 +75,22 @@ def build_ranking(reward_ledger_df, membership_df, policy):
         F.sum("points").alias("score"),
     )
 
+    week_end_dates = personal_scores.select("campaign_id", "week").distinct()
+    week_end_dates = week_end_dates.withColumn("week_end_date", _week_label_to_end_date_udf(F.col("week")))
+
+    eligible_scores = (
+        personal_scores
+        .join(membership_df, ["campaign_id", "user_id"], "inner")
+        .join(week_end_dates, ["campaign_id", "week"], "left")
+        .filter(F.to_date(F.col("joined_at")) <= F.to_date(F.col("week_end_date")))
+        .filter(
+            F.col("left_at").isNull()
+            | (F.to_date(F.col("left_at")) > F.to_date(F.col("week_end_date")))
+        )
+    )
+
     w = Window.partitionBy("campaign_id", "week").orderBy(F.col("score").desc())
-    personal_ranked = personal_scores.withColumn("rank", _rank_column(tie_method).over(w))
+    personal_ranked = eligible_scores.withColumn("rank", _rank_column(tie_method).over(w))
 
     personal_result = (
         personal_ranked
@@ -86,17 +100,7 @@ def build_ranking(reward_ledger_df, membership_df, policy):
         .select("campaign_id", "week", "user_id", "score", "rank", "generated_at", "policy_version", "generation_version")
     )
 
-    week_end_dates = personal_ranked.select("campaign_id", "week").distinct()
-    week_end_dates = week_end_dates.withColumn("week_end_date", _week_label_to_end_date_udf(F.col("week")))
-
-    with_membership = personal_ranked.join(membership_df, ["campaign_id", "user_id"], "left")
-    with_membership = with_membership.join(week_end_dates, ["campaign_id", "week"], "left")
-    with_membership = with_membership.filter(F.to_date(F.col("joined_at")) <= F.to_date(F.col("week_end_date")))
-    with_membership = with_membership.filter(
-        F.col("left_at").isNull() | (F.to_date(F.col("left_at")) > F.to_date(F.col("week_end_date")))
-    )
-
-    with_dept = with_membership.filter(F.col("department_id").isNotNull())
+    with_dept = personal_ranked.filter(F.col("department_id").isNotNull())
 
     dept_grouped = with_dept.groupBy("campaign_id", "week", "department_id").agg(
         F.sum("score").alias("sum_score"),
