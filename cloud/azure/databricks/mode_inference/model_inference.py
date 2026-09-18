@@ -36,27 +36,35 @@ def predict_pandas(model: Any, frame: Any) -> Any:
     return model.predict(frame.loc[:, list(FEATURE_NAMES)])
 
 
-def _load_worker_model(model_uri: str) -> Any:
-    """Load and cache the registered MLflow model once per Python worker."""
-    model = _MODEL_CACHE.get(model_uri)
+def _load_worker_model(cache_key: str, model_bytes: bytes) -> Any:
+    """Deserialize an already-resolved model once per Python worker."""
+    model = _MODEL_CACHE.get(cache_key)
     if model is None:
-        import mlflow.pyfunc
+        import cloudpickle
 
-        model = mlflow.pyfunc.load_model(model_uri)
-        _MODEL_CACHE[model_uri] = model
+        model = cloudpickle.loads(model_bytes)
+        _MODEL_CACHE[cache_key] = model
     return model
 
 
 def _prediction_udf(model_uri: str) -> Any:
-    """Build a scalar Pandas UDF without MLflow Spark-UDF sandbox setup."""
+    """Build a scalar Pandas UDF with driver-resolved model bytes."""
+    import cloudpickle
+    import mlflow.pyfunc
     import pandas as pd
     from pyspark.sql.functions import PandasUDFType, pandas_udf
     from pyspark.sql.types import LongType
 
+    # Resolve the Unity Catalog model on the pipeline driver, where the
+    # Databricks registry/artifact context exists. Workers never call models:/.
+    driver_model = mlflow.pyfunc.load_model(model_uri)
+    model_bytes = cloudpickle.dumps(driver_model)
+    cache_key = model_uri
+
     @pandas_udf(LongType(), PandasUDFType.SCALAR)
     def predict(frame):
         ordered = frame.loc[:, list(FEATURE_NAMES)]
-        model = _load_worker_model(model_uri)
+        model = _load_worker_model(cache_key, model_bytes)
         values = predict_pandas(model, ordered)
         return pd.Series(values, index=ordered.index, dtype="int64")
 
