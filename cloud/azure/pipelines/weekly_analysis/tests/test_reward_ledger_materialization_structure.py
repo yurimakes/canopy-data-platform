@@ -33,8 +33,19 @@ class RewardLedgerMaterializationStructureTest(unittest.TestCase):
 
     def test_partition_write_is_idempotent(self):
         source = self._function_source("write_ledger_partition")
-        self.assertIn('option("replaceWhere", predicate)', source)
-        self.assertIn('partitionBy("campaign_id", "week_label")', source)
+        helper = self._function_source("_replace_history_partition")
+        new_history = self._function_source("_write_new_history")
+        self.assertIn("_replace_history_partition", source)
+        self.assertIn('option("replaceWhere", predicate)', helper)
+        self.assertIn('partitionBy("campaign_id", "week_label")', new_history)
+
+    def test_sandbox_table_target_is_supported(self):
+        resolver = self._function_source("_resolve_history_target")
+        writer = self._function_source("_write_new_history")
+        replacer = self._function_source("_replace_history_partition")
+        self.assertIn('startswith("table:")', resolver)
+        self.assertIn("saveAsTable", writer)
+        self.assertIn("saveAsTable", replacer)
 
     def test_run_resyncs_history_from_cosmos(self):
         source = self._function_source("run")
