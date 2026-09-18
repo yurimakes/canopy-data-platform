@@ -53,7 +53,7 @@ def _prediction_udf(model_uri: str) -> Any:
     import mlflow.pyfunc
     import pandas as pd
     from pyspark.sql.functions import PandasUDFType, pandas_udf
-    from pyspark.sql.types import LongType
+    from pyspark.sql.types import LongType, StructField, StructType, TimestampType
 
     # Resolve the Unity Catalog model on the pipeline driver, where the
     # Databricks registry/artifact context exists. Workers never call models:/.
@@ -61,12 +61,31 @@ def _prediction_udf(model_uri: str) -> Any:
     model_bytes = cloudpickle.dumps(driver_model)
     cache_key = model_uri
 
-    @pandas_udf(LongType(), PandasUDFType.SCALAR)
+    result_schema = StructType([
+        StructField("predicted_class", LongType(), nullable=False),
+        StructField("predicted_at", TimestampType(), nullable=False),
+    ])
+
+    @pandas_udf(result_schema, PandasUDFType.SCALAR)
     def predict(frame):
         ordered = frame.loc[:, list(FEATURE_NAMES)]
         model = _load_worker_model(cache_key, model_bytes)
         values = predict_pandas(model, ordered)
-        return pd.Series(values, index=ordered.index, dtype="int64")
+
+        # Wall-clock completion time of this Arrow prediction batch.
+        # Session timezone is UTC, so return UTC as timezone-naive Spark timestamp.
+        completed_at = pd.Timestamp.now(tz="UTC").tz_localize(None)
+
+        return pd.DataFrame(
+            {
+                "predicted_class": pd.Series(
+                    values, index=ordered.index, dtype="int64"
+                ),
+                "predicted_at": pd.Series(
+                    completed_at, index=ordered.index, dtype="datetime64[ns]"
+                ),
+            }
+        )
 
     return predict
 
@@ -86,10 +105,13 @@ def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
     mode_map = F.create_map(*mapping_items)
 
     predicted = features.withColumn(
-        "predicted_class",
+        "_prediction",
         predict(
             F.struct(*[F.col(name).alias(name) for name in FEATURE_NAMES])
-        ).cast("int"),
+        ),
+    ).withColumn(
+        "predicted_class",
+        F.col("_prediction.predicted_class").cast("int"),
     )
 
     return predicted.select(
@@ -100,5 +122,5 @@ def infer_predictions(features: Any, spark: Any, model_uri: str) -> Any:
         F.lit(model_name).alias("model_name"),
         F.lit(model_version).cast("string").alias("model_version"),
         F.col("features_processed_at"),
-        F.current_timestamp().alias("predicted_at"),
+        F.col("_prediction.predicted_at").alias("predicted_at"),
     )
