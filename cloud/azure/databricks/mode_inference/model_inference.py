@@ -7,7 +7,7 @@ from typing import Any
 
 from .contracts import FEATURE_NAMES, MODE_BY_CLASS
 
-_VERSION_URI = re.compile(r"^models:/([^@]+)/(\\d+)$")
+_VERSION_URI = re.compile(r"^models:/([^@]+)/(\d+)$")
 _ALIAS_URI = re.compile(r"^models:/([^@]+)@([^/]+)$")
 
 # Python workers are reused across Arrow batches. Keep one loaded pyfunc model
