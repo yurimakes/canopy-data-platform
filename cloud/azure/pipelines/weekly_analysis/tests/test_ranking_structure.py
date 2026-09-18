@@ -64,6 +64,22 @@ class RankingStructureTest(unittest.TestCase):
         self.assertIn('F.lit("department").alias("ranking_type")', self.pipeline_source)
         self.assertIn('alias("reward_points")', self.pipeline_source)
 
+    def test_personal_ranking_applies_membership_eligibility(self):
+        build = next(
+            node
+            for node in ast.walk(self.ranking_tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "build_ranking"
+        )
+        build_source = ast.get_source_segment(self.ranking_source, build)
+
+        self.assertIn(
+            '.join(membership_df, ["campaign_id", "user_id"], "inner")',
+            build_source,
+        )
+        self.assertIn('F.col("joined_at")', build_source)
+        self.assertIn('F.col("left_at")', build_source)
+        self.assertIn("eligible_scores", build_source)
+
 
 if __name__ == "__main__":
     unittest.main()
