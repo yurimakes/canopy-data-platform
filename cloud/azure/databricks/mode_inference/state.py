@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, Mapping
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from .contracts import FEATURE_NAMES, FEATURE_OUTPUT_SCHEMA_DDL, MAX_RAW_POINTS
@@ -109,6 +109,7 @@ def advance_trip(
             "trip_id": point.trip_id,
             "sequence": point.sequence,
             "event_time": point.event_time,
+            "features_processed_at": datetime.now(timezone.utc),
             **feature_values,
         })
         seen.add(point.event_id)
