@@ -1,5 +1,4 @@
 # Spark and Lakeflow are supplied by Databricks.
-mlflow==3.16.1
 lightgbm>=4.5,<5
 numpy>=2.1,<3
 pandas>=2.2,<3
