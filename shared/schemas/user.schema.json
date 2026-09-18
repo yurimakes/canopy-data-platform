@@ -2,15 +2,100 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://canopy.local/schemas/user.schema.json",
   "title": "Canopy user profile",
-  "description": "canopy-db/users, partition /user_id. id equals user_id. Registration backend sets created_at; never accept a client-supplied signup date. Authentication credentials belong to the authentication provider.",
+  "description": "canopy-db/users, partition /user_id. id equals user_id. One current campaign per user. Registration with a campaign sets created_at and campaign_joined_at to the same server timestamp. Preserve both timestamps on retries and later Trips. Eligibility separately checks observation duration and minimum Trip count. Never infer participation from GPS or accept client-supplied dates. Authentication credentials belong to the authentication provider.",
   "type": "object",
-  "required": ["id", "user_id", "created_at"],
+  "required": [
+    "id",
+    "user_id",
+    "created_at"
+  ],
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "user_id": {"type": "string", "minLength": 1},
-    "created_at": {"type": "string", "format": "date-time"},
-    "nickname": {"type": ["string", "null"]},
-    "auth_subject": {"type": ["string", "null"]}
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nickname": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "auth_subject": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "campaign_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "campaign_joined_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "campaign_left_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "department_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "campaign_id"
+        ],
+        "properties": {
+          "campaign_id": {
+            "type": "string"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "campaign_joined_at"
+        ],
+        "properties": {
+          "campaign_joined_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "campaign_joined_at": {
+            "type": "null"
+          },
+          "campaign_left_at": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
 }
