@@ -41,13 +41,16 @@ def read_memberships_from_cosmos(campaign_id, **connection):
 
 
 def _strip_membership(item):
-    # ADLS 열 이름 유지. 서비스 가입일을 캠페인 참여일로 대체하지 않음.
-    for key in ("user_id", "campaign_id", "campaign_joined_at"):
+    # 가입 시 확정한 참여일을 기존 ADLS joined_at 열로 전달. 첫 Trip 기준 변경 제외.
+    for key in ("user_id", "campaign_id", "created_at", "campaign_joined_at"):
         if not isinstance(item.get(key), str) or not item[key].strip():
             raise ValueError("users participation field missing: " + key)
     joined = datetime.fromisoformat(item["campaign_joined_at"].replace("Z", "+00:00"))
-    if joined.tzinfo is None:
-        raise ValueError("campaign_joined_at requires timezone")
+    created = datetime.fromisoformat(item["created_at"].replace("Z", "+00:00"))
+    if joined.tzinfo is None or created.tzinfo is None:
+        raise ValueError("Registration timestamps require timezone")
+    if joined != created:
+        raise ValueError("campaign_joined_at must equal created_at under signup participation policy")
     return {
         "user_id": item["user_id"], "campaign_id": item["campaign_id"],
         "department_id": item.get("department_id"),

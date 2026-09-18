@@ -77,7 +77,7 @@ class IdentityAndRuntimeTests(unittest.TestCase):
 
     def test_sync_preserves_adls_contract_from_users(self):
         from sync_campaign_membership import _strip_membership, read_memberships_from_cosmos
-        item = {"user_id": "u", "campaign_id": "c", "created_at": "2020-01-01T00:00:00Z",
+        item = {"user_id": "u", "campaign_id": "c", "created_at": "2026-09-01T00:00:00Z",
                 "campaign_joined_at": "2026-09-01T00:00:00Z", "department_id": "dept"}
         self.assertEqual(_strip_membership(item), {"user_id": "u", "campaign_id": "c",
             "joined_at": item["campaign_joined_at"], "left_at": None, "department_id": "dept"})
@@ -86,6 +86,10 @@ class IdentityAndRuntimeTests(unittest.TestCase):
             self.assertEqual(read_memberships_from_cosmos("c"), [item])
             self.assertEqual(container.return_value.query_items.call_args.kwargs["parameters"],
                              [{"name": "@campaign_id", "value": "c"}])
+        with self.assertRaises(ValueError):
+            _strip_membership(dict(item, campaign_joined_at="2026-09-02T00:00:00Z"))
+        equivalent = dict(item, campaign_joined_at="2026-09-01T09:00:00+09:00")
+        self.assertEqual(_strip_membership(equivalent)["joined_at"], equivalent["campaign_joined_at"])
         del item["campaign_joined_at"]
         with self.assertRaises(ValueError):
             _strip_membership(item)
