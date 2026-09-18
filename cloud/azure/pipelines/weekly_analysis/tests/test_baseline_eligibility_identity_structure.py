@@ -80,6 +80,12 @@ class BaselineEligibilityIdentityStructureTest(unittest.TestCase):
             self.spark_baseline_source,
         )
 
+    def test_commute_scope_gate_reads_pipeline_spark_config(self):
+        self.assertIn(
+            'spark.conf.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED", "false")',
+            self.pipeline_source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
