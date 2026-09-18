@@ -14,6 +14,8 @@ import { files } from './src/files';
 import { exportTrip } from './src/exporter';
 import type { Summary, GpsEvent } from './src/types';
 import type { FeedbackInput, ServerTrip } from './src/tripApi';
+import { loadRanking } from './src/rankingClient';
+import type { RemotePanel, RankingView } from './src/ui/CommunityPanels';
 let runtime: Promise<{db:Storage; collector:Collector}> | undefined;
 function initialize() { return runtime ??= (async () => {
   const db = await getStorage();
@@ -31,6 +33,7 @@ export default function App() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);
+  const [ranking,setRanking]=useState<RemotePanel<RankingView>>({state:'unavailable'});
   const [entered,setEntered]=useState(false);
   const [route,setRoute]=useState<PlannedRoute|null>(null);
   const trackRef=useRef<{id:string;events:GpsEvent[]}>({id:'',events:[]});
@@ -64,6 +67,13 @@ export default function App() {
     const sub=AppState.addEventListener('change',state=>{void runtime?.then(s=>s.collector.appStateChanged(state));});
     return ()=>{alive=false;clearInterval(timer);sub.remove();void runtime?.then(s=>{s.collector.changed=()=>{};void s.collector.interrupt('화면 종료');});};
   },[]);
+  useEffect(()=>{
+    let alive=true;
+    if(!entered||!profile){setRanking({state:'unavailable'});return ()=>{alive=false};}
+    setRanking({state:'loading'});
+    void loadRanking(profile.id).then(value=>{if(alive)setRanking(value);}).catch(()=>{if(alive)setRanking({state:'error',message:'랭킹을 불러오지 못했습니다.'});});
+    return ()=>{alive=false};
+  },[entered,profile?.id]);
   useEffect(()=>{
     if(!service)return;
     let alive=true,refreshing=false;
@@ -103,6 +113,11 @@ export default function App() {
   const trip=ownsCurrent?c?.trip:undefined; const seconds=trip ? Math.max(0,Math.floor(((trip.ended_at ? Date.parse(trip.ended_at) : trip.status==='recording' ? now : Date.parse(c?.latest?.received_at ?? trip.started_at))-Date.parse(trip.started_at))/1000)) : 0;
   const resultMatches=ownedTrips.some(t=>t.trip_id===resultTrip?.trip_id) && (selectedTrip?selectedTrip===resultTrip?.trip_id:(!trip || trip.trip_id===resultTrip?.trip_id)) && (resultTrip?.collection_mode??'developer')===screen;
   const duration=String(Math.floor(seconds/60)).padStart(2,'0')+':'+String(seconds%60).padStart(2,'0');
+  function refreshRanking(){
+    if(!profile)return;
+    setRanking({state:'loading'});
+    void loadRanking(profile.id).then(setRanking).catch(()=>setRanking({state:'error',message:'랭킹을 불러오지 못했습니다.'}));
+  }
   async function share(id:string) {
     if(!service||sharing)return;setSharing(true);setError('');
     try{await exportTrip(service.db,files,id,'gps',ports.now());}catch(e){setError('내보내기 오류: '+String(e));}finally{setSharing(false);}
@@ -184,7 +199,7 @@ export default function App() {
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen key={profile.id}
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
-    trips={ownedTrips} onSelect={select}
+    trips={ownedTrips} onSelect={select} ranking={ranking} onRefreshCommunity={refreshRanking}
     onCollectionMode={mode=>{if(mode==='developer'&&profile.role!=='developer')return;c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}
     collectionMode={screen} onBack={()=>{if(c?.trip?.status!=='recording' && !['starting','recording','stopping'].includes(c?.phase??''))void logoutProfile().then(()=>service?.db.saveSync('ui:session',null)).then(()=>{setProfile(null);setScreen(null);setEntered(false);setSelectedTrip(undefined);setRoute(null);setEvents([]);setOwnedTrips([]);}).catch(e=>setError(String(e))); }}
     ready={!!c} mode={c?.mode??null} phase={c?.phase??'idle'} count={ownsCurrent?c?.count??0:0} duration={duration}
