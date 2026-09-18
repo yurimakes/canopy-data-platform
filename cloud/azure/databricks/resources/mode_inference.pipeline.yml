@@ -5,6 +5,7 @@ resources:
       catalog: ${var.catalog}
       schema: ${var.silver_schema}
       serverless: true
+      continuous: true
       channel: CURRENT
       root_path: ${workspace.file_path}
       libraries:
