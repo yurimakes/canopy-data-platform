@@ -22,6 +22,7 @@ class ModeInferenceConfig:
     input_observations_name: str = "gps_observations"
     output_predictions_name: str = "mode_predictions"
     model_uri: str = "models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1"
+    model_artifact_path: str = "/Volumes/dbw_canopy_dev/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops"
     state_timeout: str = "none"
     timezone: str = "UTC"
 
@@ -36,6 +37,8 @@ class ModeInferenceConfig:
             raise ValueError("input and output tables must be distinct")
         if not self.model_uri.startswith("models:/"):
             raise ValueError("model_uri must be an MLflow models:/ URI")
+        if not self.model_artifact_path.startswith("/Volumes/"):
+            raise ValueError("model_artifact_path must be a Unity Catalog Volume path")
         if self.state_timeout.strip().lower() != "none":
             raise ValueError("only state_timeout=none is supported")
         if self.timezone.strip().upper() != "UTC":
