@@ -168,11 +168,20 @@ class RewardStructureTest(unittest.TestCase):
             <= set(canonical["required"])
         )
         self.assertNotIn("week", canonical["required"])
+        spine = ast.get_source_segment(
+            self.helper_source, function(self.helper_tree, "_week_spine")
+        )
+        self.assertIn('F.expr("date_add(_week_start, 7)")', spine)
+        self.assertIn('"_week_end_exclusive"', spine)
+        self.assertNotIn('date_add(_week_start, 6)', spine)
         source = ast.get_source_segment(
             self.helper_source, function(self.helper_tree, "_mission_completions")
         )
         self.assertIn('F.to_date(F.col("m.week_start")) == F.col("w._week_start")', source)
-        self.assertIn('F.to_date(F.col("m.week_end")) == F.col("w._week_end")', source)
+        self.assertIn(
+            'F.to_date(F.col("m.week_end")) == F.col("w._week_end_exclusive")',
+            source,
+        )
         self.assertIn('F.col("m.campaign_id") == F.col("w.campaign_id")', source)
         self.assertIn('F.col("m.user_id").alias("user_id")', source)
         self.assertNotIn('F.col("m.week")', source)

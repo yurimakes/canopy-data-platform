@@ -37,7 +37,7 @@ def _conversion_rate(policy: dict) -> float:
 
 
 def _week_spine(weekly_gold: DataFrame) -> DataFrame:
-    """Resolve the ISO week label to its exact Monday and Sunday dates."""
+    """Resolve the ISO week to Monday and the next Monday (exclusive)."""
     return (
         weekly_gold.select("campaign_id", "week").distinct()
         .withColumn("_iso_week", F.substring(F.col("week"), 7, 2).cast("int"))
@@ -53,8 +53,8 @@ def _week_spine(weekly_gold: DataFrame) -> DataFrame:
             "_week_start",
             F.expr("date_add(_week1_monday, 7 * (_iso_week - 1))"),
         )
-        .withColumn("_week_end", F.expr("date_add(_week_start, 6)"))
-        .select("campaign_id", "week", "_week_start", "_week_end")
+        .withColumn("_week_end_exclusive", F.expr("date_add(_week_start, 7)"))
+        .select("campaign_id", "week", "_week_start", "_week_end_exclusive")
     )
 
 
@@ -70,7 +70,7 @@ def _mission_completions(mission_response: DataFrame, weekly_gold: DataFrame) ->
             _week_spine(weekly_gold).alias("w"),
             (F.col("m.campaign_id") == F.col("w.campaign_id"))
             & (F.to_date(F.col("m.week_start")) == F.col("w._week_start"))
-            & (F.to_date(F.col("m.week_end")) == F.col("w._week_end")),
+            & (F.to_date(F.col("m.week_end")) == F.col("w._week_end_exclusive")),
             "inner",
         )
         .select(
