@@ -11,6 +11,10 @@ GOLD_REWARD_LEDGER_HISTORY_PATH = os.environ.get(
     "CANOPY_GOLD_REWARD_LEDGER_HISTORY_PATH",
     "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_ledger_history/",
 )
+GOLD_REWARD_LEDGER_HISTORY_TARGET = os.environ.get(
+    "CANOPY_GOLD_REWARD_LEDGER_HISTORY_TARGET",
+    GOLD_REWARD_LEDGER_HISTORY_PATH,
+)
 
 LEDGER_HISTORY_SCHEMA = (
     "id string, reward_id string, adjusts_reward_id string, user_id string, "
@@ -108,18 +112,71 @@ def _ledger_history_frame(spark, records):
     return spark.createDataFrame([], schema=LEDGER_HISTORY_SCHEMA)
 
 
-def write_ledger_history(spark, outcomes):
+def _resolve_history_target(target=None):
+    resolved = target or GOLD_REWARD_LEDGER_HISTORY_TARGET
+    if resolved.startswith("table:"):
+        table_name = resolved.split(":", 1)[1].strip()
+        if not table_name:
+            raise ValueError("Reward Ledger history table target is empty")
+        return "table", table_name
+    return "path", resolved
+
+
+def _history_exists(spark, target=None):
+    from delta.tables import DeltaTable
+
+    target_type, value = _resolve_history_target(target)
+    if target_type == "table":
+        return spark.catalog.tableExists(value)
+    return DeltaTable.isDeltaTable(spark, value)
+
+
+def _history_delta_table(spark, target=None):
+    from delta.tables import DeltaTable
+
+    target_type, value = _resolve_history_target(target)
+    if target_type == "table":
+        return DeltaTable.forName(spark, value)
+    return DeltaTable.forPath(spark, value)
+
+
+def _write_new_history(df, target=None):
+    target_type, value = _resolve_history_target(target)
+    writer = (
+        df.write.format("delta")
+        .mode("overwrite")
+        .partitionBy("campaign_id", "week_label")
+    )
+    if target_type == "table":
+        writer.saveAsTable(value)
+    else:
+        writer.save(value)
+
+
+def _replace_history_partition(df, predicate, target=None):
+    target_type, value = _resolve_history_target(target)
+    writer = (
+        df.write.format("delta")
+        .mode("overwrite")
+        .option("replaceWhere", predicate)
+        .option("mergeSchema", "true")
+    )
+    if target_type == "table":
+        writer.saveAsTable(value)
+    else:
+        writer.save(value)
+
+
+def write_ledger_history(spark, outcomes, target=None):
     """Upsert paid reward outcomes without deleting existing adjustments."""
     records = [o["record"] for o in outcomes if o["status"] in ("created", "already_exists")]
     if not records:
         return 0
 
-    from delta.tables import DeltaTable
-
     df = _ledger_history_frame(spark, records)
-    if DeltaTable.isDeltaTable(spark, GOLD_REWARD_LEDGER_HISTORY_PATH):
+    if _history_exists(spark, target):
         (
-            DeltaTable.forPath(spark, GOLD_REWARD_LEDGER_HISTORY_PATH)
+            _history_delta_table(spark, target)
             .alias("target")
             .merge(df.alias("source"), "target.reward_id = source.reward_id")
             .whenMatchedUpdateAll()
@@ -127,12 +184,7 @@ def write_ledger_history(spark, outcomes):
             .execute()
         )
     else:
-        (
-            df.write.format("delta")
-            .mode("overwrite")
-            .partitionBy("campaign_id", "week_label")
-            .save(GOLD_REWARD_LEDGER_HISTORY_PATH)
-        )
+        _write_new_history(df, target)
     return len(records)
 
 
@@ -187,9 +239,8 @@ def read_ledger_partition(container, campaign_id, week):
     return normalized
 
 
-def write_ledger_partition(spark, campaign_id, week, records):
+def write_ledger_partition(spark, campaign_id, week, records, target=None):
     """Idempotently replace one campaign/week Gold partition from the ledger source."""
-    from delta.tables import DeltaTable
 
     for record in records:
         if record.get("campaign_id") != campaign_id or record.get("week_label") != week:
@@ -201,23 +252,16 @@ def write_ledger_partition(spark, campaign_id, week, records):
         + "' AND week_label = '" + week.replace("'", "''") + "'"
     )
 
-    writer = (
-        df.write.format("delta")
-        .option("mergeSchema", "true")
-        .partitionBy("campaign_id", "week_label")
-    )
-    if DeltaTable.isDeltaTable(spark, GOLD_REWARD_LEDGER_HISTORY_PATH):
-        writer.mode("overwrite").option("replaceWhere", predicate).save(
-            GOLD_REWARD_LEDGER_HISTORY_PATH
-        )
+    if _history_exists(spark, target):
+        _replace_history_partition(df, predicate, target)
     else:
-        writer.mode("overwrite").save(GOLD_REWARD_LEDGER_HISTORY_PATH)
+        _write_new_history(df, target)
     return len(records)
 
 
-def sync_ledger_history_from_cosmos(spark, container, campaign_id, week):
+def sync_ledger_history_from_cosmos(spark, container, campaign_id, week, target=None):
     records = read_ledger_partition(container, campaign_id, week)
-    return write_ledger_partition(spark, campaign_id, week, records)
+    return write_ledger_partition(spark, campaign_id, week, records, target=target)
 
 
 def run(campaign_id, week, reward_calc_path):
