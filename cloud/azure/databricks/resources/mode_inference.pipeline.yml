@@ -23,3 +23,15 @@ resources:
         canopy.transition_model_uri: ${var.transition_model_uri}
         canopy.state_timeout: ${var.state_timeout}
         spark.sql.session.timeZone: ${var.timezone}
+
+  jobs:
+    mode_inference_continuous:
+      name: canopy-mode-inference-continuous-${bundle.target}
+      continuous:
+        pause_status: UNPAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: mode_inference
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.mode_inference_pipeline.id}
+
