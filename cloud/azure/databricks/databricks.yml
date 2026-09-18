@@ -23,8 +23,11 @@ variables:
   output_predictions_table:
     default: mode_predictions
   transition_model_uri:
-    description: Explicit registered-model version; no Champion alias currently exists.
+    description: Registered-model identity retained for output metadata.
     default: models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1
+  transition_model_artifact_path:
+    description: Native LightGBM skops artifact in a Unity Catalog Volume.
+    default: /Volumes/dbw_canopy_dev/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops
   state_timeout:
     description: Stateful trip-retention policy. Only none is supported in the first append-only implementation.
     default: none
