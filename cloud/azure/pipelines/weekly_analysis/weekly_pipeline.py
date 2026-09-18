@@ -68,7 +68,7 @@ with open(os.path.join(databricks_module_path, "ranking_policy.yaml"), "r", enco
 
 # 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산
 COMMUTE_SCOPE_VERIFIED = (
-    os.environ.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED") == "true"
+    spark.conf.get("CANOPY_BASELINE_WEEKLY_COMMUTE_VERIFIED", "false") == "true"
 )
 
 # 기존 계약: shared/schemas/baseline/weekly_user_gold.schema.json
