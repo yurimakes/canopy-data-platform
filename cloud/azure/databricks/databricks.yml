@@ -1,0 +1,31 @@
+bundle:
+  name: canopy-segment-generation-pipeline
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  schema:
+    default: sandbox
+  trip_ended_table:
+    default: silver_trip_ended_events
+  gps_observations_table:
+    default: silver_gps_observations
+  mode_predictions_table:
+    default: silver_mode_predictions
+  segments_table:
+    default: silver_mode_segments
+  max_repair_gap_seconds:
+    description: Maximum adjacent event-time gap for one-point repair.
+    default: 3
+
+targets:
+  trial:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
