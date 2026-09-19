@@ -11,7 +11,7 @@ resources:
       tasks:
         - task_key: prepare_replay
           spark_python_task:
-            python_file: ../scripts/prepare_inference_replay.py
+            python_file: ${workspace.file_path}/scripts/prepare_inference_replay.py
             parameters:
               - --catalog=${var.catalog}
               - --schema=${var.silver_schema}
@@ -32,7 +32,7 @@ resources:
           depends_on:
             - task_key: run_replay_inference
           spark_python_task:
-            python_file: ../scripts/report_inference_replay.py
+            python_file: ${workspace.file_path}/scripts/report_inference_replay.py
             parameters:
               - --catalog=${var.catalog}
               - --schema=${var.silver_schema}
