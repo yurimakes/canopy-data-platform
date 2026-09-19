@@ -10,9 +10,6 @@ resources:
       libraries:
         - file:
             path: ${workspace.file_path}/segment_generation/lakeflow_pipeline.py
-      environment:
-        dependencies:
-          - -r ${workspace.file_path}/requirements.lakeflow.txt
       configuration:
         canopy.catalog: ${var.catalog}
         canopy.schema: ${var.schema}
