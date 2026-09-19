@@ -19,6 +19,18 @@ LEDGER_HISTORY_SCHEMA = (
     "points double, status string, occurred_at string, policy_version string"
 )
 LEDGER_HISTORY_STATUSES = ("paid", "adjusted")
+REWARD_CALCULATION_REQUIRED_COLUMNS = (
+    "user_id",
+    "campaign_id",
+    "week",
+    "status",
+    "payable",
+    "points",
+    "reason",
+    "point_reason",
+    "missions_completed_this_week",
+    "policy_version",
+)
 
 
 def _get_secret_or_env(scope, secret_key, env_var):
@@ -52,7 +64,7 @@ def _week_label_to_start_date(week_label):
 def write_reward(container, result_row):
     from azure.cosmos.exceptions import CosmosResourceExistsError
 
-    if not result_row.get("payable"):
+    if not result_row.get("payable") or result_row.get("points") is None:
         return {"status": "skipped", "reason": "not_payable"}
 
     reward_id = make_reward_id(result_row["user_id"], result_row["campaign_id"], result_row["week"])
@@ -265,18 +277,60 @@ def sync_ledger_history_from_cosmos(spark, container, campaign_id, week, target=
     return write_ledger_partition(spark, campaign_id, week, records, target=target)
 
 
-def run(campaign_id, week, reward_calc_path):
+def _read_reward_calculation_source(spark, source):
+    """Read a managed table source or a Delta path and validate its contract."""
+    source = (source or "").strip()
+    if not source:
+        raise ValueError("Reward calculation source required")
+
+    if source.startswith("table:"):
+        table_name = source.split(":", 1)[1].strip()
+        if not table_name:
+            raise ValueError("Reward calculation table source is empty")
+        frame = spark.table(table_name)
+    else:
+        frame = spark.read.format("delta").load(source)
+
+    missing = sorted(
+        set(REWARD_CALCULATION_REQUIRED_COLUMNS) - set(frame.columns)
+    )
+    if missing:
+        raise ValueError(
+            "Reward calculation source missing required columns: "
+            + ", ".join(missing)
+        )
+    return frame
+
+
+def run(
+    campaign_id,
+    week,
+    reward_calc_source,
+    container=None,
+    history_target=None,
+):
     from pyspark.sql import SparkSession
     from pyspark.sql import functions as F
 
+    if (
+        not isinstance(campaign_id, str)
+        or not campaign_id.strip()
+        or "{{" in campaign_id
+    ):
+        raise ValueError("Resolved campaign_id required")
+    if not isinstance(week, str) or not week.strip() or "{{" in week:
+        raise ValueError("Resolved week required")
+    campaign_id = campaign_id.strip()
+    week = week.strip()
+
     spark = SparkSession.builder.getOrCreate()
     df = (
-        spark.read.format("delta").load(reward_calc_path)
+        _read_reward_calculation_source(spark, reward_calc_source)
         .filter((F.col("campaign_id") == campaign_id) & (F.col("week") == week))
     )
 
     result_rows = [row.asDict() for row in df.collect()]
-    container = _get_container()
+    container = container or _get_container()
     outcomes = process_reward_batch(container, result_rows)
 
     history_count = sync_ledger_history_from_cosmos(
@@ -284,6 +338,7 @@ def run(campaign_id, week, reward_calc_path):
         container,
         campaign_id,
         week,
+        target=history_target,
     )
 
     created = sum(1 for o in outcomes if o["status"] == "created")
@@ -299,7 +354,7 @@ if __name__ == "__main__":
 
     campaign_id_arg = sys.argv[1] if len(sys.argv) > 1 else None
     week_arg = sys.argv[2] if len(sys.argv) > 2 else None
-    reward_calc_path_arg = os.environ.get(
+    reward_calc_source_arg = os.environ.get(
         "CANOPY_GOLD_REWARD_CALC_PATH",
         "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/reward_calculation/",
     )
@@ -307,4 +362,4 @@ if __name__ == "__main__":
     if not (campaign_id_arg and week_arg):
         raise ValueError("campaign_id and week parameters required")
 
-    run(campaign_id_arg, week_arg, reward_calc_path_arg)
+    run(campaign_id_arg, week_arg, reward_calc_source_arg)
