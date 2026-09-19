@@ -1,24 +1,26 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,AppState,View,Text} from 'react-native';
+import {AccessibilityInfo,AppState,View,Text,Pressable} from 'react-native';
 import {GLView,type ExpoWebGLRenderingContext} from 'expo-gl';
 import * as T from 'three';
 import {mascotScene} from './mascotScene';
+import {createNativeRenderer} from './nativeGLRenderer';
 import type {MascotPose} from './CanopyMascot';
 export default function ActorCanvas({pose,animated}:{pose:MascotPose;animated:boolean}){
- const [error,setError]=useState(false);
+ const [error,setError]=useState(''),[attempt,setAttempt]=useState(0);
  const stop=useRef<()=>void>(()=>{}),reduced=useRef(false);
  useEffect(()=>{void AccessibilityInfo.isReduceMotionEnabled().then(v=>{reduced.current=v;});const sub=AccessibilityInfo.addEventListener('reduceMotionChanged',v=>{reduced.current=v;});return()=>{stop.current();sub.remove();};},[]);
  function create(gl:ExpoWebGLRenderingContext){
   try{
   stop.current();const width=gl.drawingBufferWidth,height=gl.drawingBufferHeight;
-  const canvas={width,height,style:{},addEventListener(){},removeEventListener(){},getContext(){return gl;}};
-  const renderer=new T.WebGLRenderer({canvas:canvas as unknown as HTMLCanvasElement,context:gl as unknown as WebGL2RenderingContext,alpha:true,antialias:true});renderer.setSize(width,height,false);
+  const renderer=createNativeRenderer(gl as unknown as WebGL2RenderingContext);renderer.setSize(width,height,false);
   renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
   const actor=mascotScene(pose);actor.camera.aspect=width/height;actor.camera.updateProjectionMatrix();let frame=0,dead=false;const start=Date.now();
-  function draw(){if(dead)return;if(AppState.currentState==='active'){actor.update(animated&&!reduced.current?(Date.now()-start)/1000:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();}frame=requestAnimationFrame(draw);}draw();
+  function draw(){if(dead)return;try{if(AppState.currentState==='active'){actor.update(animated&&!reduced.current?(Date.now()-start)/1000:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();}frame=requestAnimationFrame(draw);}catch(e){fail(e);}}
   stop.current=()=>{dead=true;cancelAnimationFrame(frame);actor.dispose();renderer.dispose();};
-  }catch{setError(true);}
+  draw();
+  }catch(e){fail(e);}
  }
- if(error)return <View style={{flex:1,justifyContent:'center',alignItems:'center'}}><Text>3D 화면을 다시 열어주세요.</Text></View>;
- return <GLView key={`${pose}-${animated}`} style={{flex:1}} onContextCreate={create}/>;
+ function fail(e:unknown){const message=e instanceof Error?e.message:String(e);console.warn('[Canopy 3D]',message);try{stop.current();}catch{}stop.current=()=>{};setError(message);}
+ if(error)return <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:8,padding:8}}><Text style={{fontSize:12,textAlign:'center'}}>3D 표시 오류: {error}</Text><Pressable accessibilityRole="button" onPress={()=>{setError('');setAttempt(v=>v+1);}}><Text style={{color:'#108454',fontWeight:'700'}}>다시 불러오기</Text></Pressable></View>;
+ return <GLView key={`${pose}-${animated}-${attempt}`} style={{flex:1}} onContextCreate={create}/>;
 }
