@@ -6,26 +6,26 @@ This repository is the standalone Pipeline B for raw, pointwise transportation-m
 
 ```text
 Pipeline A
-Event Hubs -> dbw_canopy_dev.silver.gps_observations
+Event Hubs -> dbw_canopy_trial.sandbox.silver_gps_observations
 
 Pipeline B (this repository)
 gps_observations
   -> exact model feature engineering
   -> pointwise LightGBM inference
-  -> dbw_canopy_dev.silver.mode_predictions
+  -> dbw_canopy_trial.sandbox.silver_mode_predictions
 
 Future work, outside this repository's current scope
 mode_predictions -> smoothing / segmentation -> mode_segments
 ```
 
-Pipeline B reads Pipeline A output but does not own or modify it. It owns only `dbw_canopy_dev.silver.mode_predictions`. The feature dataset is a private Lakeflow table.
+Pipeline B reads Pipeline A output but does not own or modify it. It owns only `dbw_canopy_trial.sandbox.silver_mode_predictions`. The feature dataset is a private Lakeflow table.
 
 ## Model
 
-Development configuration resolves the explicit registered model version:
+Trial migration configuration records the equivalent model identity:
 
 ```text
-models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1
+models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
 ```
 
 There is currently no `Champion` alias. The inspected version is READY and its signature contains exactly 17 required double columns in the order defined by `mode_inference.contracts.FEATURE_NAMES`. Its output is an `int64` class tensor. The artifact does not expose probabilities, so public `confidence` is null.
@@ -63,7 +63,7 @@ This is deterministic, but exact reference parity for a late point inserted befo
 
 ## Public output
 
-`dbw_canopy_dev.silver.mode_predictions` contains one raw pointwise prediction per accepted source event:
+`dbw_canopy_trial.sandbox.silver_mode_predictions` contains one raw pointwise prediction per accepted source event:
 
 ```text
 event_id          STRING NOT NULL
@@ -83,7 +83,7 @@ predicted_at      TIMESTAMP NOT NULL
 
 ## Configuration
 
-The Asset Bundle parameterizes catalog, input table, output table, model URI, state-timeout policy, and UTC timezone. It creates a distinct `canopy-mode-inference` bundle with pipeline resource key `mode_inference_pipeline`, CURRENT channel, and serverless compute. Continuous mode and an orchestration Job are intentionally absent.
+The Asset Bundle parameterizes catalog, input table, output table, model URI, state-timeout policy, and UTC timezone. It creates a distinct `canopy-mode-inference` bundle with pipeline resource key `mode_inference_pipeline`, CURRENT channel, and serverless compute. The migration branch keeps serverless Lakeflow, a 1-second trigger interval, and the continuous orchestration Job from the verified inference branch.
 
 ## Testing
 
@@ -100,8 +100,8 @@ The deterministic test oracle is a pinned copy of the reference preprocessing im
 The registered-model comparison is opt-in and read-only:
 
 ```bash
-DATABRICKS_CONFIG_PROFILE=CANOPY_DEV \
-CANOPY_REGISTERED_MODEL_URI=models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1 \
+DATABRICKS_CONFIG_PROFILE=CANOPY_TRIAL \
+CANOPY_REGISTERED_MODEL_URI=models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1 \
 .venv/bin/python -m pytest -q \
   tests/spark/test_model_parity.py::test_registered_model_matches_pinned_local_artifact
 ```
