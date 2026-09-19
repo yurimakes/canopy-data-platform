@@ -5,7 +5,7 @@ import { characterMotion, legAngles, footCycle, gardenMotion, type CharacterActi
 export function robotRig(action: CharacterAction) {
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(30, 1, .1, 30);
-  camera.position.set(0, 1.35, 5.3);
+  camera.position.set(0, 1.35, 6.0);
   camera.lookAt(0, 1.24, 0);
   scene.add(new T.HemisphereLight(0xf3fcff, 0x748469, 2));
   for (const [color, intensity, x, y, z] of [[0xfff4df, 3.1, -3, 5, 4], [0xd8f5ff, 1.7, 3, 3, 2], [0xffffff, 3, 1, 4, -3]]) {
@@ -19,8 +19,8 @@ export function robotRig(action: CharacterAction) {
       : new T.MeshPhysicalMaterial({ color, roughness, metalness, clearcoat: .8, clearcoatRoughness: .18 });
     materials.push(m); return m;
   };
-  const ivory = mat('#f4f2df', .24), face = mat('#fffbed', .34);
-  const leafGreen = mat('#7eab40', .29), trim = mat('#aac876', .23), glove = mat('#3d7650', .36);
+  const ivory = mat('#f2f3ee', .24), face = mat('#f7f8f3', .34);
+  const leafGreen = mat('#82a363', .29), trim = mat('#b6ce93', .23), glove = mat('#446b4b', .36);
   const joint = mat('#263e32', .4), eyeBlack = mat('#091b12', .11), irisMat = mat('#347846', .18);
   const white = new T.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }); materials.push(white);
   const mint = new T.MeshBasicMaterial({ color: '#d5ffe0', toneMapped: false }); materials.push(mint);
@@ -65,53 +65,55 @@ export function robotRig(action: CharacterAction) {
     for (const side of [-1, 1]) for (const t of [.28, .48, .65]) line(group, [[0, t * .68, .105], [side * .1, (t + .09) * .68, .07], [side * .17, (t + .13) * .68, .013]], .003, trim);
     return group;
   }
+  function emblem(parent:T.Object3D, scale:number) {
+    const g=pivot(parent,'leaf emblem',0,0);g.scale.setScalar(scale);
+    const shape=new T.Shape();shape.moveTo(-.40,-.28);shape.bezierCurveTo(-.49,.20,-.15,.44,.48,.35);shape.bezierCurveTo(.28,-.25,-.02,-.40,-.40,-.28);
+    mesh(g,new T.ShapeGeometry(shape,28),mint);
+    line(g,[[-.48,-.43,.009],[-.19,-.15,.009],[.28,.20,.009]],.027,leafGreen);
+    return g;
+  }
   orb(body, joint, 0, .79, -.02, .31, .37, .245);
-  orb(body, ivory, 0, .86, .03, .32, .375, .27);
+  orb(body, ivory, 0, .84, .03, .355, .385, .28);
   for (const side of [-1, 1]) { const panel = orb(body, leafGreen, side * .265, .72, -.035, .065, .24, .20); panel.rotation.z = side * -.25; }
   orb(body, joint, 0, 1.18, 0, .14, .09, .135);
   const head = pivot(body, 'head', 0, 1.65);
-  orb(head, leafGreen, 0, 0, 0, .61, .465, .37, .79);
-  orb(head, ivory, 0, -.012, .045, .583, .443, .375, .8);
-  orb(head, trim, 0, -.025, .266, .515, .351, .193, .78);
-  orb(head, face, 0, -.025, .285, .493, .333, .183, .8);
+  orb(head, leafGreen, 0, -.012, 0, .65, .49, .405, .88);
+  orb(head, face, 0, -.035, .245, .600, .445, .245, .9);
   for (const s of [-1, 1]) {
-    orb(head, joint, s * .584, -.015, -.035, .067, .238, .23);
-    orb(head, ivory, s * .629, -.015, -.018, .065, .219, .215);
-    orb(head, glove, s * .676, -.015, -.008, .036, .171, .174);
-    const ring = mesh(head, new T.TorusGeometry(.136, .013, 10, 48), mint, s * .713, -.015, -.008); ring.rotation.y = Math.PI / 2;
-    orb(head, trim, s * .716, -.015, -.008, .012, .086, .087);
+    orb(head, joint, s * .619, -.085, -.035, .067, .238, .23);
+    orb(head, ivory, s * .659, -.085, -.018, .065, .219, .215);
+    orb(head, glove, s * .706, -.085, -.008, .036, .171, .174);
+    const ring = mesh(head, new T.TorusGeometry(.136, .013, 10, 48), mint, s * .743, -.085, -.008); ring.rotation.y = Math.PI / 2;
+    const earLeaf = emblem(head, .20); earLeaf.position.set(s * .751, -.085, -.008); earLeaf.rotation.y=s*Math.PI/2;
   }
   const sprout = pivot(head, 'sprout', 0, .426, -.01);
-  orb(sprout, leafGreen, 0, .004, 0, .15, .045, .12);
+  const crown=orb(sprout,leafGreen,0,-.035,.225,.235,.055,.235); crown.rotation.x=.32;
   line(sprout, [[0, 0, 0], [-.01, .1, 0], [-.045, .24, -.02]], .025, glove);
-  const leafA = leaf(sprout, .78, .58); leafA.position.set(-.03, .14, 0); leafA.rotation.y = -.2;
-  const leafB = leaf(sprout, .64, -.95); leafB.position.set(0, .105, .01); leafB.rotation.y = .2;
+  const leafA = leaf(sprout, .98, .47); leafA.position.set(-.03, .14, 0); leafA.rotation.y = -.2;
+  const leafB = leaf(sprout, .83, -.98); leafB.position.set(0, .105, .01); leafB.rotation.y = .2;
   const eyes = [-1, 1].map(side => {
-    const group = pivot(head, 'eye', side * .215, .041, .443);
-    orb(group, eyeBlack, 0, 0, 0, .112, .139, .061);
-    orb(group, irisMat, 0, -.018, .048, .077, .099, .024);
-    orb(group, eyeBlack, 0, .009, .068, .051, .076, .013);
-    orb(group, white, -.034, .06, .076, .035, .043, .008);
-    orb(group, white, .037, -.054, .075, .012, .016, .006);
-    const lid = line(head, [[side * .215 - .095, .034, .481], [side * .215, .077, .494], [side * .215 + .095, .034, .481]], .021, eyeBlack); lid.visible = false;
+    const group = pivot(head, 'eye', side * .247, .055, .478);
+    orb(group, eyeBlack, 0, 0, 0, .134, .178, .035);
+    orb(group, irisMat, 0, -.025, .031, .100, .130, .013);
+    orb(group, eyeBlack, 0, .025, .039, .071, .105, .009);
+    orb(group, white, -.043, .087, .047, .039, .047, .005);
+    orb(group, white, .049, -.072, .047, .012, .016, .004);
+    const lid = line(head, [[side * .247 - .118, .018, .508], [side * .247, .103, .518], [side * .247 + .118, .018, .508]], .021, eyeBlack); lid.visible = false;
     return { group, lid };
   });
   const mouthShape = new T.Shape(); mouthShape.moveTo(-.085, 0); mouthShape.quadraticCurveTo(0, -.021, .085, 0); mouthShape.quadraticCurveTo(.065, -.102, 0, -.102); mouthShape.quadraticCurveTo(-.067, -.102, -.085, 0);
-  mesh(head, new T.ShapeGeometry(mouthShape, 24), joint, 0, -.12, .47);
-  orb(head, mat('#bd7b6c', .4), 0, -.204, .476, .034, .012, .003);
-  const cheek = mat('#e3bca0', .6);
-  for (const x of [-.35, .35]) orb(head, cheek, x, -.117, .449, .044, .018, .006);
-  orb(body, leafGreen, 0, .96, .287, .142, .142, .033);
-  mesh(body, new T.TorusGeometry(.127, .01, 12, 48), mint, 0, .96, .317);
-  const badge = leaf(body, .21, -.55); badge.position.set(-.035, .90, .32);
-  badge.traverse(o => { if (o instanceof T.Mesh) o.material = mint; });
+  mesh(head, new T.ShapeGeometry(mouthShape, 24), joint, 0, -.125, .511);
+  orb(head, mat('#bd7b6c', .4), 0, -.204, .515, .034, .012, .003);
+  orb(body, leafGreen, 0, .965, .298, .164, .164, .028);
+  mesh(body, new T.TorusGeometry(.155, .010, 12, 48), mint, 0, .965, .326);
+  const badge=emblem(body,.24); badge.position.set(0,.965,.336);
   function arm(side: number) {
     const shoulder = pivot(body, side < 0 ? 'leftShoulder' : 'rightShoulder', side * .33, 1.085);
     orb(shoulder, joint, 0, 0, 0, .105);
-    orb(shoulder, ivory, side * .018, -.095, .012, .108, .156, .109);
+    orb(shoulder, glove, side * .018, -.095, .012, .096, .15, .097);
     const elbow = pivot(shoulder, 'elbow', 0, -.23);
     orb(elbow, joint, 0, 0, 0, .075);
-    orb(elbow, ivory, 0, -.09, .005, .083, .132, .085);
+    orb(elbow, ivory, 0, -.085, .005, .116, .162, .112, .88);
     const wrist = pivot(elbow, 'wrist', 0, -.215);
     orb(wrist, trim, 0, .008, 0, .084, .035, .083);
     orb(wrist, glove, 0, -.073, .005, .091, .103, .043);
@@ -130,13 +132,13 @@ export function robotRig(action: CharacterAction) {
   function leg(side: number) {
     const hip = pivot(body, 'hip', side * .162, .515);
     orb(hip, joint, 0, 0, 0, .104);
-    orb(hip, ivory, 0, -.11, .005, .114, .158, .112);
+    orb(hip, ivory, 0, -.11, .005, .132, .173, .126);
     const knee = pivot(hip, 'knee', 0, -.245);
     orb(knee, joint, 0, 0, 0, .08);
-    orb(knee, ivory, 0, -.096, .012, .105, .145, .106);
+    orb(knee, ivory, 0, -.096, .012, .131, .180, .126, .88);
     const ankle = pivot(knee, 'ankle', 0, -.245);
     orb(ankle, glove, 0, -.019, .062, .139, .067, .208, .86);
-    orb(ankle, ivory, 0, .025, .018, .115, .079, .132);
+    orb(ankle, glove, 0, .025, .018, .129, .084, .158);
     orb(ankle, joint, 0, -.065, .065, .14, .018, .207, .84);
     return { hip, knee, ankle };
   }
@@ -165,7 +167,7 @@ export function robotRig(action: CharacterAction) {
   const frameMaterial = mat('#649c78', .25, .45), chrome = mat('#dbe5cc', .23, .6);
   const spokeMaterial = mat('#9cafa0', .35, .4);
   if (action === 'cycle') {
-    camera.position.set(0, 1.5, 6.3); camera.lookAt(0, 1.32, 0);
+    camera.position.set(0, 1.5, 6.7); camera.lookAt(0, 1.32, 0);
     for (const z of [-.52, .53]) {
       const wheel = pivot(bicycle, 'wheel', 0, .29, z); wheels.push(wheel);
       mesh(wheel, new T.TorusGeometry(.265, .029, 12, 48), joint).rotation.y = Math.PI / 2;
@@ -198,7 +200,7 @@ export function robotRig(action: CharacterAction) {
   const nozzle = pivot(can,'nozzle',.36,.14,.015);
   const drops: T.Mesh[] = [];
   if(action==='garden') {
-    camera.position.set(0,1.5,5.8); camera.lookAt(0,1.02,0);
+    camera.position.set(0,1.5,6.25); camera.lookAt(0,1.10,0);
     shadows.forEach(shadow=>{shadow.visible=false;});
     mesh(can,new T.CylinderGeometry(.115,.09,.19,32),mat('#e7c370',.32,.2));
     const handle=mesh(can,new T.TorusGeometry(.105,.015,10,32),chrome,-.09,.04,0);handle.scale.x=.7;
