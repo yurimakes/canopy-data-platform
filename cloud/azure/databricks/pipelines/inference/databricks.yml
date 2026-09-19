@@ -43,8 +43,8 @@ variables:
     description: Native LightGBM skops artifact in a Unity Catalog Volume.
     default: /Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops
   state_timeout:
-    description: Stateful trip-retention policy. Only none is supported in the first append-only implementation.
-    default: none
+    description: Processing-time TTL for per-trip inference state. Placeholder guardrail until explicit trip_ended cleanup is implemented.
+    default: 2h
   timezone:
     default: UTC
 
