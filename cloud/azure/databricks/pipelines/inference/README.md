@@ -49,14 +49,14 @@ The implementation preserves reference behavior:
 
 ## Stateful streaming semantics
 
-Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State retains up to 151 raw observations so the earliest speed in a 150-speed rolling window still has its predecessor.
+Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State is stored natively as scalar metadata plus a bounded `ListState` of up to 151 raw observations, so the earliest speed in a 150-speed rolling window still has its predecessor. The previous monolithic JSON state has been removed.
 
 This first version is intentionally append-only:
 
 - an unseen row with a sequence greater than the last emitted sequence is processed;
 - a duplicate `event_id`, duplicate sequence, or row arriving behind the emitted sequence frontier is ignored;
 - historical predictions are not rewritten when a late row arrives;
-- all seen event IDs remain in trip state while the trip state exists;
+- duplicate tracking is bounded to the retained 151-point history; sequence monotonicity remains the primary guard against reprocessing older rows;
 - per-trip state uses a processing-time TTL; the current placeholder is 2 hours and resets whenever the trip state is updated.
 
 This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design should use the existing `trip_ended` lifecycle signal for deterministic cleanup; TTL remains a fallback for abandoned trips or missing lifecycle events.
