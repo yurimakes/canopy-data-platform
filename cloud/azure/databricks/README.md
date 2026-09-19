@@ -1,149 +1,229 @@
-# Purpose
+# Canopy Generic Event Ingestion
 
-This repository defines Canopy Pipeline A: a self-contained Databricks Lakeflow
-pipeline that ingests GPS event payloads from Azure Event Hubs into a durable raw
-Bronze table, validates the collector contract once, and branches to validated
-Silver observations or Silver quarantine.
+## Purpose
 
-# Input
+This repository defines the Trial ingestion boundary for Canopy.
 
-The input is the Kafka-compatible endpoint for the development Event Hub:
+It consumes the shared Azure Event Hubs stream once, stores every event in a
+generic Bronze table, and routes supported event contracts into typed Silver
+tables.
+
+The current migration target is **Trial only**:
+
+```text
+workspace: dbw-canopy-trial
+profile:   CANOPY_TRIAL
+catalog:   dbw_canopy_trial
+schema:    sandbox
+```
+
+Legacy `dbw-canopy-dev` is reference-only and must not be modified by this
+branch.
+
+## Event Hubs input
 
 ```text
 namespace       evhns-canopy-dev
 Event Hub       evh-canopy-gps-dev
-consumer group  canopy-databricks
+consumer group  canopy-databricks-trial
 SAS policy      canopy-databricks-listen
+secret scope    canopy-trial
+secret key      canopy-databricks-listen
 ```
 
-The authoritative JSON Schema is vendored at
-`schemas/gps.collector.schema.json`. Provenance, source commits, and its SHA-256
-are recorded in `schemas/gps.collector.schema.metadata.json`.
+The Trial consumer group is intentionally separate from legacy consumers.
 
-# Tables Created
-
-Pipeline A is the sole intended writer of exactly these public tables:
+## Tables created
 
 ```text
-dbw_canopy_dev.bronze.gps_events
-dbw_canopy_dev.silver.gps_observations
-dbw_canopy_dev.silver.gps_quarantine
+dbw_canopy_trial.sandbox.bronze_events
+dbw_canopy_trial.sandbox.silver_gps_observations
+dbw_canopy_trial.sandbox.silver_gps_quarantine
+dbw_canopy_trial.sandbox.silver_trip_ended_events
 ```
 
-It also owns a private, pipeline-only `gps_events_parsed` table. The private table
-parses and validates every Bronze row once before the two Silver branches.
+The pipeline also owns one private Lakeflow table:
 
-# Processing Flow
+```text
+gps_events_parsed
+```
+
+## Processing flow
 
 ```text
 Azure Event Hubs
         |
         v
-bronze.gps_events
+sandbox.bronze_events
         |
-        v
-private gps_events_parsed
-       / \
-      v   v
-silver.gps_observations   silver.gps_quarantine
+        +--> GPS schema_version
+        |       |
+        |       v
+        |   private gps_events_parsed
+        |      / \
+        |     v   v
+        | silver_gps_observations
+        | silver_gps_quarantine
+        |
+        +--> event_type=trip_ended
+                |
+                v
+            silver_trip_ended_events
 ```
 
-Lakeflow owns streaming state, checkpoints, and query lifecycle. Runtime
-scheduling is intentionally not defined by this bundle resource.
+Unknown event types remain durably available in Bronze and are not forced into
+an unrelated Silver contract.
 
-# Schema
+## Generic Bronze contract
 
-Bronze stores the complete UTF-8 Event Hubs value as `body`, together with topic,
-partition, offset, enqueue timestamp, and ingestion timestamp. `body` is not
-parsed, reserialized, normalized, deduplicated, or stripped of unknown fields.
-
-Silver observations contain collector identity, timestamps, coordinates,
-`accuracy`, device-provided `raw_speed`, altitude, `vertical_accuracy_m`, course,
-source, quality flags, optional collection metadata, Event Hubs provenance, and
-processing timestamps. Collector `speed` is renamed to `raw_speed` without unit
-conversion or derivation. The collector obtains it from Expo Location's
-instantaneous device speed in metres per second. Pipeline A computes no other
-speed.
-
-`raw_location` and arbitrary additional properties are intentionally excluded
-from observations. They remain recoverable from the unchanged Bronze body.
-
-# Validation / Quarantine
-
-The parser uses Spark VARIANT inspection so it can distinguish malformed JSON,
-the wrong top-level JSON type, a missing key, explicit JSON null, a wrong field
-type, and an invalid value. Required nullable keys must exist, although their
-values may be null where the schema permits it.
-
-Both `canopy.gps.collector.v0.1` and `canopy.gps.collector.v0.2` are accepted.
-v0.1 label values are preserved unchanged and `collection_mode` is never inferred.
-v0.2 enforces the authoritative user/null-label and developer/current-label
-combinations. Labels are never normalized. Only `vertical_accuracy_m` is accepted;
-the stale `vertical_accuracy` spelling is not an alias.
-
-Quarantine preserves the original body and Event Hubs coordinates, a deterministic
-primary reason, and an ordered array of all violations. `schema_version` and
-`event_id` are best-effort extractions. Duplicate valid events are not quarantine
-errors.
-
-# Deduplication
-
-Only Silver observations are deduplicated, using `event_id` within a configurable
-watermark on `event_hub_enqueued_at`. The development default is `1 day`; it is a
-configuration default, not a permanent architectural guarantee.
+Bronze is intentionally blind to domain-specific payload fields. It preserves the
+raw UTF-8 body and extracts only routing/provenance metadata:
 
 ```text
-event_hub_enqueued_at -> ingestion arrival and bounded deduplication state
-event_time             -> user trajectory and measurement chronology
+raw_payload
+event_id
+event_type
+schema_version
+event_hub_topic
+event_hub_partition
+event_hub_offset
+event_hub_enqueued_at
+ingested_at
 ```
 
-An event repeated after the configured state horizon can appear again. Bronze is
-never deduplicated.
+Fields such as `trip_id`, GPS coordinates, lifecycle timestamps, and model
+features belong in typed downstream tables, not Bronze.
 
-# Configuration
+## GPS Silver contract
 
-`databricks.yml` defines the existing development catalog, Bronze/Silver schemas,
-three table names, Event Hubs non-secret identifiers, secret scope/key, and the
-deduplication watermark. The workspace remains `dbw-canopy-dev`. The pipeline
-uses the current Lakeflow channel and UTC Spark session timezone.
+Supported GPS contracts:
 
-# Event Hubs Authentication
+```text
+canopy.gps.collector.v0.1
+canopy.gps.collector.v0.2
+```
 
-The Databricks secret `canopy-dev/canopy-databricks-listen` contains only the SAS
-policy key. The pipeline retrieves it at runtime and constructs the connection
-string and Kafka JAAS configuration in memory. Neither value is logged or stored
-in source control.
+Valid observations are written to:
 
-# Replay / Failure Behavior
+```text
+dbw_canopy_trial.sandbox.silver_gps_observations
+```
 
-Lakeflow checkpoints resume normal processing. `startingOffsets=latest` applies
-when no checkpoint exists, so a fresh pipeline state consumes only events arriving
-after startup. It does not replay old Event Hubs retention automatically. Replay
-from Bronze should use the durable raw table and a separately reviewed procedure.
+Operational timestamps:
 
-Full refreshes, flow renames, or checkpoint loss can change replay behavior. Before
-activation, operators must verify that no former combined pipeline or other writer
-is simultaneously writing any of the three public tables or using the consumer
-group in a conflicting way.
+```text
+event_hub_enqueued_at
+bronze_ingested_at
+parsed_at
+validated_at
+```
 
-# Testing
+Rejected GPS payloads are written to:
 
-Pure unit tests need only Python's standard library. Spark tests require an
-optional local Spark 4 runtime with VARIANT support, or a Databricks test
-environment. PySpark is not a Lakeflow runtime dependency.
+```text
+dbw_canopy_trial.sandbox.silver_gps_quarantine
+```
+
+with:
+
+```text
+bronze_ingested_at
+quarantined_at
+```
+
+GPS Silver observations are deduplicated by `event_id` within the configured
+watermark on `event_hub_enqueued_at`. Bronze is never deduplicated.
+
+## trip_ended Silver contract
+
+The primitive lifecycle contract is routed when:
+
+```text
+event_type    = trip_ended
+schema_version = trip-lifecycle-v1
+```
+
+Valid events are written to:
+
+```text
+dbw_canopy_trial.sandbox.silver_trip_ended_events
+```
+
+Operational timestamps:
+
+```text
+event_hub_enqueued_at
+bronze_ingested_at
+parsed_at
+```
+
+## Timestamp semantics
+
+The ingestion layer preserves source timestamps and adds semantically named
+operational timestamps only:
+
+```text
+event_hub_enqueued_at  Azure Event Hubs enqueue time
+ingested_at            generic Bronze processing time
+parsed_at              typed payload parsing/validation time
+validated_at           valid GPS Silver emission time
+quarantined_at         rejected GPS Silver emission time
+```
+
+Latency benchmarking is intentionally deferred until the complete Canopy path is
+connected.
+
+## Lakeflow runtime
+
+The bundle defines a serverless Lakeflow pipeline using the CURRENT channel.
+The pipeline is not declared continuous by this bundle; manual/triggered updates
+are valid for migration smoke testing.
+
+Kafka source behavior:
+
+```text
+startingOffsets = latest
+failOnDataLoss  = true
+```
+
+On a fresh checkpoint, only events arriving after startup are consumed. Existing
+Lakeflow checkpoint state controls subsequent incremental reads.
+
+## Configuration
+
+`databricks.yml` targets:
+
+```text
+workspace host:
+https://adb-7405612422597045.5.azuredatabricks.net
+
+profile:
+CANOPY_TRIAL
+
+catalog/schema:
+dbw_canopy_trial.sandbox
+```
+
+No deployment from this branch should target `CANOPY_DEV`.
+
+## Validation
+
+Local:
 
 ```bash
 python3 -m unittest discover -s tests/unit -v
 python3 -m unittest discover -s tests/spark -v
-databricks bundle validate --profile CANOPY_DEV -t dev
 ```
 
-Tests never require live Event Hubs access.
+Trial bundle:
 
-# What This Pipeline Does NOT Do
+```bash
+databricks bundle validate -t trial
+databricks bundle deploy -t trial
+```
 
-This repository does not calculate distance, derived or rolling speed, GPS
-features, transitions, trip state, segments, or transport-mode predictions. It
-does not use `transformWithState`, MLflow, SpeedTransformer, PyTorch, model URIs,
-Gold tables, or inference handlers. Those responsibilities belong outside
-Pipeline A.
+## Out of scope
+
+This pipeline does not perform transportation-mode inference, smoothing,
+segmentation, trip finalization, Gold aggregation, CosmosDB publication, or
+mobile/API serving.
