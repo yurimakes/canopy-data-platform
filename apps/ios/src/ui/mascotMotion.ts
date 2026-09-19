@@ -1,8 +1,15 @@
-export type CharacterAction = 'start' | 'walk' | 'run' | 'complete';
+export type CharacterAction = 'start' | 'walk' | 'run' | 'complete' | 'cycle' | 'garden';
 const TAU = Math.PI * 2;
 const clamp = (v: number) => Math.max(0, Math.min(1, v));
 export const ease = (v: number) => { const x = clamp(v); return x * x * (3 - 2 * x); };
 const pulse = (t: number, start: number, end: number, edge: number) => ease((t - start) / edge) * (1 - ease((t - end + edge) / edge));
+
+export function gardenMotion(seconds: number) {
+  const t = Math.max(0, seconds) % 12;
+  const hello = pulse(t, 4, 9.5, .9);
+  const wave = pulse(t, 5, 8.7, .45) * Math.sin((t - 5) * TAU * 1.65);
+  return { hello, wave, pour: 1 - hello, smile: pulse(t, 5.1, 8.5, .45) };
+}
 
 // The foot stays on the floor during stance; only the returning foot lifts.
 export function footCycle(phase: number) {

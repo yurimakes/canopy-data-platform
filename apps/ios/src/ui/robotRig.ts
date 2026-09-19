@@ -1,5 +1,5 @@
 import * as T from 'three';
-import { characterMotion, legAngles, footCycle, type CharacterAction } from './mascotMotion';
+import { characterMotion, legAngles, footCycle, gardenMotion, type CharacterAction } from './mascotMotion';
 
 // Rigid shell pieces rotate around anatomical pivots, keeping the robot's shape.
 export function robotRig(action: CharacterAction) {
@@ -155,6 +155,72 @@ export function robotRig(action: CharacterAction) {
     const m = mesh(scene, new T.CircleGeometry(.24 + i * .021, 48), sm, 0, .001 + i * .0001, 0);
     m.rotation.x = -Math.PI / 2; m.scale.y = .66; return m;
   });
+  const bicycle = new T.Group(); scene.add(bicycle); bicycle.visible = action === 'cycle';
+  bicycle.rotation.y = 1.02;
+  const wheels: T.Group[] = [];
+  const frameMaterial = mat('#649c78', .25, .45), chrome = mat('#dbe5cc', .23, .6);
+  const spokeMaterial = mat('#9cafa0', .35, .4);
+  if (action === 'cycle') {
+    camera.position.set(0, 1.5, 6.3); camera.lookAt(0, 1.32, 0);
+    for (const z of [-.52, .53]) {
+      const wheel = pivot(bicycle, 'wheel', 0, .29, z); wheels.push(wheel);
+      mesh(wheel, new T.TorusGeometry(.265, .029, 12, 48), joint).rotation.y = Math.PI / 2;
+      mesh(wheel, new T.TorusGeometry(.234, .009, 8, 48), chrome).rotation.y = Math.PI / 2;
+      orb(wheel, chrome, 0, 0, 0, .05, .031, .031);
+      for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; line(wheel, [[0, 0, 0], [0, Math.sin(a) * .23, Math.cos(a) * .23]], .004, spokeMaterial); }
+    }
+    for (const points of [
+      [[0,.29,-.52],[0,.72,-.17],[0,.38,0],[0,.29,-.52]],
+      [[0,.72,-.17],[0,.79,.36],[0,.38,0]],
+      [[0,.79,.36],[0,.29,.53]], [[0,.72,-.17],[0,.80,-.19]],
+      [[0,.79,.36],[0,1.10,.40]], [[-.34,1.10,.40],[0,1.10,.40],[.34,1.10,.40]],
+    ]) line(bicycle, points, .023, frameMaterial);
+    orb(bicycle, glove, 0, .805, -.19, .14, .034, .115);
+    for (const x of [-.33,.33]) orb(bicycle, joint, x, 1.10, .4, .055,.035,.038);
+    mesh(bicycle, new T.TorusGeometry(.115,.012,8,40), chrome, .06,.38,0).rotation.y=Math.PI/2;
+    line(bicycle, [[.06,.38,.10],[.06,.32,-.52],[.06,.25,-.52],[.06,.38,-.1]], .008, joint);
+  }
+  const pedals = [-1,1].map(side => {
+    const pedal = pivot(bicycle, 'pedal', side*.162,.38);
+    mesh(pedal,new T.BoxGeometry(.12,.026,.065),joint);
+    return pedal;
+  });
+  const cranks = [-1,1].map(side => {
+    const crank=pivot(bicycle,'crank',side*.162,.38);
+    line(crank,[[0,0,0],[0,0,.13]],.012,chrome);
+    return crank;
+  });
+  const garden = new T.Group(); scene.add(garden); garden.visible = action === 'garden';
+  const plants: T.Group[] = [];
+  const can = pivot(right.wrist, 'wateringCan', 0,-.15,.035); can.visible=action==='garden';
+  const nozzle = pivot(can,'nozzle',.36,.14,.015);
+  const drops: T.Mesh[] = [];
+  if(action==='garden') {
+    camera.position.set(0,1.5,5.8); camera.lookAt(0,1.02,0);
+    orb(garden,mat('#c1d6a2',.9),0,-.045,0,1.28,.10,.76);
+    orb(garden,mat('#9bbc7f',.9),.1,-.01,.03,1.12,.065,.65);
+    orb(garden,mat('#c5bb98',.8),-.30,.10,-.10,.35,.16,.27,.8);
+    const grassMat=mat('#689449',.85);
+    for(let i=0;i<20;i++) {
+      const a=i*2.399, r=.65+(i%4)*.14;
+      const tuft=pivot(garden,'grass',Math.cos(a)*r,.025,Math.sin(a)*r*.5);
+      for(let j=-1;j<=1;j++) line(tuft,[[0,0,0],[j*.027,.07,0],[j*.049,.12+(i%3)*.02,.015]],.008,grassMat);
+    }
+    const pot=mat('#dfae7e',.7);
+    mesh(garden,new T.CylinderGeometry(.22,.15,.24,40),pot,.78,.13,.18);
+    mesh(garden,new T.CylinderGeometry(.195,.195,.015,40),mat('#66543c',.9),.78,.26,.18);
+    mesh(garden,new T.TorusGeometry(.21,.023,10,40),pot,.78,.25,.18).rotation.x=Math.PI/2;
+    for(let i=0;i<4;i++) {
+      const plant=pivot(garden,'plant',.78+(i%2)*.065-.03,.27,.18+Math.floor(i/2)*.04);
+      const blade=leaf(plant,.32+(i%2)*.08,(i-1.5)*.65); plants.push(blade);
+    }
+    mesh(can,new T.CylinderGeometry(.115,.09,.19,32),mat('#e7c370',.32,.2));
+    const handle=mesh(can,new T.TorusGeometry(.105,.015,10,32),chrome,-.09,.04,0);handle.scale.x=.7;
+    line(can,[[.075,-.035,0],[.18,.03,0],[.32,.14,.015]],.025,chrome);
+    orb(can,chrome,.35,.14,.015,.045,.038,.045);
+    const water=new T.MeshPhysicalMaterial({color:'#85d1df',transparent:true,opacity:.78,roughness:.15});materials.push(water);
+    for(let i=0;i<18;i++)drops.push(orb(scene,water,0,0,0,.009,.022,.009));
+  }
   function applyBody(t: number) {
     const m = characterMotion(action, t);
     body.position.y = m.bounce; body.rotation.y = m.yaw;
@@ -177,6 +243,35 @@ export function robotRig(action: CharacterAction) {
       eye.group.scale.y = Math.max(.04, 1 - close);
       eye.group.visible = close < .92; eye.lid.visible = close >= .92;
     });
+    if(action==='cycle') {
+      body.rotation.set(0,1.02,0); body.position.set(0,.235,-.08);
+      const angle=t*Math.PI*2/1.5;
+      for(let i=0;i<2;i++) {
+        const a=angle+i*Math.PI, y=.38+Math.sin(a)*.13, z=Math.cos(a)*.13;
+        pedals[i].position.set((i===0?-1:1)*.162,y,z);
+        cranks[i].rotation.x=-a;
+        const angles=legAngles(y+.08-.75,z+.08);
+        legs[i].hip.rotation.x=angles.hip;legs[i].knee.rotation.x=angles.knee;legs[i].ankle.rotation.x=angles.ankle;
+      }
+      wheels.forEach(w=>{w.rotation.x=angle*1.8;});
+      for(const arm of [left,right]){arm.shoulder.rotation.set(-1.12,0,0);arm.elbow.rotation.set(.15,0,0);arm.wrist.rotation.set(.1,0,0);arm.fingers.forEach(f=>{f.rotation.x=-1.0;});}
+      head.rotation.set(-.035,.06*Math.sin(t*.8),.025*Math.sin(t*2));
+    }
+    if(action==='garden') {
+      const g=gardenMotion(t);
+      body.position.set(-.28,-.21,0);body.rotation.set(.045*g.pour,.08,0);
+      head.rotation.set(.15*g.pour,-.10*g.hello+.18*g.pour,-.08*g.hello);
+      right.shoulder.rotation.set(-.05,0,.80-.14*g.hello);right.elbow.rotation.set(0,0,.38);right.wrist.rotation.set(0,0,0);
+      right.fingers.forEach(f=>{f.rotation.x=-.85;});
+      can.rotation.z=-right.shoulder.rotation.z-right.elbow.rotation.z-.42*g.pour;
+      left.shoulder.rotation.set(-.15,0,-.3-1.55*g.hello);
+      left.elbow.rotation.set(0,0,-.35*g.hello);left.wrist.rotation.z=g.wave*.42;
+      for(let i=0;i<2;i++) {const angles=legAngles(.085-.305,.34);legs[i].hip.rotation.x=angles.hip;legs[i].knee.rotation.x=angles.knee;legs[i].ankle.rotation.x=angles.ankle;}
+      eyes.forEach(eye=>{const close=Math.max(m.blink,g.smile);eye.group.scale.y=Math.max(.04,1-close);eye.group.visible=close<.92;eye.lid.visible=close>=.92;});
+      plants.forEach((p,i)=>{p.rotation.x=.05*Math.sin(t*2+i);});
+      scene.updateMatrixWorld(true);const origin=nozzle.getWorldPosition(new T.Vector3());
+      drops.forEach((drop,i)=>{const u=(t*1.8+i/18)%1;drop.visible=g.pour>.65;drop.position.set(T.MathUtils.lerp(origin.x,.78,u)+(i%3-1)*.008,T.MathUtils.lerp(origin.y,.30,u*u),T.MathUtils.lerp(origin.z,.18,u));drop.scale.set(.009*g.pour,.022*g.pour,.009*g.pour);});
+    }
     return m;
   }
   applyBody(1.2); scene.updateMatrixWorld(true); muzzle.getWorldPosition(burstOrigin);

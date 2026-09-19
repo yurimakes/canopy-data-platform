@@ -1,7 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { characterMotion, footCycle, legAngles } from './mascotMotion';
+import { characterMotion, footCycle, legAngles, gardenMotion } from './mascotMotion';
 
 describe('continuous character motion', () => {
+  it('waters, pauses to smile and wave, then returns seamlessly to watering', () => {
+    expect(gardenMotion(0).pour).toBe(1);
+    expect(gardenMotion(6).pour).toBe(0);
+    expect(gardenMotion(6).hello).toBe(1);
+    expect(gardenMotion(6).smile).toBe(1);
+    expect(gardenMotion(10).pour).toBe(1);
+    expect(gardenMotion(12)).toEqual(gardenMotion(0));
+    expect(gardenMotion(6).wave).not.toBeCloseTo(gardenMotion(6.2).wave);
+  });
   it('keeps both feet alternating and the stance foot on the ground', () => {
     for (let i = 0; i < 120; i++) {
       const a = footCycle(i / 120), b = footCycle(i / 120 + .5);

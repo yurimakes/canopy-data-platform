@@ -24,9 +24,8 @@ export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error}
         <Text style={{fontSize:14,color:'#58766b'}}>작은 이동이 만드는 더 큰 변화</Text>
       </View>
       <View style={{height:275,alignItems:'center',justifyContent:'center'}}>
-        <View pointerEvents="none" style={{position:'absolute',width:248,height:248,borderRadius:124,borderWidth:1,borderColor:'#d5e9dd'}}/>
-        <View pointerEvents="none" style={{position:'absolute',width:305,height:126,borderRadius:100,borderWidth:1,borderColor:'#ece2cb',transform:[{rotate:'-16deg'}]}}/>
-        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot height={235}/></Animated.View>
+        <View pointerEvents="none" style={{position:'absolute',width:270,height:250,borderRadius:130,backgroundColor:'#e6f1df'}}/>
+        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot pose="garden" height={275}/></Animated.View>
       </View>
       <View style={{gap:10}}>
         {!!error&&<Note error>{error}</Note>}
