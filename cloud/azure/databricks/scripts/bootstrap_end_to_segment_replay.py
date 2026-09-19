@@ -25,7 +25,7 @@ def ensure_from_source(spark, source: str, target: str) -> None:
         return
     (
         spark.table(source).limit(0)
-        .write.format("delta").mode("errorifexists").saveAsTable(target)
+        .write.format("delta").mode("ignore").saveAsTable(target)
     )
     print("REPLAY_TABLE_CREATED", target)
 
