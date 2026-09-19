@@ -38,6 +38,8 @@ The implementation is behaviorally pinned to `canopy-transition-model-mlflow/pre
 
 Features use `trip_id`, `event_time`, `lat`, and `lon`. The `raw_speed` value from Pipeline A is deliberately not a model feature: model `speed` is derived from haversine coordinate displacement and elapsed time and is expressed in km/h.
 
+The streaming path rebuilds rolling kinematic context once from the retained bounded history per trip/microbatch, then computes only each newly accepted point incrementally. Persisted state remains raw-point based, so this optimization does not change the checkpoint schema.
+
 The implementation preserves reference behavior:
 
 - elapsed seconds clamped to a minimum of `0.1`;
