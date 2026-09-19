@@ -131,7 +131,8 @@ export class Storage {
       const row = await this.db.getFirstAsync<{payload:string}>('SELECT payload FROM trips WHERE trip_id=?',active.trip_id);
       const trip: Trip = JSON.parse(row!.payload);
       trip.status = reason ? 'interrupted' : 'completed';
-      trip.ended_at = reason ? null : new Date(active.stop_at ?? Date.parse(now)).toISOString();
+      const latest = (await this.summary(active.trip_id)).last_event_time;
+      trip.ended_at = reason ? null : new Date(Math.max(active.stop_at ?? Date.parse(now),Date.parse(latest ?? trip.started_at))).toISOString();
       trip.interruption_reason = reason;
       await this.db.runAsync('UPDATE trips SET payload=? WHERE trip_id=?',encode(trip),trip.trip_id);
       await this.db.runAsync('DELETE FROM active_trip WHERE singleton=1');
@@ -146,7 +147,8 @@ export class Storage {
       for (const raw of locations) {
         if (finalFix && (active.stop_at === undefined || raw.timestamp < active.stop_at)) continue;
         // Never attach a delayed fix from the previous Trip to a new Trip.
-        if (Number.isFinite(raw.timestamp) && (raw.timestamp < Date.parse(summary.button_started_at ?? summary.started_at) || (!finalFix && active.stop_at !== undefined && raw.timestamp > active.stop_at))) continue;
+        if (Number.isFinite(raw.timestamp) && (raw.timestamp < Math.max(Date.parse(summary.started_at),Date.parse(summary.button_started_at ?? summary.started_at)) || (!finalFix && active.stop_at !== undefined && raw.timestamp > active.stop_at))) continue;
+        if (previous && raw.timestamp <= Date.parse(previous.event_time)) continue;
         let event: GpsEvent;
         const mode=[...active.labels].reverse().find(x=>x.at<=raw.timestamp)?.mode ?? active.labels[0].mode;
         try { event = normalize(raw,summary,sequence+1,uuid(),received,previous,mode); }

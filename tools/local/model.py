@@ -69,6 +69,15 @@ class LocalModel:
         return rows
 
     def result(self,trip,points):
+        # 원본은 보존하고 계산 입력만 여정 경계 안의 고유 측정 시각으로 정리
+        start=stamp(trip['started_at']) if trip.get('started_at') else None
+        end=stamp(trip['ended_at']) if trip.get('ended_at') else None
+        unique={}
+        for point in points:
+            at=stamp(point['event_time'])
+            if (start is None or at>=start) and (end is None or at<=end):
+                unique.setdefault(at,point)
+        points=[unique[at] for at in sorted(unique)]
         rows=self.predict(points)
         if not rows:raise ValueError('서로 다른 시각의 GPS가 최소 2개 필요합니다')
         segments=[]

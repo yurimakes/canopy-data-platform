@@ -45,3 +45,9 @@ def test_real_model_distance_and_labels():
     for p in points:p['label']='walk'
     assert before==[(s['mode'],s['confidence']) for s in model.result({'trip_id':'distance-check'},points)['segments']]
     with pytest.raises(ValueError):model.result({'trip_id':'one-point'},points[:1])
+    # 버튼/서버 경계 밖 캐시와 중복 GPS가 있어도 유효 구간만 계산
+    trip={'trip_id':'bounded','started_at':points[2]['event_time'],'ended_at':points[-2]['event_time']}
+    bounded=model.result(trip,[points[0],points[0],*points])
+    assert bounded['segments'][0]['start_time']==trip['started_at']
+    assert bounded['segments'][-1]['end_time']==trip['ended_at']
+    assert sum(s['distance_m'] for s in bounded['segments'])==pytest.approx(sum(distance(a,b) for a,b in zip(points[2:-2],points[3:-1])))

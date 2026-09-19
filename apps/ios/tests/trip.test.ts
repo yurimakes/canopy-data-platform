@@ -277,7 +277,7 @@ it('user background Trip refresh preserves null labels',async()=>{
 
 it('excludes cached fixes from before the start button and appends a fresh stop fix',async()=>{
   const s=await setup();await s.collector.start();
-  const start=Date.parse(s.collector.trip!.button_started_at!);
+  const start=Math.max(Date.parse(s.collector.trip!.started_at),Date.parse(s.collector.trip!.button_started_at!));
   s.emit({...location(),timestamp:start-33000});
   s.emit({...location(),timestamp:start+1});
   let stopFix=0;
@@ -287,7 +287,7 @@ it('excludes cached fixes from before the start button and appends a fresh stop 
   expect(sent).toHaveLength(2);
   expect(sent.map(e=>e.sequence)).toEqual([1,2]);
   expect(sent[1].event_time).toBe(new Date(stopFix).toISOString());
-  expect(Date.parse(s.collector.trip!.ended_at!)).toBeLessThan(stopFix);
+  expect(Date.parse(s.collector.trip!.ended_at!)).toBeGreaterThanOrEqual(stopFix);
 });
 
 it('keeps the saved GPS and stops after the final fix deadline',async()=>{
