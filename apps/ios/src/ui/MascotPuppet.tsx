@@ -3,6 +3,7 @@ import {AccessibilityInfo, AppState, Image, Platform, View} from 'react-native';
 import type {MascotPose} from './CanopyMascot';
 import {characterMotion, gardenMotion} from './mascotMotion';
 import atlas from '../../assets/canopy-ui/mascot-puppet-parts.json';
+import {jointEnd, spriteFrame} from './puppetGeometry';
 
 const source=require('../../assets/canopy-ui/mascot-puppet-parts.png');
 const deg=(r:number)=>`${r*180/Math.PI}deg` as `${number}deg`;
@@ -13,23 +14,22 @@ const joints:Record<number,[Point,Point]>={
   8:[[210,755],[247,1003]],9:[[514,760],[563,969]],
   10:[[915,756],[951,1004]],11:[[1225,761],[1273,970]],
 };
-function Crop({index,scale,left=0,top=0}:{index:number;scale:number;left?:number;top?:number}){
- const [x,y,w,h]=atlas.rects[index];
- return <View style={{position:'absolute',left,top,width:w*scale,height:h*scale,overflow:'hidden'}}><Image source={source} fadeDuration={0} resizeMode="stretch" style={{position:'absolute',width:atlas.width*scale,height:atlas.height*scale,left:-x*scale,top:-y*scale}}/></View>;
+function Sprite({index,scale,anchor,pivot,rotation=0}:{index:number;scale:number;anchor:Point;pivot:Point;rotation?:number}){
+ const rect=atlas.rects[index];
+ const frame=spriteFrame(rect,anchor,scale,pivot,rotation);
+ return <View collapsable={false} style={{position:'absolute',...frame,overflow:'hidden',transform:[{rotate:deg(rotation)}]}}><Image source={source} fadeDuration={0} resizeMode="stretch" style={{position:'absolute',width:atlas.width*scale,height:atlas.height*scale,left:-rect[0]*scale,top:-rect[1]*scale}}/></View>;
 }
 function Art({index,height,x,y,angle=0}:{index:number;height:number;x:number;y:number;angle?:number}){
  const rect=atlas.rects[index],scale=height/rect[3];
- return <View style={{position:'absolute',left:x,top:y,width:0,height:0,transform:[{rotate:deg(angle)}]}}><Crop index={index} scale={scale} left={-rect[2]*scale/2}/></View>;
+ return <Sprite index={index} scale={scale} anchor={[rect[0]+rect[2]/2,rect[1]]} pivot={[x,y]} rotation={angle}/>;
 }
-function Bone({index,length,angle=0,children}:{index:number;length:number;angle?:number;children?:React.ReactNode}){
- const [a,b]=joints[index],dx=b[0]-a[0],dy=b[1]-a[1],scale=length/Math.hypot(dx,dy),base=Math.atan2(-dx,dy),rect=atlas.rects[index];
- return <View style={{width:0,height:0,transform:[{rotate:deg(angle)}]}}>
-  <View style={{width:0,height:0,transform:[{rotate:deg(-base)}]}}><Crop index={index} scale={scale} left={(rect[0]-a[0])*scale} top={(rect[1]-a[1])*scale}/></View>
-  <View style={{position:'absolute',top:length,width:0,height:0}}>{children}</View>
- </View>;
+function Bone({index,length,angle,x,y}:{index:number;length:number;angle:number;x:number;y:number}){
+ const [a,b]=joints[index],dx=b[0]-a[0],dy=b[1]-a[1],scale=length/Math.hypot(dx,dy),base=Math.atan2(-dx,dy);
+ return <Sprite index={index} scale={scale} anchor={a} pivot={[x,y]} rotation={angle-base}/>;
 }
 function Chain({x,y,upper,lower,a,b,l1,l2}:{x:number;y:number;upper:number;lower:number;a:number;b:number;l1:number;l2:number}){
- return <View style={{position:'absolute',left:x,top:y,width:0,height:0}}><Bone index={upper} length={l1} angle={a}><Bone index={lower} length={l2} angle={b}/></Bone></View>;
+ const [ex,ey]=jointEnd(x,y,a,l1);
+ return <><Bone index={upper} length={l1} angle={a} x={x} y={y}/><Bone index={lower} length={l2} angle={a+b} x={ex} y={ey}/></>;
 }
 export function solvePuppetLimb(dx:number,dy:number,l1:number,l2:number):[number,number]{
  const d=Math.min(l1+l2-.01,Math.max(Math.abs(l1-l2)+.01,Math.hypot(dx,dy)));
@@ -53,6 +53,9 @@ export default function MascotPuppet({pose,height,animated}:{pose:MascotPose;hei
  useEffect(()=>{let alive=true;void AccessibilityInfo.isReduceMotionEnabled().then(v=>{if(alive)setReduce(v);});const sub=AccessibilityInfo.addEventListener('reduceMotionChanged',setReduce);return()=>{alive=false;sub.remove();};},[]);
  useEffect(()=>{elapsed.current=0;setTime(0);},[pose]);
  useEffect(()=>{if(!animated||reduce){setTime(0);return;}let frame=0,last:number|undefined,paint=0;function tick(now:number){const active=AppState.currentState==='active'&&!(Platform.OS==='web'&&document.hidden);if(active){if(last!==undefined)elapsed.current+=Math.max(0,Math.min((now-last)/1000,.08));last=now;if(now-paint>=1000/30){setTime(elapsed.current);paint=now;}}else last=undefined;frame=requestAnimationFrame(tick);}frame=requestAnimationFrame(tick);return()=>cancelAnimationFrame(frame);},[animated,reduce,pose]);
+ return <View onLayout={e=>setWidth(e.nativeEvent.layout.width)} style={{height,width:'100%',alignItems:'center',justifyContent:'center',overflow:'hidden'}}><PuppetFrame pose={pose} time={time} width={width} height={height}/></View>;
+}
+export function PuppetFrame({pose,time,width,height}:{pose:MascotPose;time:number;width:number;height:number}){
  const action=pose==='cycle'||pose==='garden'||pose==='walk'||pose==='run'||pose==='complete'?pose:'start';
  const m=characterMotion(action,time),g=gardenMotion(time),cycling=action==='cycle',garden=action==='garden';
  const stageWidth=cycling?260:290,scale=Math.min(width/stageWidth,height/330);
@@ -74,8 +77,7 @@ export default function MascotPuppet({pose,height,animated}:{pose:MascotPose;hei
  const expression=garden&&g.smile>.7?1:m.wink>.7?2:m.blink>.7?1:0;
  const endpoint=(x:number,y:number,a:number,b:number):Point=>[x-Math.sin(a)*27-Math.sin(a+b)*34,y+Math.cos(a)*27+Math.cos(a+b)*34];
  const hand=endpoint(185,178,ab[0],ab[1]);
- return <View onLayout={e=>setWidth(e.nativeEvent.layout.width)} style={{height,width:'100%',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
- <View style={{width:stageWidth,height:330,transform:[{scale}]}}>
+ return <View style={{width:stageWidth,height:330,flexShrink:0,transform:[{scale}]}}>
   {cycling&&<Bike t={time}/>}
   <View style={{position:'absolute',left:0,top:cycling?0:sway,width:stageWidth,height:330}}>
    <Chain x={hipX} y={hipY} upper={8} lower={9} a={la[0]} b={la[1]} l1={29} l2={35}/>
@@ -89,5 +91,5 @@ export default function MascotPuppet({pose,height,animated}:{pose:MascotPose;hei
    {action==='complete'&&<View style={{position:'absolute',left:hand[0]-4,top:hand[1]-11,width:12,height:25,borderRadius:3,backgroundColor:'#e2bb62',transform:[{rotate:'-25deg'}]}}/>}
   </View>
   {action==='complete'&&m.burstAge>=0&&m.burstAge<2.8&&Array.from({length:22},(_,i)=>{const a=m.burstAge,theta=i*2.4;return <View key={i} style={{position:'absolute',left:224+Math.cos(theta)*a*33,top:140-a*90+a*a*47,width:4,height:7,backgroundColor:['#87ad68','#e8bb66','#8bc7c1'][i%3],opacity:Math.min(1,(2.8-a)*2),transform:[{rotate:deg(theta+a*3)}]}}/>;})}
- </View></View>;
+ </View>;
 }

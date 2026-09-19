@@ -30,7 +30,7 @@ export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error}
           <LinearGradient colors={['#f1f9f5','#f1f9f500','#f1f9f500','#f1f9f5']} locations={[0,.28,.68,1]} style={{position:'absolute',inset:0}}/>
           <LinearGradient colors={['#f1f9f5','#f1f9f500','#f1f9f500','#f1f9f5']} locations={[0,.24,.76,1]} start={{x:0,y:0}} end={{x:1,y:0}} style={{position:'absolute',inset:0}}/>
         </View>
-        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot pose="garden" height={275}/></Animated.View>
+        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot pose="start" height={275}/></Animated.View>
       </View>
       <View style={{gap:10}}>
         {!!error&&<Note error>{error}</Note>}
