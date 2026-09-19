@@ -1,3 +1,5 @@
+from datetime import timezone
+
 from mode_inference.contracts import MAX_RAW_POINTS
 from mode_inference.state import advance_trip
 from tests.helpers import row, trajectory
@@ -24,3 +26,29 @@ def test_state_keeps_151_raw_points_and_rolls_forward():
     assert len(seen) == MAX_RAW_POINTS
     assert seen == {point.event_id for point in history}
     assert last_sequence == 179
+
+
+def test_mixed_state_and_input_timestamp_timezone_normalizes_before_features():
+    points = trajectory(count=3)
+    state_history = [
+        points[0].__class__(
+            event_id=points[0].event_id,
+            user_id=points[0].user_id,
+            trip_id=points[0].trip_id,
+            sequence=points[0].sequence,
+            event_time=points[0].event_time.astimezone(timezone.utc).replace(tzinfo=None),
+            lat=points[0].lat,
+            lon=points[0].lon,
+        )
+    ]
+    output, history, seen, last_sequence = advance_trip(
+        points[0].trip_id,
+        iter([row(points[1]), row(points[2])]),
+        points=state_history,
+        seen_event_ids={state_history[0].event_id},
+        last_sequence=0,
+    )
+    assert [item["sequence"] for item in output] == [1, 2]
+    assert len(history) == 3
+    assert len(seen) == 3
+    assert last_sequence == 2
