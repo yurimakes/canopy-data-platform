@@ -1,7 +1,7 @@
 from datetime import timezone
 
 from mode_inference.contracts import MAX_RAW_POINTS
-from mode_inference.state import advance_trip
+from mode_inference.state import advance_trip, point_state_delta
 from tests.helpers import row, trajectory
 
 
@@ -52,3 +52,19 @@ def test_mixed_state_and_input_timestamp_timezone_normalizes_before_features():
     assert len(history) == 3
     assert len(seen) == 3
     assert last_sequence == 2
+
+
+def test_point_state_delta_only_mutates_new_and_expired_window_entries():
+    points = trajectory(count=161)
+    previous = points[:151]
+    retained = points[10:161]
+
+    additions, removals = point_state_delta(
+        {point.sequence for point in previous},
+        retained,
+    )
+
+    assert [point.sequence for point in additions] == list(range(151, 161))
+    assert removals == set(range(10))
+    assert len(additions) == 10
+    assert len(removals) == 10
