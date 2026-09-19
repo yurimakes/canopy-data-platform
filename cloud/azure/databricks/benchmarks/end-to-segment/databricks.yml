@@ -1,0 +1,40 @@
+bundle:
+  name: canopy-end-to-segment-benchmark
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - scripts/**
+
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  schema:
+    default: sandbox
+  source_gps_table:
+    default: silver_gps_observations
+  source_trip_ended_table:
+    default: silver_trip_ended_events
+  replay_gps_table:
+    default: replay_continuous_gps_observations
+  replay_predictions_table:
+    default: replay_continuous_mode_predictions
+  replay_trip_ended_table:
+    default: replay_continuous_trip_ended_events
+  replay_arrival_table:
+    default: replay_continuous_arrivals
+  replay_segments_table:
+    default: replay_continuous_mode_segments
+  benchmark_table:
+    default: replay_end_to_segment_benchmarks
+
+targets:
+  trial:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

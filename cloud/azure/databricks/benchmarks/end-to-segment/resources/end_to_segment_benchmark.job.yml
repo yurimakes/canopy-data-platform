@@ -22,11 +22,11 @@ resources:
             python_file: ${workspace.file_path}/scripts/produce_end_to_segment_replay.py
             parameters:
               - --catalog=${var.catalog}
-              - --schema=${var.silver_schema}
-              - --source-table=${var.input_observations_table}
-              - --replay-table=${var.continuous_replay_input_table}
-              - --trip-ended-table=${var.continuous_replay_trip_ended_table}
-              - --arrival-table=${var.continuous_replay_arrival_table}
+              - --schema=${var.schema}
+              - --source-table=${var.source_gps_table}
+              - --replay-table=${var.replay_gps_table}
+              - --trip-ended-table=${var.replay_trip_ended_table}
+              - --arrival-table=${var.replay_arrival_table}
               - --source-trip-id={{job.parameters.source_trip_id}}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
@@ -42,11 +42,11 @@ resources:
             python_file: ${workspace.file_path}/scripts/report_end_to_segment_replay.py
             parameters:
               - --catalog=${var.catalog}
-              - --schema=${var.silver_schema}
-              - --trip-ended-table=${var.continuous_replay_trip_ended_table}
-              - --prediction-table=${var.continuous_replay_output_table}
-              - --segments-table=${var.continuous_replay_segments_table}
-              - --benchmark-table=${var.end_to_segment_benchmark_table}
+              - --schema=${var.schema}
+              - --trip-ended-table=${var.replay_trip_ended_table}
+              - --prediction-table=${var.replay_predictions_table}
+              - --segments-table=${var.replay_segments_table}
+              - --benchmark-table=${var.benchmark_table}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
               - --timeout-seconds=180

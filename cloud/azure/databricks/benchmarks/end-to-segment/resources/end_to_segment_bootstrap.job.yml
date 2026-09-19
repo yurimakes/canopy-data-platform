@@ -9,12 +9,12 @@ resources:
             python_file: ${workspace.file_path}/scripts/bootstrap_end_to_segment_replay.py
             parameters:
               - --catalog=${var.catalog}
-              - --schema=${var.silver_schema}
-              - --gps-source-table=${var.input_observations_table}
-              - --trip-end-source-table=silver_trip_ended_events
-              - --replay-gps-table=${var.continuous_replay_input_table}
-              - --replay-trip-end-table=${var.continuous_replay_trip_ended_table}
-              - --arrival-table=${var.continuous_replay_arrival_table}
+              - --schema=${var.schema}
+              - --gps-source-table=${var.source_gps_table}
+              - --trip-end-source-table=${var.source_trip_ended_table}
+              - --replay-gps-table=${var.replay_gps_table}
+              - --replay-trip-end-table=${var.replay_trip_ended_table}
+              - --arrival-table=${var.replay_arrival_table}
           environment_key: bootstrap_env
       environments:
         - environment_key: bootstrap_env
