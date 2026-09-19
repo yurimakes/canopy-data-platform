@@ -1,3 +1,4 @@
+import Text from './AppText';
 import {HomeDashboard} from './HomeDashboard';
 import {ActiveJourney} from './ActiveJourney';
 import {JourneyComplete} from './RewardExperience';
@@ -5,7 +6,7 @@ import {CanopyMascot} from './CanopyMascot';
 import Constants from 'expo-constants';
 import {LivePrediction,LocalWeekly} from './LocalTools';
 import React,{useEffect,useRef,useState} from 'react';
-import {ActivityIndicator,ImageBackground,Modal,Pressable,ScrollView,Text,View} from 'react-native';
+import {ActivityIndicator,ImageBackground,Modal,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import type {MeasurementProps} from './MeasurementScreen';
 import {MeasurementScreen} from './MeasurementScreen';
@@ -44,7 +45,7 @@ export function ServiceScreen(p:ServiceProps){
       <View style={S.row}>{tab==='home'?<Icon name="leaf" size={25}/>:navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}<Text style={[S.heading,tab==='home'&&{fontSize:24,color:C.green}]}>{title[tab]}</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>
     </View>
-    <ScrollView key={tab} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
+    {tab==='journey'&&busy?<View style={{flex:1,minHeight:0,paddingHorizontal:12,paddingTop:8}}><ActiveJourney p={p} direction={direction}/>{!!p.error&&<Note error>{p.error}</Note>}</View>:<ScrollView key={tab} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
       {tab==='home'&&Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · PC에서 처리 · Azure 미사용</Text></View>}
 
       {tab==='home'?<><HomeDashboard p={p} busy={busy} onRoute={d=>{setDirection(d);setTab(busy?'journey':'route');}} onResult={()=>setTab('result')} onBaseline={()=>setTab('baseline')} onRewards={()=>setTab('rewards')}/>{p.profile.role==='developer'&&<View style={{padding:20}}><LocalWeekly/></View>}</>:<Fade key={tab}>
@@ -74,7 +75,7 @@ export function ServiceScreen(p:ServiceProps){
         {!filteredTrips.length&&<Card><Icon name="footsteps-outline" size={36}/><Text style={S.heading}>첫 여정을 기다리고 있어요</Text><Button title="여정 준비하기" onPress={()=>setTab('route')}/></Card>}
         {filteredTrips.map(t=><Pressable key={t.trip_id} accessibilityRole="button" disabled={busy} onPress={()=>{p.onSelect(t.trip_id);setTab('result');}} style={S.card}><View style={S.between}><Text style={S.heading}>{new Date(t.started_at).toLocaleDateString('ko-KR')}</Text><Icon name="chevron-forward" size={18}/></View><Note>{new Date(t.started_at).toLocaleTimeString('ko-KR')}에 시작한 여정</Note><Text style={S.pill}>{t.status==='recording'?'기록 중':t.status==='interrupted'?'기록 중단':'기록 종료'}</Text></Pressable>)}
       </>}
-      {tab==='baseline'&&<BaselinePanel value={p.baseline} onRetry={p.onRefreshCommunity}/>}
+      {tab==='baseline'&&<BaselinePanel onRoute={()=>setTab('route')} value={p.baseline} onRetry={p.onRefreshCommunity}/>}
       {tab==='missions'&&<MissionPanel value={p.missions} onRetry={p.onRefreshCommunity}/>}
       {tab==='ranking'&&<RankingPanel value={p.ranking} onRetry={p.onRefreshCommunity}/>}
       {tab==='rewards'&&<RewardPanel value={p.rewards} onRetry={p.onRefreshCommunity}/>}
@@ -89,7 +90,7 @@ export function ServiceScreen(p:ServiceProps){
         <Button title="로그아웃" quiet disabled={busy} onPress={()=>setLogout(true)}/><Note>프로필은 계정에 저장됩니다. 측정 중에는 로그아웃할 수 없어요.</Note>
       </>}
       </Fade>}
-    </ScrollView>
+    </ScrollView>}
     {tab==='journey'&&<View style={{paddingHorizontal:20,paddingVertical:10,backgroundColor:C.white}}><Button title={p.phase==='starting'?'위치를 준비하고 있어요':p.phase==='stopping'?'기록을 마무리하고 있어요':busy?'여정 종료':'여정 시작'} busy={p.phase==='starting'||p.phase==='stopping'} disabled={!p.ready||!!p.preview} onPress={()=>{if(busy)setStopOpen(true);else p.onStart();}}/></View>}
     {busy&&tab!=='journey'&&<Pressable accessibilityRole="button" onPress={()=>setTab('journey')} style={{padding:14,backgroundColor:C.mint,alignItems:'center'}}><Text style={S.link}>진행 중인 여정으로 돌아가기</Text></Pressable>}
     <View style={{flexDirection:'row',backgroundColor:C.white,borderTopWidth:1,borderColor:C.line,paddingVertical:10}}>

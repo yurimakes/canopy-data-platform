@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React from 'react';
-import {Text,View} from 'react-native';
+import {View} from 'react-native';
 import type {PlannedRoute} from '../service';
 import {C,S,Note} from './theme';
 const labels:Record<string,string>={walk:'도보',bike:'자전거',bicycle:'자전거',car:'승용차',bus:'버스',rail:'철도',subway:'지하철'};

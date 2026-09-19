@@ -11,6 +11,7 @@ if(local){
 }
 module.exports = ({config}) => ({
   ...config,
+  plugins: [...(config.plugins || []).filter(p => p !== 'expo-font'), 'expo-font'],
   ios: {...config.ios, bundleIdentifier: process.env.CANOPY_IOS_BUNDLE_IDENTIFIER || config.ios.bundleIdentifier},
   extra: {...config.extra,
     localOnly:local,

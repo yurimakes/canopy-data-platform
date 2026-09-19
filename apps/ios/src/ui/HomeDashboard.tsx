@@ -1,5 +1,7 @@
+import {LinearGradient} from 'expo-linear-gradient';
+import Text from './AppText';
 import React from 'react';
-import {Pressable,Text,View} from 'react-native';
+import {Image,Pressable,View} from 'react-native';
 import {CanopyMascot} from './CanopyMascot';
 import {Button,C,Icon,Note,S} from './theme';
 import type {ServiceProps} from './ServiceScreen';
@@ -7,10 +9,10 @@ export function HomeDashboard({p,busy,onRoute,onResult,onBaseline,onRewards}:{p:
  const baseline=p.baseline?.state==='ready'?p.baseline.data:null,balance=p.rewards?.state==='ready'?p.rewards.data.balance:null;
  return <View style={{padding:20,gap:18}}>
   <View style={{backgroundColor:'#e8efdc',borderRadius:32,padding:24,paddingBottom:12,overflow:'hidden'}}>
+   <Image source={require('../../assets/canopy-ui/home-park.png')} resizeMode="cover" style={{position:'absolute',left:0,right:0,bottom:-70,width:'100%',height:590}}/>
+   <LinearGradient pointerEvents="none" colors={['#f4faf7f2','#f4faf7ad','#f4faf708']} locations={[0,.58,1]} start={{x:0,y:0}} end={{x:1,y:.25}} style={{position:'absolute',top:0,left:0,right:0,bottom:0}}/>
    <Text style={{color:'#67824e',letterSpacing:1.8,fontSize:10,fontWeight:'800'}}>MAKE YOUR WAY GREENER</Text>
-   <Text style={[S.title,{fontSize:30,lineHeight:40,marginTop:14}]}>{p.profile.nickname}님,{ '\n'}오늘의 이동도{ '\n'}가볍게 시작해요.</Text>
-   <View style={{marginTop:-42,marginLeft:80,height:200}}><CanopyMascot height={200}/></View>
-   <Text style={[S.note,{marginTop:-12,marginBottom:12}]}>더 나은 선택을, 캐노피와 함께.</Text>
+   <View style={{flexDirection:'row',alignItems:'center',marginTop:8}}><View style={{flex:1,minWidth:0,gap:12}}><Text style={[S.title,{fontSize:25,lineHeight:35}]}>{p.profile.nickname}님,{'\n'}오늘도 가볍게{'\n'}시작해요.</Text><Text style={S.note}>더 나은 선택,{'\n'}캐노피와 함께.</Text></View><View style={{width:130,marginRight:-16}}><CanopyMascot height={190}/></View></View>
   </View>
   <View style={{flexDirection:'row',gap:12}}>{([['outbound','출근하기','직장으로','business-outline'],['return','퇴근하기','집으로','home-outline']] as const).map(([direction,title,sub,icon])=><Pressable key={direction} accessibilityRole="button" onPress={()=>onRoute(direction)} style={{flex:1,backgroundColor:direction==='outbound'?C.deep:C.white,borderRadius:26,padding:20,gap:16,borderWidth:1,borderColor:C.line}}><View style={{width:42,height:42,alignItems:'center',justifyContent:'center',borderRadius:14,backgroundColor:direction==='outbound'?'#ffffff18':C.mint}}><Icon name={icon} color={direction==='outbound'?'#c9e6a3':C.green}/></View><View style={{gap:5}}><Text style={{color:direction==='outbound'?'#b8d6c7':C.muted,fontSize:12}}>{sub}</Text><Text style={{color:direction==='outbound'?'white':C.deep,fontSize:19,fontWeight:'800'}}>{busy?'여정 계속하기':title}</Text></View></Pressable>)}</View>
   {p.serverTrip?.status==='ready'&&!busy&&<Button title="최근 여정 결과 다시 보기" quiet onPress={onResult}/>}

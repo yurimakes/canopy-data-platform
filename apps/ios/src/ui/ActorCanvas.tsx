@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,AppState,View,Text,Pressable} from 'react-native';
+import {AccessibilityInfo,AppState,View,Pressable} from 'react-native';
 import {GLView,type ExpoWebGLRenderingContext} from 'expo-gl';
 import * as T from 'three';
 import {mascotScene} from './mascotScene';

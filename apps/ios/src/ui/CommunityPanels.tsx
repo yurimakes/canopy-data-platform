@@ -1,8 +1,9 @@
+import Text from './AppText';
 import {CanopyMascot} from './CanopyMascot';
 import {localAction} from '../communityClient';
 import {RewardCelebration} from './RewardExperience';
 import React,{useState} from 'react';
-import {ActivityIndicator,Pressable,Text,View} from 'react-native';
+import {ActivityIndicator,Pressable,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
 
 // 앱 표시 모델. 서버 공통 스키마를 변경하지 않고 API 어댑터에서 변환 후 전달
@@ -19,8 +20,8 @@ function Status({value,onRetry}:{value:Exclude<RemotePanel<unknown>,{state:'read
 }
 function Updated({week,time}:{week:string;time:string}) {return <View style={{gap:5}}><Text style={S.pill}>{week}</Text><Note>갱신 {new Date(time).toLocaleString('ko-KR')}</Note></View>;}
 
-export function BaselinePanel({value=unavailable,onRetry}:{value?:RemotePanel<BaselineView>;onRetry?:()=>void}) {
-  return <><Text style={S.title}>나의 이동을{ '\n'}알아가는 시간.</Text><Note>Baseline은 이동 기록을 바탕으로 서버에서 계산한 비교 기준입니다. 경로 검색의 예상값과는 달라요.</Note>
+export function BaselinePanel({value=unavailable,onRetry,onRoute}:{value?:RemotePanel<BaselineView>;onRetry?:()=>void;onRoute?:()=>void}) {
+  return <>{onRoute&&<Card><Text style={S.pill}>출발 전 · KTDB POPULATION</Text><Text style={S.heading}>다른 사람들은 어떻게 이동할까요?</Text><Note>출발지와 목적지를 선택하면 KTDB 모델이 예측한 이동수단별 선택 확률과 예상 탄소량을 보여드려요. 개인 기록이 없어도 확인할 수 있어요.</Note><Button title="경로별 KTDB 기준 보기" onPress={onRoute}/></Card>}<Text style={S.title}>나의 이동을{ '\n'}알아가는 시간.</Text><Note>Baseline은 이동 기록을 바탕으로 서버에서 계산한 비교 기준입니다. 경로 검색의 예상값과는 달라요.</Note>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<><Card><Text style={S.pill}>{value.data.status==='ready'?'기준 생성 완료':'이동 데이터 수집 중'}</Text><Note>{value.data.reason}</Note><View style={S.row}><Stat label="개인 기준" value={value.data.personalKg==null?'—':value.data.personalKg.toFixed(2)}/><Stat label="전체 기준" value={value.data.globalKg==null?'—':value.data.globalKg.toFixed(2)}/></View>{value.data.developmentOnly&&<Note>검증용 기준 · {value.data.source}</Note>}<Note>주간 보상은 이번 주 거리당 탄소 배출량을 개인·전체 기준과 비교해 판단합니다. 낮을수록 좋으며, 이동 횟수와 관찰 기간 조건도 충족해야 합니다. 총 배출량만 줄였다고 지급되지는 않아요.</Note>{value.data.actualG!==undefined&&<View style={{backgroundColor:C.mint,padding:18,borderRadius:18,gap:12}}><Text style={S.label}>{value.data.week} 집계된 나의 배출량</Text><Text style={[S.metric,{fontSize:30}]}>{value.data.actualG.toFixed(2)} gCO₂e/km</Text><Note>개선 보상: 개인 기준보다 낮게 / 유지 보상: 개선에 해당하지 않을 때 전체 기준 이하</Note>{value.data.expectedPoints!=null&&<Text style={S.label}>이 집계의 주간 정산 포인트 {value.data.expectedPoints.toFixed(2)} T</Text>}</View>}<Note>탄소 기준 단위: {value.data.unit??'kgCO₂e'}</Note><Note>갱신 {new Date(value.data.updatedAt).toLocaleString('ko-KR')}</Note></Card></>}
     <Card><Icon name="footsteps-outline"/><Text style={S.heading}>평소처럼 이동해주세요</Text><Note>기준이 준비되기 전에도 여정을 기록할 수 있어요. 기준 생성 조건과 준비 여부는 서버에서 판단합니다.</Note></Card>
   </>;
@@ -39,8 +40,7 @@ export function MissionPanel({value=unavailable,onRetry}:{value?:RemotePanel<Mis
   const items=value.state==='ready'?value.data.items.map(m=>({...m,status:claimed.includes(m.id)?'completed':m.status})):[];
   const visible=items.filter(m=>filter==='all'||(filter==='active'?['active','claimable'].includes(m.status):m.status===filter));
   return <>
-    <Text style={S.pill}>작은 실천, 확실한 변화</Text><View style={{height:110,alignItems:'flex-end'}}><View style={{width:110}}><CanopyMascot pose="coin" height={110}/></View></View><Text style={S.title}>이번 주의{ '\n'}나를 위한 도전</Text>
-    <Note>목표를 달성하면 보상을 받아보세요. 받은 보상은 지갑에 바로 쌓여요.</Note>
+    <View style={{flexDirection:'row',alignItems:'center',backgroundColor:'#edf3e3',borderRadius:28,padding:20}}><View style={{flex:1,minWidth:0,gap:10}}><Text style={[S.label,{color:C.green,fontSize:11}]}>작은 실천, 확실한 변화</Text><Text style={S.title}>이번 주의{'\n'}나를 위한 도전</Text></View><View style={{width:105}}><CanopyMascot pose="coin" height={140}/></View></View><Note>목표를 달성하면 보상을 받아보세요. 받은 보상은 지갑에 바로 쌓여요.</Note>
     <View style={[S.row,{backgroundColor:'#e5eee8',borderRadius:28,padding:4}]}>{([['active','진행 중'],['completed','완료'],['all','전체']] as const).map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:filter===id}} onPress={()=>setFilter(id)} style={{flex:1,alignItems:'center',padding:12,borderRadius:24,backgroundColor:filter===id?C.white:'transparent'}}><Text style={{fontWeight:'700',color:filter===id?C.deep:C.muted}}>{label}</Text></Pressable>)}</View>
     {!!error&&<Note error>{error}</Note>}
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>

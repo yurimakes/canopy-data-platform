@@ -1,3 +1,4 @@
+import {FontGate} from './src/ui/FontGate';
 import React,{useEffect,useRef,useState} from 'react';
 import Constants from 'expo-constants';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
@@ -11,7 +12,7 @@ import {SCHEMA,type GpsEvent,type Summary,type TransportMode} from './src/types'
 import type {ServerTrip,FeedbackInput} from './src/tripApi';
 import type {Profile,PlannedRoute} from './src/service';
 
-export default function App(){
+function CanopyApp(){
   const [profile,setProfile]=useState<Profile|null>(null),[route,setRoute]=useState<PlannedRoute|null>(null);
   const [collectionMode,setCollectionMode]=useState<'user'|'developer'>('user'),[mode,setMode]=useState<TransportMode|null>(null);
   const [phase,setPhase]=useState('idle'),[error,setError]=useState(''),[trips,setTrips]=useState<Summary[]>([]);
@@ -76,3 +77,5 @@ export default function App(){
       onMode={setMode} onStart={()=>void start()} onStop={()=>void stop()} onExport={download} canExport={events.length>0} sharing={false} onFeedback={feedback} serverTrip={serverTrip} resultTrip={selected} tripId={selected?.trip_id} pending={Math.max(0,events.length-sent)} sent={sent} foregroundOnly/>
   }</SafeAreaProvider>;
 }
+
+export default function App(){return <FontGate><CanopyApp/></FontGate>;}

@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React,{useEffect,useRef} from 'react';
-import {AccessibilityInfo,Animated,Easing,Platform,ScrollView,Text,View} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Platform,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {CanopyMascot} from './CanopyMascot';
 import {Button,C,Note,S} from './theme';

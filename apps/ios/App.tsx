@@ -1,3 +1,4 @@
+import {FontGate} from './src/ui/FontGate';
 import React, { useEffect, useState, useRef } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -28,7 +29,7 @@ function initialize() { return runtime ??= (async () => {
   }}); await collector.refresh();
   return {db, collector};
 })(); }
-export default function App() {
+function CanopyApp() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);
@@ -208,3 +209,5 @@ export default function App() {
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;
 }
+
+export default function App(){return <FontGate><CanopyApp/></FontGate>;}

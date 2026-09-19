@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,ActivityIndicator,Platform,Pressable,StyleSheet,Text,TextInput,View,type TextInputProps} from 'react-native';
+import {AccessibilityInfo,Animated,ActivityIndicator,Platform,Pressable,StyleSheet,TextInput,View,type TextInputProps} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 export const C={green:'#108454',deep:'#124b40',ink:'#173c42',muted:'#5f7871',mint:'#e9f7f0',paper:'#f4faf7',line:'#e3eee8',white:'#fff',red:'#b13c3c'};
 export function Icon({name,size=22,color=C.green}:{name:React.ComponentProps<typeof Ionicons>['name'];size?:number;color?:string}){return <Ionicons name={name} size={size} color={color}/>;}

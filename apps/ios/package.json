@@ -10,13 +10,16 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@expo-google-fonts/noto-sans-kr": "^0.4.3",
     "@expo/metro-runtime": "~57.0.15",
     "@expo/vector-icons": "^15.0.2",
     "expo": "~57.0.22",
     "expo-constants": "~57.0.17",
     "expo-crypto": "~57.0.3",
     "expo-file-system": "~57.0.6",
+    "expo-font": "~57.0.4",
     "expo-gl": "~57.0.2",
+    "expo-linear-gradient": "~57.0.2",
     "expo-location": "~57.0.17",
     "expo-network": "~57.0.1",
     "expo-secure-store": "~57.0.4",

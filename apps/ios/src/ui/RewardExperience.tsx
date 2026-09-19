@@ -1,5 +1,7 @@
+import {MODES} from '../types';
+import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,Modal,Platform,ScrollView,Text,View} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Modal,Platform,ScrollView,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
 import {CanopyMascot} from './CanopyMascot';
 import {localAction} from '../communityClient';
@@ -28,6 +30,8 @@ export function RewardCelebration({amount,title,onClose}:{amount:number;title:st
   </ScrollView></Modal>;
 }
 
+function segmentDuration(start:string,end:string){const seconds=Math.max(0,Math.round((Date.parse(end)-Date.parse(start))/1000));return `${Math.floor(seconds/60)}분 ${seconds%60}초`;}
+
 export function JourneyComplete({trip,onDetail,onWallet}:{trip:ServerTrip;onDetail():void;onWallet():void}){
   const [result,setResult]=useState<any>(null),[error,setError]=useState(''),[celebrate,setCelebrate]=useState(false);
   const active=useRef(trip.trip_id);active.current=trip.trip_id;
@@ -36,7 +40,8 @@ export function JourneyComplete({trip,onDetail,onWallet}:{trip:ServerTrip;onDeta
   const c=trip.confirmed_trip,seconds=trip.ended_at?Math.max(0,Math.round((Date.parse(trip.ended_at)-Date.parse(trip.started_at))/1000)):0;
   return <><View style={{alignItems:'center',gap:10,paddingTop:6,paddingBottom:8}}><Text style={S.pill}>TODAY'S GREEN JOURNEY</Text><CanopyMascot pose="complete" height={175}/>
     <Text style={[S.title,{textAlign:'center'}]}>오늘도, 지구와 한 걸음.</Text><Note>여정을 안전하게 마쳤어요. 수고하셨어요!</Note></View>
-    {trip.is_mock&&<Note>합성 GPS 재생 테스트입니다. 실제 사용자가 이동한 기록이 아닙니다.</Note>}<Card><View style={S.row}><Stat label="이동 거리" value={c?km(c.total_distance_m):'—'}/><Stat label="소요 시간" value={seconds<60?`${seconds}초`:`${Math.floor(seconds/60)}분`}/><Stat label="탄소 배출" value={c?`${c.total_carbon_kg.toFixed(3)} kg`:'—'}/></View></Card>
+    {trip.is_mock&&<Note>합성 GPS 재생 테스트입니다. 실제 사용자가 이동한 기록이 아닙니다.</Note>}<Card><View style={S.row}><Stat label="이동 거리" value={c?km(c.total_distance_m):'—'}/><Stat label="소요 시간" value={seconds<60?`${seconds}초`:`${Math.floor(seconds/60)}분 ${seconds%60}초`}/><Stat label="탄소 배출" value={c?`${c.total_carbon_kg.toFixed(3)} kg`:'—'}/></View></Card>
+    {!!trip.segments.length&&<Card><Text style={S.heading}>이번 여정의 이동수단</Text>{(trip.confirmed_segments??trip.segments).map((segment,i)=><View key={segment.segment_id} style={S.between}><View style={[S.row,{flex:1}]}><Text style={S.pill}>{String(i+1).padStart(2,'0')}</Text><Text style={S.label}>{MODES.find(m=>m.value===(segment.confirmed_mode??segment.mode))?.title??'확인 중'}</Text></View><Text style={S.note}>{km(segment.distance_m)} · {segmentDuration(segment.start_time,segment.end_time)}</Text></View>)}</Card>}
     {result?.baseline_kg!==undefined&&<View style={{backgroundColor:C.deep,borderRadius:24,padding:24,gap:18}}>
       <View style={S.between}><Text style={{color:'#cbe7d9',fontWeight:'600'}}>같은 경로, 더 가벼운 탄소</Text><Icon name="leaf-outline" color="#b9e877"/></View>
       <Text style={{color:'white',fontSize:36,fontWeight:'800'}}>{(result.saved_kg*1000).toFixed(1)} <Text style={{fontSize:17}}>g 절감</Text></Text>

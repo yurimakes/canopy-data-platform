@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Text,View} from 'react-native';
+import {AccessibilityInfo,View} from 'react-native';
 import * as T from 'three';
 import {mascotScene} from './mascotScene';
 import type {MascotPose} from './CanopyMascot';

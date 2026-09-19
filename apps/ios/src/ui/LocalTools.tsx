@@ -1,3 +1,4 @@
+import Text from './AppText';
 import {JourneyReplay} from './JourneyReplay';
 import {randomUUID} from 'expo-crypto';
 import {TripResult} from './TripResult';
@@ -7,7 +8,7 @@ import React,{useEffect,useState} from 'react';
 import Constants from 'expo-constants';
 import {session} from '../accountSession';
 import {accountConfig} from '../accountConfig';
-import {Text,Modal,ScrollView} from 'react-native';
+import {Modal,ScrollView} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {JourneyComplete} from './RewardExperience';
 import type {ServerTrip} from '../tripApi';

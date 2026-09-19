@@ -1,6 +1,7 @@
+import Text from './AppText';
 import {bearing} from '../journeyGeometry';
 import React from 'react';
-import {View,Text} from 'react-native';
+import {View} from 'react-native';
 import type {MapProps} from './JourneyMap';
 import type {Place} from '../service';
 import {C,S,Icon,Note} from './theme';

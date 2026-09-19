@@ -1,6 +1,7 @@
+import Text from './AppText';
 import {LandingScreen} from './LandingScreen';
 import React,{useState} from 'react';
-import {KeyboardAvoidingView,Platform,Pressable,ScrollView,Text,View} from 'react-native';
+import {KeyboardAvoidingView,Platform,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import {loginProfile,registerProfile} from '../profileStore';

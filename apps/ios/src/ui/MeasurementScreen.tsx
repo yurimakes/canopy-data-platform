@@ -1,7 +1,8 @@
+import Text from './AppText';
 import React from 'react';
 import Constants from 'expo-constants';
 import {LivePrediction,LocalWeekly} from './LocalTools';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MODES, currentMode, type TransportMode, type GpsEvent, type Summary } from '../types';
 import type { FeedbackInput, ServerTrip } from '../tripApi';

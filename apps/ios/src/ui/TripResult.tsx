@@ -1,5 +1,6 @@
+import Text from './AppText';
 import React, {useEffect,useRef,useState} from 'react';
-import {Pressable,StyleSheet,Text,TextInput,View} from 'react-native';
+import {Pressable,StyleSheet,TextInput,View} from 'react-native';
 import {MODES,type TransportMode} from '../types';
 import type {FeedbackInput,ServerTrip} from '../tripApi';
 import {C,Icon,S,Stat,Note} from './theme';

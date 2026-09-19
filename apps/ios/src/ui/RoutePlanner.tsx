@@ -1,7 +1,8 @@
+import Text from './AppText';
 import {PopulationPreview} from './PopulationPreview';
 import {localAction} from '../communityClient';
 import React,{useRef,useState} from 'react';
-import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
+import {Modal,Platform,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import Constants from 'expo-constants';
