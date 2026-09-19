@@ -66,6 +66,15 @@ back into inference.
 - [ ] Document checkpoint/state migration behavior before enabling lifecycle
       changes in production.
 
+## Checkpoint migration note
+
+Enabling TTL changes the operator time mode from `NoTime` to
+`ProcessingTime`. Treat this as a stateful-query migration, not as an ordinary
+configuration-only restart. The replay pipeline should be the first validation
+target. If Databricks rejects reuse of the existing checkpoint/state, do not
+silently delete production state; establish an explicit reset/migration procedure
+first.
+
 ## Current validation target
 
 After enabling the 2-hour TTL, a short benchmark should preserve the existing
