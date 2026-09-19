@@ -17,12 +17,12 @@ def _identifier(value: str, label: str) -> str:
 
 @dataclass(frozen=True)
 class ModeInferenceConfig:
-    catalog: str = "dbw_canopy_dev"
-    silver_schema: str = "silver"
-    input_observations_name: str = "gps_observations"
-    output_predictions_name: str = "mode_predictions"
-    model_uri: str = "models:/dbw_canopy_dev.ml.canopy_transition_lgbm_pointwise/1"
-    model_artifact_path: str = "/Volumes/dbw_canopy_dev/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops"
+    catalog: str = "dbw_canopy_trial"
+    silver_schema: str = "sandbox"
+    input_observations_name: str = "silver_gps_observations"
+    output_predictions_name: str = "silver_mode_predictions"
+    model_uri: str = "models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1"
+    model_artifact_path: str = "/Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops"
     state_timeout: str = "none"
     timezone: str = "UTC"
 
