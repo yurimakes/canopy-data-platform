@@ -73,7 +73,9 @@ Two checkpoint-breaking state migrations now exist on this development branch:
 1. TTL changed the operator time mode from `NoTime` to `ProcessingTime` and
    wrapped state with TTL metadata.
 2. The state representation changed from one JSON `ValueState` to native
-   scalar metadata plus bounded `ListState` point history.
+   scalar metadata plus bounded point history.
+3. The bounded point history then changed from `ListState` to sequence-keyed
+   `MapState` so each microbatch mutates only newly added and expired point keys.
 
 Treat both as stateful-query migrations, not ordinary configuration restarts.
 Validate against replay first. If Databricks rejects reuse of an existing
