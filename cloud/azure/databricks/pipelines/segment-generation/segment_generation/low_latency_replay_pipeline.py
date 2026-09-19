@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from delta.tables import DeltaTable
 from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession, functions as F
 
@@ -58,16 +59,13 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
         if segments.limit(1).count() == 0:
             return
 
-        temp_view = f"_ready_segments_{batch_id}"
-        segments.createOrReplaceTempView(temp_view)
-        spark.sql(
-            f"""
-            MERGE INTO {SEGMENTS_TABLE} AS target
-            USING {temp_view} AS source
-              ON target.segment_id = source.segment_id
-            WHEN MATCHED THEN UPDATE SET *
-            WHEN NOT MATCHED THEN INSERT *
-            """
+        (
+            DeltaTable.forName(spark, SEGMENTS_TABLE)
+            .alias("target")
+            .merge(segments.alias("source"), "target.segment_id = source.segment_id")
+            .whenMatchedUpdateAll()
+            .whenNotMatchedInsertAll()
+            .execute()
         )
     finally:
         affected.unpersist()
@@ -80,15 +78,9 @@ def low_latency_segment_sink(df: DataFrame, batch_id: int) -> None:
 
 @dp.append_flow(
     target="low_latency_segment_sink",
-    name="trip_end_finalization_trigger",
+    name="segment_finalization_trigger",
 )
-def trip_end_finalization_trigger() -> DataFrame:
-    return _spark().readStream.table(TRIP_ENDED_TABLE).select("trip_id")
-
-
-@dp.append_flow(
-    target="low_latency_segment_sink",
-    name="prediction_finalization_trigger",
-)
-def prediction_finalization_trigger() -> DataFrame:
-    return _spark().readStream.table(PREDICTIONS_TABLE).select("trip_id")
+def segment_finalization_trigger() -> DataFrame:
+    trip_ends = _spark().readStream.table(TRIP_ENDED_TABLE).select("trip_id")
+    predictions = _spark().readStream.table(PREDICTIONS_TABLE).select("trip_id")
+    return trip_ends.unionByName(predictions)
