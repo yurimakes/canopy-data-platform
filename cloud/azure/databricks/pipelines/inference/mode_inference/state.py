@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .contracts import FEATURE_NAMES, FEATURE_OUTPUT_SCHEMA_DDL, MAX_RAW_POINTS
-from .feature_engineering import GpsPoint, extract_features
+from .feature_engineering import GpsPoint
+from .incremental_features import IncrementalFeatureExtractor
 
 try:
     from pyspark.sql.streaming import StatefulProcessor as _StatefulProcessor
@@ -97,6 +98,7 @@ def advance_trip(
     seen = set(seen_event_ids or {point.event_id for point in history})
     seen.intersection_update(point.event_id for point in history)
     outputs: list[dict[str, Any]] = []
+    feature_extractor = IncrementalFeatureExtractor(history)
 
     ordered = sorted(
         rows,
@@ -113,9 +115,9 @@ def advance_trip(
         if point.event_id in seen or point.sequence <= last_sequence:
             continue
 
+        feature_values = feature_extractor.append(point)
         history = history[-(MAX_RAW_POINTS - 1):]
         history.append(point)
-        feature_values = extract_features(history)[-1]
         outputs.append(
             {
                 "event_id": point.event_id,
