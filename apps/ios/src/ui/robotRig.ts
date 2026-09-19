@@ -25,13 +25,13 @@ export function robotRig(action: CharacterAction) {
   const joint = mat('#263e32', .4), eyeBlack = mat('#091b12', .11), irisMat = mat('#347846', .18);
   const white = new T.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }); materials.push(white);
   const mint = new T.MeshBasicMaterial({ color: '#d5ffe0', toneMapped: false }); materials.push(mint);
-  const ink = new T.MeshBasicMaterial({color:'#52653e',side:T.BackSide,toneMapped:false});materials.push(ink);
+  const ink = new T.MeshBasicMaterial({color:'#283626',side:T.BackSide,toneMapped:false});materials.push(ink);
   const body = new T.Group(); scene.add(body);
   function mesh(parent: T.Object3D, geo: T.BufferGeometry, material: T.Material, x = 0, y = 0, z = 0) {
     const m = new T.Mesh(geo, material); m.position.set(x, y, z); parent.add(m);
     if(flatCharacter && (material===ivory || material===glove || material===leafGreen)){
       const edge=geo.clone(),position=edge.getAttribute('position'),normal=edge.getAttribute('normal');
-      if(normal){for(let i=0;i<position.count;i++)position.setXYZ(i,position.getX(i)+normal.getX(i)*.005,position.getY(i)+normal.getY(i)*.005,position.getZ(i)+normal.getZ(i)*.005);}
+      if(normal){for(let i=0;i<position.count;i++)position.setXYZ(i,position.getX(i)+normal.getX(i)*.014,position.getY(i)+normal.getY(i)*.014,position.getZ(i)+normal.getZ(i)*.014);}
       const outline=new T.Mesh(edge,ink);outline.name='characterOutline';m.add(outline);
     }
     return m;
@@ -222,6 +222,14 @@ export function robotRig(action: CharacterAction) {
       const foot = m.walking ? footCycle(m.cycle + i * .5) : { y: .085, z: .02 };
       const angles = legAngles(foot.y - .515 - m.bounce, foot.z);
       legs[i].hip.rotation.x = angles.hip; legs[i].knee.rotation.x = angles.knee; legs[i].ankle.rotation.x = angles.ankle;
+    }
+    if(action==='start') {
+      body.rotation.set(0,0,0);head.rotation.set(0,0,0);
+      const wave=Math.sin(t*Math.PI*2*1.25)*.18;
+      right.shoulder.rotation.set(-.18,0,1.10);
+      right.elbow.rotation.set(0,0,1.60);
+      right.wrist.rotation.set(0,0,wave);
+      authoredHead.setExpression(m.blink>.75?1:0);
     }
     if(action==='cycle') {
       body.rotation.set(0,1.02,0); body.position.set(-.08*Math.sin(1.02),.235,-.08*Math.cos(1.02));

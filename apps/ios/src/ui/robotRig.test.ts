@@ -23,6 +23,11 @@ describe('3D mascot poses',()=>{
       const head=actor.scene.getObjectByName('head')!;
       const forward=new T.Vector3(0,0,1).applyQuaternion(head.getWorldQuaternion(new T.Quaternion()));
       if(pose==='run'||pose==='cycle')expect(forward.x).toBeGreaterThan(.7);
+      if(pose==='start'){
+        expect(forward.x).toBeCloseTo(0,8);expect(forward.y).toBeCloseTo(0,8);expect(forward.z).toBeCloseTo(1,8);
+        const wrist=actor.scene.getObjectByName('rightShoulder')!.getObjectByName('wrist')!;
+        expect(wrist.getWorldPosition(new T.Vector3()).x).toBeGreaterThan(.6);
+      }
       const shoulder=actor.scene.getObjectByName('rightShoulder')!;
       const elbow=shoulder.getObjectByName('elbow')!,wrist=elbow.getObjectByName('wrist')!;
       expect(elbow.parent).toBe(shoulder);expect(wrist.parent).toBe(elbow);

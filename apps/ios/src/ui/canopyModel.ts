@@ -31,18 +31,41 @@ export function shellGeometry(rows:number[][]){
 
 // Front contour measured in the original atlas. UVs preserve its eyes, mouth,
 // cheek outline and asymmetry, while depth is supplied by a curved face mesh.
-const faceContour=[[121,195],[160,197],[201,210],[254,211],[289,229],[308,264],[321,312],[301,350],[263,378],[221,390],[163,386],[115,369],[79,343],[61,303],[72,254],[91,218]];
+const faceContour=[[0,.46],[.32,.43],[.53,.29],[.61,.02],[.56,-.25],[.33,-.42],[0,-.46],[-.33,-.42],[-.56,-.25],[-.61,.02],[-.53,.29],[-.32,.43]].map(([x,y])=>[188+x/.0046,292-y/.0046]);
 export function createCanopyHead(){
   const group=new T.Group();group.name='authoredHeadShell';
   const texture=atlasTexture();
-  const faceMaterial=new T.MeshBasicMaterial({map:texture,side:T.DoubleSide,toneMapped:false});
+  const expressionOffset={value:0};
+  const faceMaterial=new T.MeshBasicMaterial({map:texture,color:'#f0eee5',side:T.DoubleSide,toneMapped:false});
+  // Sample only facial features. Helmet/crown edges from the source image must
+  // never become a second silhouette printed across the forehead.
+  faceMaterial.onBeforeCompile=shader=>{
+    shader.uniforms.expressionOffset=expressionOffset;
+    shader.fragmentShader='uniform float expressionOffset;\n'+shader.fragmentShader;
+    shader.fragmentShader=shader.fragmentShader.replace('#include <map_fragment>',`
+      vec2 q=vMapUv;
+      vec2 a=(q-vec2(.29,.45))/vec2(.15,.245);
+      vec2 b=(q-vec2(.71,.45))/vec2(.15,.245);
+      vec2 c=(q-vec2(.50,.72))/vec2(.13,.13);
+      float ma=1.-smoothstep(.80,1.,length(a));
+      float mb=1.-smoothstep(.80,1.,length(b));
+      float mc=1.-smoothstep(.82,1.,length(c));
+      vec2 dims=vec2(1448.,1086.);
+      vec4 ca=texture2D(map,(vec2(103.+expressionOffset,274.)+a*vec2(39.,51.))/dims);
+      vec4 cb=texture2D(map,(vec2(237.+expressionOffset,300.)+b*vec2(41.,49.))/dims);
+      vec4 cc=texture2D(map,(vec2(154.+expressionOffset,329.)+c*vec2(28.,27.))/dims);
+      diffuseColor.rgb=mix(diffuseColor.rgb,ca.rgb,ma);
+      diffuseColor.rgb=mix(diffuseColor.rgb,cb.rgb,mb);
+      diffuseColor.rgb=mix(diffuseColor.rgb,cc.rgb,mc);
+    `);
+  };
   const green=new T.MeshBasicMaterial({color:'#829e58',toneMapped:false});
   const outline=new T.CatmullRomCurve3(faceContour.map(p=>new T.Vector3(p[0],p[1],0)),true,'catmullrom',.3);
   const positions:number[]=[],uv:number[]=[],indices:number[]=[],rings=22,sides=96;
   for(let r=0;r<=rings;r++)for(let j=0;j<=sides;j++){
     const t=r/rings,p=outline.getPoint(j/sides),px=188+(p.x-188)*t,py=292+(p.y-292)*t;
     positions.push((px-188)*.0046,(292-py)*.0046,.30+.145*(1-t*t));
-    uv.push(px/textureWidth,py/textureHeight);
+    uv.push(((px-188)*.0046+.62)/1.24,(.46-(292-py)*.0046)/.92);
     if(r<rings&&j<sides){const k=r*(sides+1)+j;indices.push(k,k+1,k+sides+1,k+1,k+sides+2,k+sides+1);}
   }
   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
@@ -60,8 +83,11 @@ export function createCanopyHead(){
   }
   const shellGeometry=new T.BufferGeometry();shellGeometry.setAttribute('position',new T.Float32BufferAttribute(shellPositions,3));shellGeometry.setIndex(shellIndices);shellGeometry.computeVertexNormals();
   const shell=new T.Mesh(shellGeometry,green);shell.name='continuousHelmet';group.add(shell);
+  const rimMaterial=new T.MeshBasicMaterial({color:'#283626',toneMapped:false});
+  const rimCurve=new T.CatmullRomCurve3(Array.from({length:sides},(_,i)=>{const p=outline.getPoint(i/sides);return new T.Vector3((p.x-188)*.0046,(292-p.y)*.0046,.302);}),true);
+  const rim=new T.Mesh(new T.TubeGeometry(rimCurve,144,.006,6,true),rimMaterial);rim.name='visorOutline';group.add(rim);
 
-  return {group,setExpression(expression:0|1|2){texture.offset.x=[0,350/textureWidth,702/textureWidth][expression];},dispose(){texture.dispose();faceMaterial.dispose();green.dispose();}};
+  return {group,setExpression(expression:0|1|2){expressionOffset.value=[0,350,702][expression];},dispose(){texture.dispose();faceMaterial.dispose();green.dispose();rimMaterial.dispose();}};
 }
 
 export function createReferenceLeaves(){
