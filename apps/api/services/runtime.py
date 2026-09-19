@@ -23,6 +23,12 @@ def accounts():
 
 @lru_cache
 def user_registration():
+    if os.getenv("CANOPY_LOCAL_ONLY") == "true":
+        if not local_mode():
+            raise RuntimeError("Local accounts require development mode")
+        from .local_documents import LocalDocuments
+        from .user_registration import UserRegistration
+        return UserRegistration(LocalDocuments(os.environ["CANOPY_LOCAL_USERS_PATH"]), os.environ["TRIP_CAMPAIGN_ID"])
     from azure.cosmos import CosmosClient
     from azure.identity import DefaultAzureCredential
     from .user_registration import UserRegistration

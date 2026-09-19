@@ -49,3 +49,6 @@ data/reference/**
 .idea/
 .vscode/
 ~$*
+
+# Local integration runtime and private data
+.local-data/
