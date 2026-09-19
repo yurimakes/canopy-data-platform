@@ -29,6 +29,16 @@ $env:EXPO_NO_DOTENV = '1'
 Write-Host "Local API: $env:CANOPY_TRIP_API_URL"
 Write-Host 'Developer ID: canopydev'
 Write-Host "Developer password: $($settings.developer_password)"
-Write-Host 'iPhone and PC must be on the same Wi-Fi. Stop-Local.cmd stops the API.'
+Write-Host 'iPhone and PC must be on the same Wi-Fi. Stop-Local.cmd stops both servers.'
+$existingUi = Get-NetTCPConnection -LocalPort 8082 -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($existingUi) {
+    $uiProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($existingUi.OwningProcess)"
+    $uiCommand = $uiProcess.CommandLine.Replace('/', '\')
+    $appRoot = (Join-Path $PSScriptRoot 'apps/ios').Replace('/', '\')
+    if ($uiProcess.Name -ne 'node.exe' -or !$uiCommand.Contains($appRoot) -or $uiCommand -notmatch 'expo.*start') {
+        throw 'Port 8082 is used by another application. Stop that application first.'
+    }
+    Stop-Process -Id $uiProcess.ProcessId
+}
 Set-Location apps/ios
 & npm.cmd start -- --port 8082
