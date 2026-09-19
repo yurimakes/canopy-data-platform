@@ -54,7 +54,9 @@ def build_ready_points(trip_ended: Any, gps: Any, predictions: Any) -> Any:
     """Return only complete trip generations with full prediction coverage."""
     from pyspark.sql import functions as F
 
-    completions = canonical_trip_ends(trip_ended).alias("c")
+    completions = canonical_trip_ends(
+        trip_ended.where(F.col("result_owner") == "databricks")
+    ).alias("c")
     gps = gps.alias("g")
     predictions = canonical_predictions(predictions).alias("p")
 
@@ -100,9 +102,15 @@ def build_ready_points(trip_ended: Any, gps: Any, predictions: Any) -> Any:
 
     return (
         assessed.where(
-            (F.col("observed_min_sequence") == 1)
-            & (F.col("observed_max_sequence") == F.col("expected_last_sequence"))
-            & (F.col("distinct_sequences") == F.col("expected_last_sequence"))
+            (F.col("observed_max_sequence") == F.col("expected_last_sequence"))
+            & (
+                F.col("distinct_sequences")
+                == (
+                    F.col("observed_max_sequence")
+                    - F.col("observed_min_sequence")
+                    + F.lit(1)
+                )
+            )
             & (F.col("missing_predictions") == 0)
         )
         .drop(
@@ -250,7 +258,7 @@ def build_segments(points: Any) -> Any:
                 "event_time", F.struct("sequence", "event_time", "event_id")
             ).alias("end_time"),
             F.sum("internal_edge_m").cast("double").alias("distance_m"),
-            F.avg("point_confidence").cast("double").alias("confidence"),
+            F.lit(None).cast("double").alias("confidence"),
             F.min("model_name").alias("model_name"),
             F.min("model_version").alias("model_version"),
             F.max("predicted_at").alias("latest_prediction_at"),
