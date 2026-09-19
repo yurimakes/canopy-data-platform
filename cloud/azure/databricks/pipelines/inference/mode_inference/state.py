@@ -77,6 +77,19 @@ def _point_from_map_state(sequence: int, value: Any) -> GpsPoint:
     )
 
 
+def point_state_delta(
+    previous_sequences: set[int],
+    points: list[GpsPoint],
+) -> tuple[list[GpsPoint], set[int]]:
+    """Return only new retained points and expired sequence keys."""
+    retained_sequences = {point.sequence for point in points}
+    additions = [
+        point for point in points if point.sequence not in previous_sequences
+    ]
+    removals = previous_sequences - retained_sequences
+    return additions, removals
+
+
 def point_from_row(row: Any) -> GpsPoint:
     return GpsPoint(
         event_id=str(_value(row, "event_id")),
@@ -194,17 +207,16 @@ class TripFeatureProcessor(_StatefulProcessor):
         )
 
         if outputs:
-            retained_sequences = {point.sequence for point in points}
+            additions, removals = point_state_delta(previous_sequences, points)
             self._meta_state.update((last_sequence,))
 
-            for point in points:
-                if point.sequence not in previous_sequences:
-                    self._point_state.updateValue(
-                        _point_map_key(point),
-                        _point_map_value(point),
-                    )
+            for point in additions:
+                self._point_state.updateValue(
+                    _point_map_key(point),
+                    _point_map_value(point),
+                )
 
-            for sequence in previous_sequences - retained_sequences:
+            for sequence in removals:
                 self._point_state.removeKey((sequence,))
 
         for values in outputs:
