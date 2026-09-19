@@ -57,9 +57,9 @@ This first version is intentionally append-only:
 - a duplicate `event_id`, duplicate sequence, or row arriving behind the emitted sequence frontier is ignored;
 - historical predictions are not rewritten when a late row arrives;
 - all seen event IDs remain in trip state while the trip state exists;
-- no state timeout is applied in this first version.
+- per-trip state uses a processing-time TTL; the current placeholder is 2 hours and resets whenever the trip state is updated.
 
-This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design may add explicit trip finalization or correction semantics.
+This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design should use the existing `trip_ended` lifecycle signal for deterministic cleanup; TTL remains a fallback for abandoned trips or missing lifecycle events.
 
 ## Public output
 
