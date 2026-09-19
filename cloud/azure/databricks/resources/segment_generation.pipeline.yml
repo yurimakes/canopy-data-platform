@@ -1,0 +1,23 @@
+resources:
+  pipelines:
+    segment_generation_pipeline:
+      name: canopy-segment-generation-pipeline-${bundle.target}
+      serverless: true
+      channel: CURRENT
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      root_path: ${workspace.file_path}
+      libraries:
+        - file:
+            path: ${workspace.file_path}/segment_generation/lakeflow_pipeline.py
+      environment:
+        dependencies:
+          - -r ${workspace.file_path}/requirements.lakeflow.txt
+      configuration:
+        canopy.catalog: ${var.catalog}
+        canopy.schema: ${var.schema}
+        canopy.trip_ended_table: ${var.trip_ended_table}
+        canopy.gps_observations_table: ${var.gps_observations_table}
+        canopy.mode_predictions_table: ${var.mode_predictions_table}
+        canopy.segments_table: ${var.segments_table}
+        canopy.max_repair_gap_seconds: ${var.max_repair_gap_seconds}
