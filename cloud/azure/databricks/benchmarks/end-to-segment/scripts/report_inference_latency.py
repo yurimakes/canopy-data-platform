@@ -208,6 +208,8 @@ def main() -> None:
             "event_id",
             "trip_id",
             "sequence",
+            "processor_entered_at",
+            "feature_compute_started_at",
             "features_processed_at",
             "predicted_at",
         )
@@ -235,8 +237,34 @@ def main() -> None:
             F.col("a.trip_id").alias("trip_id"),
             F.col("a.sequence").alias("sequence"),
             F.col("a.replay_visible_at").alias("replay_visible_at"),
+            F.col("p.processor_entered_at").alias("processor_entered_at"),
+            F.col("p.feature_compute_started_at").alias("feature_compute_started_at"),
             F.col("p.features_processed_at").alias("features_processed_at"),
             F.col("p.predicted_at").alias("predicted_at"),
+        )
+        .withColumn(
+            "visible_to_processor_ms",
+            (
+                F.col("processor_entered_at").cast("double")
+                - F.col("replay_visible_at").cast("double")
+            )
+            * 1000.0,
+        )
+        .withColumn(
+            "processor_to_feature_start_ms",
+            (
+                F.col("feature_compute_started_at").cast("double")
+                - F.col("processor_entered_at").cast("double")
+            )
+            * 1000.0,
+        )
+        .withColumn(
+            "feature_compute_ms",
+            (
+                F.col("features_processed_at").cast("double")
+                - F.col("feature_compute_started_at").cast("double")
+            )
+            * 1000.0,
         )
         .withColumn(
             "visible_to_features_ms",
@@ -266,6 +294,34 @@ def main() -> None:
 
     stage_summary = stage_rows.agg(
         F.count("*").alias("rows"),
+        F.avg("visible_to_processor_ms").alias("avg_visible_to_processor_ms"),
+        F.expr("percentile_approx(visible_to_processor_ms, 0.50)").alias(
+            "p50_visible_to_processor_ms"
+        ),
+        F.expr("percentile_approx(visible_to_processor_ms, 0.95)").alias(
+            "p95_visible_to_processor_ms"
+        ),
+        F.max("visible_to_processor_ms").alias("max_visible_to_processor_ms"),
+        F.avg("processor_to_feature_start_ms").alias(
+            "avg_processor_to_feature_start_ms"
+        ),
+        F.expr(
+            "percentile_approx(processor_to_feature_start_ms, 0.50)"
+        ).alias("p50_processor_to_feature_start_ms"),
+        F.expr(
+            "percentile_approx(processor_to_feature_start_ms, 0.95)"
+        ).alias("p95_processor_to_feature_start_ms"),
+        F.max("processor_to_feature_start_ms").alias(
+            "max_processor_to_feature_start_ms"
+        ),
+        F.avg("feature_compute_ms").alias("avg_feature_compute_ms"),
+        F.expr("percentile_approx(feature_compute_ms, 0.50)").alias(
+            "p50_feature_compute_ms"
+        ),
+        F.expr("percentile_approx(feature_compute_ms, 0.95)").alias(
+            "p95_feature_compute_ms"
+        ),
+        F.max("feature_compute_ms").alias("max_feature_compute_ms"),
         F.avg("visible_to_features_ms").alias("avg_visible_to_features_ms"),
         F.expr("percentile_approx(visible_to_features_ms, 0.50)").alias(
             "p50_visible_to_features_ms"
@@ -315,8 +371,13 @@ def main() -> None:
         .select(
             F.col("s.trip_id").alias("trip_id"),
             "replay_visible_at",
+            "processor_entered_at",
+            "feature_compute_started_at",
             "features_processed_at",
             "predicted_at",
+            "visible_to_processor_ms",
+            "processor_to_feature_start_ms",
+            "feature_compute_ms",
             "visible_to_features_ms",
             "features_to_prediction_ms",
             "visible_to_prediction_ms",
@@ -390,8 +451,19 @@ def main() -> None:
             "final_sequence_per_trip": {
                 r["trip_id"]: {
                     "replay_visible_at": str(r["replay_visible_at"]),
+                    "processor_entered_at": str(r["processor_entered_at"]),
+                    "feature_compute_started_at": str(
+                        r["feature_compute_started_at"]
+                    ),
                     "features_processed_at": str(r["features_processed_at"]),
                     "predicted_at": str(r["predicted_at"]),
+                    "visible_to_processor_ms": float(
+                        r["visible_to_processor_ms"]
+                    ),
+                    "processor_to_feature_start_ms": float(
+                        r["processor_to_feature_start_ms"]
+                    ),
+                    "feature_compute_ms": float(r["feature_compute_ms"]),
                     "visible_to_features_ms": float(
                         r["visible_to_features_ms"]
                     ),
