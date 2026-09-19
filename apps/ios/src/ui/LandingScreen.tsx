@@ -1,40 +1,25 @@
 import Text from './AppText';
-import React,{useEffect,useRef} from 'react';
-import {AccessibilityInfo,Animated,Easing,Platform,ScrollView,View} from 'react-native';
+import React from 'react';
+import {Image,KeyboardAvoidingView,Platform,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {CanopyMascot} from './CanopyMascot';
-import {Button,C,Note,S} from './theme';
-
-// PoC 랜딩의 로고 등장, 민트 궤도, 캐릭터 입장 구성을 앱 로그인 진입점으로 연결
-export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error}:{onLogin():void;onSignup():void;onContinue?:()=>void;nickname?:string;ready:boolean;error?:string}){
-  const letters=useRef(Array.from({length:6},()=>new Animated.Value(0))).current;
-  const entrance=useRef(new Animated.Value(0)).current;
-  useEffect(()=>{let alive=true;let animation:Animated.CompositeAnimation|undefined;
-    void AccessibilityInfo.isReduceMotionEnabled().then(reduced=>{if(!alive)return;
-      if(reduced){letters.forEach(v=>v.setValue(1));entrance.setValue(1);return;}
-      animation=Animated.parallel([Animated.stagger(130,letters.map(v=>Animated.timing(v,{toValue:1,duration:700,easing:Easing.out(Easing.cubic),useNativeDriver:Platform.OS!=='web'}))),Animated.timing(entrance,{toValue:1,delay:350,duration:1400,easing:Easing.out(Easing.cubic),useNativeDriver:Platform.OS!=='web'})]);animation.start();
-    }).catch(()=>{letters.forEach(v=>v.setValue(1));entrance.setValue(1);});
-    return()=>{alive=false;animation?.stop();};},[]);
-  return <SafeAreaView style={[S.root,{backgroundColor:'#f1f9f5'}]}>
-    <ScrollView contentContainerStyle={{flexGrow:1,paddingHorizontal:28,paddingTop:65,paddingBottom:24,justifyContent:'space-between',gap:24}}>
-      <View style={{alignItems:'center',gap:18}}>
-        <Text style={{fontSize:9,letterSpacing:2.4,color:'#76968a',fontWeight:'600'}}>YOUR EVERYDAY GREEN JOURNEY</Text>
-        <View accessibilityLabel="CANOPY" style={{flexDirection:'row',justifyContent:'center'}}>{Array.from('CANOPY').map((letter,i)=><Animated.Text key={i} style={{fontSize:49,fontWeight:'800',fontStyle:'italic',letterSpacing:1,color:'#087e5c',opacity:letters[i],transform:[{translateY:letters[i].interpolate({inputRange:[0,1],outputRange:[14,0]})}]}}>{letter}</Animated.Text>)}</View>
-        <View style={{height:3,width:180,borderRadius:3,backgroundColor:'#e9b85c'}}/>
-        <Text style={{fontSize:14,color:'#58766b'}}>작은 이동이 만드는 더 큰 변화</Text>
-      </View>
-      <View style={{height:275,alignItems:'center',justifyContent:'center'}}>
-        <View pointerEvents="none" style={{position:'absolute',width:248,height:248,borderRadius:124,borderWidth:1,borderColor:'#d5e9dd'}}/>
-        <View pointerEvents="none" style={{position:'absolute',width:305,height:126,borderRadius:100,borderWidth:1,borderColor:'#ece2cb',transform:[{rotate:'-16deg'}]}}/>
-        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot height={235}/></Animated.View>
-      </View>
-      <View style={{gap:10}}>
-        {!!error&&<Note error>{error}</Note>}
-        {nickname&&onContinue&&<Button title={`${nickname}님으로 계속하기`} disabled={!ready} onPress={onContinue}/>}
-        <Button title={nickname?'다른 계정으로 로그인':'로그인'} quiet={!!nickname} onPress={onLogin}/>
-        <Button title="회원가입" quiet onPress={onSignup}/>
-        <Text style={[S.note,{fontSize:11,textAlign:'center',marginTop:8}]}>나의 계정으로 여정과 캠페인을 이어가세요.</Text>
-      </View>
-    </ScrollView>
-  </SafeAreaView>;
+import {Button,Fade,Note,S} from './theme';
+export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error,loginForm}:{onLogin():void;onSignup():void;onContinue?:()=>void;nickname?:string;ready:boolean;error?:string;loginForm?:React.ReactNode}){
+ return <SafeAreaView style={[S.root,{backgroundColor:'#eef5f4'}]}>
+  <Image source={require('../../assets/canopy-ui/landing-city-v2.png')} resizeMode="cover" style={{position:'absolute',width:'100%',height:'100%'}}/>
+  <KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
+   <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{flexGrow:1,paddingHorizontal:24,paddingTop:28,paddingBottom:24,justifyContent:'space-between',gap:12}}>
+    <Fade><View style={{alignItems:'center'}}><Image accessibilityLabel="CANOPY" source={require('../../assets/canopy-ui/canopy-wordmark-v2.png')} resizeMode="contain" style={{width:'100%',height:106}}/><Text style={{fontSize:8,letterSpacing:1.7,color:'#496961',textAlign:'center',marginTop:-12}}>SMART MOBILITY FOR A GREENER TOMORROW</Text></View>
+     <View style={{flexDirection:'row',alignItems:'center',height:225}}><View style={{flex:1,gap:12}}><Text style={[S.title,{fontSize:24,lineHeight:34}]}>작은 이동이{'\n'}만드는{'\n'}더 푸른 내일.</Text><Text style={[S.note,{color:'#385b51'}]}>나의 일상 속{'\n'}초록빛 여정, 캐노피.</Text></View><View style={{width:'59%',height:225}}><CanopyMascot height={225}/></View></View>
+    </Fade>
+    <View style={{backgroundColor:'#ffffffed',borderColor:'#ffffff',borderWidth:1,borderRadius:28,padding:20,gap:12,boxShadow:'0 10px 40px #17453816'}}>
+     <Text style={S.heading}>오늘의 여정을 시작해요</Text>
+     {!!error&&<Note error>{error}</Note>}
+     {nickname&&onContinue&&<Button title={`${nickname}님으로 계속하기`} disabled={!ready} onPress={onContinue}/>}
+     {loginForm??<Button title="로그인" onPress={onLogin}/>}
+     <Button title="처음이에요 · 회원가입" quiet onPress={onSignup}/>
+    </View>
+   </ScrollView>
+  </KeyboardAvoidingView>
+ </SafeAreaView>;
 }

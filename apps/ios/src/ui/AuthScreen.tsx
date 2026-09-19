@@ -1,7 +1,7 @@
 import Text from './AppText';
 import {LandingScreen} from './LandingScreen';
 import React,{useState} from 'react';
-import {KeyboardAvoidingView,Platform,Pressable,ScrollView,View} from 'react-native';
+import {Image,KeyboardAvoidingView,Platform,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
 import {loginProfile,registerProfile} from '../profileStore';
@@ -25,11 +25,11 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
     onEnter(result);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   function navigate(p:typeof page){setPage(p);setStep(0);setError('');setPassword('');}
-  if(page==='welcome')return <LandingScreen onLogin={()=>navigate('login')} onSignup={()=>navigate('signup')} nickname={savedProfile?.nickname} onContinue={onContinue} ready={ready} error={runtimeError}/>;
+  if(page==='welcome')return <LandingScreen onLogin={()=>navigate('login')} onSignup={()=>navigate('signup')} nickname={savedProfile?.nickname} onContinue={onContinue} ready={ready} error={error||runtimeError} loginForm={<><Field label="이메일 또는 개발자 ID" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="canopy@example.com" maxLength={120}/><Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder="비밀번호 입력" autoCapitalize="none" maxLength={128} onSubmitEditing={()=>void submit()}/><Pressable accessibilityRole="button" onPress={()=>setVisible(!visible)}><Text style={[S.link,{fontSize:12}]}>{visible?'비밀번호 가리기':'비밀번호 보기'}</Text></Pressable><Button title="로그인" busy={busy} disabled={!ready} onPress={()=>void submit()}/></>}/>;
   return <SafeAreaView style={S.root}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[S.scroll,{flexGrow:1,justifyContent:'center',paddingVertical:36}]}>
       <Fade key={page}>
-      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
+      <View style={S.between}><Image accessibilityLabel="CANOPY" source={require('../../assets/canopy-ui/canopy-wordmark-v2.png')} resizeMode="contain" style={{width:164,height:52}}/>{<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
       {page==='signup'&&step===1?<>
         <Text style={S.pill}>2 / 2  출퇴근 장소</Text>
         <Text style={S.title}>매일의 출발과{ '\n'}도착을 알려주세요.</Text>

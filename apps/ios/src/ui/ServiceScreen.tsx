@@ -6,7 +6,7 @@ import {CanopyMascot} from './CanopyMascot';
 import Constants from 'expo-constants';
 import {LivePrediction,LocalWeekly} from './LocalTools';
 import React,{useEffect,useRef,useState} from 'react';
-import {ActivityIndicator,ImageBackground,Modal,Pressable,ScrollView,View} from 'react-native';
+import {ActivityIndicator,Image,ImageBackground,Modal,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import type {MeasurementProps} from './MeasurementScreen';
 import {MeasurementScreen} from './MeasurementScreen';
@@ -42,7 +42,7 @@ export function ServiceScreen(p:ServiceProps){
   if(tools&&p.profile.role==='developer')return <MeasurementScreen {...p} onBack={()=>{p.onCollectionMode('user');setTools(false);}}/>;
   return <SafeAreaView style={S.root} edges={['top','bottom']}>
     <View style={[S.between,{paddingHorizontal:20,minHeight:58,backgroundColor:tab==='home'?C.paper:C.white}]}>
-      <View style={S.row}>{tab==='home'?<Icon name="leaf" size={25}/>:navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}<Text style={[S.heading,tab==='home'&&{fontSize:24,color:C.green}]}>{title[tab]}</Text></View>
+      <View style={S.row}>{tab==='home'?<Image accessibilityLabel="CANOPY" source={require('../../assets/canopy-ui/canopy-wordmark-v2.png')} resizeMode="contain" style={{width:145,height:46}}/>:navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}{tab!=='home'&&<Text style={S.heading}>{title[tab]}</Text>}</View>
       <Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>
     </View>
     {tab==='journey'&&busy?<View style={{flex:1,minHeight:0,paddingHorizontal:12,paddingTop:8}}><ActiveJourney p={p} direction={direction}/>{!!p.error&&<Note error>{p.error}</Note>}</View>:<ScrollView key={tab} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
