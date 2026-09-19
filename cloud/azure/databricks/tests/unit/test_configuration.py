@@ -5,8 +5,8 @@ from mode_inference.configuration import ModeInferenceConfig
 
 def test_development_defaults_own_only_predictions():
     config = ModeInferenceConfig()
-    assert config.input_table == "dbw_canopy_dev.silver.gps_observations"
-    assert config.output_table == "dbw_canopy_dev.silver.mode_predictions"
+    assert config.input_table == "dbw_canopy_trial.sandbox.silver_gps_observations"
+    assert config.output_table == "dbw_canopy_trial.sandbox.silver_mode_predictions"
     assert config.model_uri.endswith("/1")
 
 
