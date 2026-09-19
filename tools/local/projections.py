@@ -50,3 +50,10 @@ def community(data, user):
         state=run.get('stages',{}).get(stage,{})
         if state.get('status')=='failed':result[panel]={'state':'error','message':'로컬 계산 실패: '+state.get('error','')[:250]}
     return result
+
+
+def mission_panel(bundle):
+    return {'state':'ready','data':{'week':bundle['week_start'],'updatedAt':bundle.get('created_at'),'items':[
+        {'id':m['assignment_id'],'title':m['mission_name'],'category':m['category_label'],'description':m['mission_description'],
+         'progress':m.get('progress_count',0),'goal':m['target_count'],'unit':m['progress_unit'],
+         'status':'completed' if m.get('completed') else 'active'} for m in bundle['missions']]}}

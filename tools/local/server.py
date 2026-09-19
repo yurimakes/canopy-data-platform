@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA = Path(os.environ.get('CANOPY_LOCAL_DATA_DIR', ROOT / '.local-data')).resolve()
 sys.path.insert(0, str(ROOT / 'apps/api'))
 sys.path.insert(0, str(Path(__file__).parent))
+ML_STATE={'status':'loading'}
+EXPORT_LOCK=threading.Lock()
+WEEKLY_LOCK=threading.Lock()
+WEEKLY_PROCESS=None
 
 
 def configure():
@@ -34,6 +38,7 @@ def database():
     db = sqlite3.connect(DATA / 'events.sqlite', timeout=30)
     db.execute('CREATE TABLE IF NOT EXISTS gps (event_id TEXT PRIMARY KEY, trip_id TEXT, user_id TEXT, sequence INTEGER, body TEXT)')
     db.execute('CREATE UNIQUE INDEX IF NOT EXISTS gps_sequence ON gps(trip_id, user_id, sequence)')
+    db.execute('CREATE TABLE IF NOT EXISTS predictions (trip_id TEXT PRIMARY KEY, point_count INTEGER, body TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS ml_results (trip_id TEXT PRIMARY KEY, body TEXT)')
     try:
         with db:
@@ -53,6 +58,11 @@ class LocalResultProcessor:
 
 
 def export_trips():
+    with EXPORT_LOCK:
+        return _export_trips()
+
+
+def _export_trips():
     from services.runtime import service
     with service().store.connect() as db:
         # SQLiteTripStore의 저장 구조와 동일한 문서 사용
@@ -63,6 +73,9 @@ def export_trips():
     target.mkdir(exist_ok=True)
     (target / 'trips.json').write_text(json.dumps(trips, ensure_ascii=False), encoding='utf-8')
     from services.runtime import user_registration
+    from business import MissionRepo,LedgerStore
+    (target/'mission_bundles.json').write_text(json.dumps(MissionRepo(DATA).store.all(),ensure_ascii=False),encoding='utf-8')
+    (target/'reward_ledger_history.json').write_text(json.dumps(LedgerStore(DATA/'rewards.sqlite').all(),ensure_ascii=False),encoding='utf-8')
     users = [{k:v for k,v in u.items() if k not in ("credentials", "sessions", "login_failures", "_etag")} for u in user_registration().container.all()]
     (target / 'users.json').write_text(json.dumps(users, ensure_ascii=False), encoding='utf-8')
     return trips
@@ -70,22 +83,78 @@ def export_trips():
 
 def worker():
     from services.runtime import service, feedback_service
+    from services.trip_service import iso, utcnow
     import time
+    model=None
+    try:
+        if os.getenv('CANOPY_LOCAL_MODEL','auto')!='import':
+            from model import LocalModel,VERSION
+            model=LocalModel();ML_STATE.update(status='ready',model_version=VERSION)
+        else:ML_STATE.update(status='import_only')
+    except Exception as exc:
+        ML_STATE.update(status='failed',error=str(exc))
+        print('모델 초기화 실패:',str(exc),flush=True)
+    processed_counts={}
     while True:
         try:
-            api = service()
-            # 모델 미연결이면 가짜 결과로 완료하지 않고 입력 대기 상태 유지
-            from services.trip_service import iso, utcnow
-            for trip in api.store.pending(iso(utcnow())):
+            api=service()
+            with api.store.connect() as db:
+                trips=[{**json.loads(r[1]),'_etag':str(r[0])} for r in db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.status') IN ('collecting','processing')")]
+            for trip in trips:
                 with database() as db:
-                    found = db.execute('SELECT 1 FROM ml_results WHERE trip_id=?', (trip['trip_id'],)).fetchone()
-                if found:
-                    api._process([trip])
-                    export_trips()
+                    points=[json.loads(r[0]) for r in db.execute('SELECT body FROM gps WHERE trip_id=? AND user_id=? ORDER BY sequence',(trip['trip_id'],trip['user_id']))]
+                    found=db.execute('SELECT 1 FROM ml_results WHERE trip_id=?',(trip['trip_id'],)).fetchone()
+                stopping=trip['status']=='processing'
+                if model and not found:
+                    try:
+                        if stopping:
+                            expected=trip.get('expected_last_sequence')
+                            if expected is None or [p['sequence'] for p in points]!=list(range(1,expected+1)):
+                                if (utcnow()-__import__('datetime').datetime.fromisoformat(trip['ended_at'])).total_seconds()>60:raise ValueError('종료 GPS 순번과 수집 데이터 불일치')
+                                continue
+                        if not stopping and (len(points)<2 or len(points)-processed_counts.get(trip['trip_id'],0)<10):continue
+                        result=model.result(trip,points)
+                        from services.trip_processor import validate_result
+                        if stopping:validate_result(trip,result)
+                        latest={'model_version':result['model_version'],'mode':result['segments'][-1]['mode'],'confidence':result['segments'][-1]['confidence'],'point_count':len(points),'predicted_at':iso(utcnow())}
+                        with database() as db:
+                            db.execute('INSERT OR REPLACE INTO predictions VALUES (?,?,?)',(trip['trip_id'],len(points),json.dumps(latest)))
+                            if stopping:db.execute('INSERT OR REPLACE INTO ml_results VALUES (?,?)',(trip['trip_id'],json.dumps(result)))
+                        processed_counts[trip['trip_id']]=len(points)
+                        found=stopping
+                    except Exception as exc:
+                        if stopping:
+                            trip.update(status='failed',failed_step='local_inference',error_message=str(exc),updated_at=iso(utcnow()))
+                            api.store.replace(trip)
+                        else:
+                            with database() as db:db.execute('INSERT OR REPLACE INTO predictions VALUES (?,?,?)',(trip['trip_id'],len(points),json.dumps({'error':str(exc)})))
+                        continue
+                if stopping and found:
+                    api._process([trip]);export_trips()
             feedback_service().recover_pending()
         except Exception as exc:
-            print('로컬 처리 오류:', type(exc).__name__, str(exc), flush=True)
+            print('로컬 처리 오류:',type(exc).__name__,str(exc),flush=True)
         time.sleep(1)
+
+
+def weekly_run(start=False):
+    global WEEKLY_PROCESS
+    import subprocess,shutil,uuid
+    with WEEKLY_LOCK:
+        if WEEKLY_PROCESS and WEEKLY_PROCESS.poll() is None:
+            return {'status':'running','message':'PC에서 주간 집계 실행 중입니다.'}
+        if not start:return {'status':'idle','exit_code':WEEKLY_PROCESS.poll()} if WEEKLY_PROCESS else {'status':'idle'}
+        snapshot=DATA/'runs'/str(uuid.uuid4())/'inputs'
+        snapshot.mkdir(parents=True)
+        with EXPORT_LOCK:
+            _export_trips()
+            for path in (DATA/'inputs').glob('*.json'):shutil.copy2(path,snapshot/path.name)
+        env=dict(os.environ)
+        java=ROOT/'.local-data/runtime/java'
+        if java.exists():env['JAVA_HOME']=str(java)
+        with (DATA/'weekly.log').open('w',encoding='utf-8') as log:
+            WEEKLY_PROCESS=subprocess.Popen([sys.executable,str(ROOT/'tools/local/weekly.py'),'--inputs',str(snapshot),'--output',str(DATA/'weekly'),'--state',str(DATA)],cwd=ROOT,env=env,stdout=log,stderr=log,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        return {'status':'running','message':'주간 집계를 시작했습니다. 완료 후 결과 화면을 새로고침해주세요.'}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -126,12 +195,27 @@ class Handler(BaseHTTPRequestHandler):
             path = self.path.split('?', 1)[0]
             if path == '/api/local/status':
                 return self.send(200, {'environment': 'local', 'azure_enabled': False,
-                    'ml': 'result_import_required', 'data_directory': str(DATA)})
+                    'ml': ML_STATE, 'data_directory': str(DATA)})
+            if path.startswith('/api/gps/') and self.command=='GET':
+                token=self.headers.get('Authorization','').removeprefix('Bearer ')
+                user=accounts().authenticated(token)
+                tid=path.rsplit('/',1)[-1];service().get(tid,user['user_id'])
+                with database() as db:rows=[json.loads(r[0]) for r in db.execute('SELECT body FROM gps WHERE trip_id=? AND user_id=? ORDER BY sequence',(tid,user['user_id']))]
+                return self.send(200,{'events':rows})
+            if path.startswith('/api/predictions/'):
+                token=self.headers.get('Authorization','').removeprefix('Bearer ')
+                user=accounts().authenticated(token)
+                tid=path.rsplit('/',1)[-1]
+                service().get(tid,user['user_id'])
+                with database() as db:row=db.execute('SELECT body FROM predictions WHERE trip_id=?',(tid,)).fetchone()
+                return self.send(200,json.loads(row[0]) if row else {'status':'waiting','model':ML_STATE})
             if path.startswith('/api/local/') or path in ('/api/community', '/api/trips'):
                 token = self.headers.get('Authorization', '').removeprefix('Bearer ')
                 user = accounts().authenticated(token)
                 if path.startswith('/api/local/') and user['role'] != 'developer':
                     raise ApiError(403, 'forbidden', '개발자 전용 기능')
+                if path == '/api/local/weekly':
+                    return self.send(202 if self.command=='POST' else 200,weekly_run(self.command=='POST'))
                 if path == '/api/local/ml-result' and self.command == 'POST':
                     result = body.get('result', body)
                     owner=body.get('trip',{}).get('user_id',body.get('user_id',user['user_id']))
@@ -153,7 +237,12 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, {'trip_count': len(export_trips())})
                 if path == '/api/community':
                     from projections import community
-                    return self.send(200, community(DATA, user))
+                    from business import current_missions
+                    result=community(DATA,user)
+                    bundle=current_missions(DATA,user,export_trips())
+                    from projections import mission_panel
+                    result['missions']=mission_panel(bundle)
+                    return self.send(200,result)
                 if path == '/api/trips':
                     return self.send(200, {'trips': [public(t) for t in export_trips() if t['user_id'] == user['user_id']]})
             if path == '/api/gps' and self.command == 'POST':

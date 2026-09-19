@@ -17,6 +17,8 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--inputs', type=Path, default=DATA/'inputs')
     parser.add_argument('--output', type=Path, default=DATA/'weekly')
+    parser.add_argument('--state', type=Path)
+    parser.add_argument('--conversion-rate',type=float,default=1.0)
     parser.add_argument('--commute-verified', action='store_true')
     args=parser.parse_args()
     args.inputs=args.inputs.resolve()
@@ -69,14 +71,16 @@ def main():
     def read_json(name):
         path=args.inputs/(name+'.json')
         return json.loads(path.read_text(encoding='utf-8-sig')) if path.exists() else []
+    materialized_inputs={}
     users=read_json('users')
     membership=[{'user_id':u['user_id'],'campaign_id':u['campaign_id'],'department_id':u.get('department_id'),
         'joined_at':u.get('campaign_joined_at'),'left_at':u.get('campaign_left_at')} for u in users]
     def optional(path,schema,input_name):
-        rows=membership if input_name=='campaign_membership_raw' else read_json(input_name)
+        rows=membership if input_name=='campaign_membership_raw' else materialized_inputs.get(input_name,read_json(input_name))
         if input_name=='mission_profile':return spark.read.table('local_mission_profile')
         return frame(rows,schema)
     module._read_optional_delta=optional
+    module.REWARD_CONVERSION_RATE_OVERRIDE=args.conversion_rate
     trips=read_json('trips')
     # 실제 저장 계약의 동일 필드만 사용. 탄소값과 거리는 재생성하지 않음
     for t in trips:
@@ -93,56 +97,60 @@ def main():
         print('완료된 Final Trip 입력 없음. ML 처리 완료 후 다시 실행해주세요.',flush=True)
         spark.stop()
         raise SystemExit(2)
-    from build_mission_profile import build_profile_from_weekly_summary,_gold_profile
-    from helpers.next_week_missions import build_next_week_missions
-    def save(name,df):
-        rows=[r.asDict(recursive=True) for r in df.collect()]
-        # 중간 결과를 보존하여 다음 단계에서 이전 계산 반복 방지
-        frame(rows,df.schema).createOrReplaceTempView(name)
+    from build_mission_profile import build_profile_from_weekly_summary,_gold_profile,_responses_to_bundles
+    from business import mission_history,issue,publish_rewards,weekly_outputs
+    from reward_ledger import LEDGER_HISTORY_SCHEMA
+    state=args.state.resolve() if args.state else (DATA if out==DATA/'weekly' else out/'state')
+    results={}
+    report['conversion_rate']=args.conversion_rate
+    report['development_only']=True
+    def write(name,rows):
+        results[name]=rows
         path=out/(name+'.json')
         temp=path.with_suffix('.tmp');temp.write_text(json.dumps(rows,default=str,ensure_ascii=False),encoding='utf-8');temp.replace(path)
         report['stages'][name]={'status':'passed','rows':len(rows)}
         print(name,len(rows),flush=True)
         return rows
-    dependencies={
-        'weekly_summary':['final_trip_gold_input'], 'weekly_gold':['weekly_summary'],
-        'baseline_eligibility':['weekly_gold'], 'personal_baseline':['weekly_gold','baseline_eligibility'],
-        'personal_ready_users':['personal_baseline'], 'global_eligibility':['personal_baseline','personal_ready_users'],
-        'global_baseline':['personal_ready_users','global_eligibility'], 'baseline_gold':['personal_baseline','global_baseline'],
-        'behavior_change':['weekly_gold'], 'weekly_user_profile':['weekly_gold'], 'next_week_missions':['weekly_user_profile'],
-        'ranking':[], 'reward_calculation':['weekly_gold','personal_baseline','global_baseline'],
-        'campaign_kpi':['weekly_gold','behavior_change']}
+    def save(name,df):
+        rows=[r.asDict(recursive=True) for r in df.collect()]
+        frame(rows,df.schema).createOrReplaceTempView(name)
+        return write(name,rows)
+    stages=['final_trip_gold_input','weekly_summary','weekly_gold','baseline_eligibility','personal_baseline',
+        'personal_ready_users','global_eligibility','global_baseline','baseline_gold','behavior_change',
+        'mission_response_weekly','weekly_user_profile','next_week_missions','reward_calculation','reward_ledger',
+        'ranking','campaign_kpi','weekly_outputs_gold']
     try:
-        for name,fn in registry.items():
-            blocked=[d for d in dependencies.get(name,[]) if report['stages'].get(d,{}).get('status')!='passed']
-            if blocked:
-                report['stages'][name]={'status':'blocked','dependencies':blocked}
-                print(name,'BLOCKED:', ', '.join(blocked),flush=True)
+        for name in stages:
+            if name=='mission_response_weekly':
+                _,progress,responses=mission_history(state,trips,read_json('mission_bundles'))
+                write('mission_progress',progress)
+                write(name,responses);materialized_inputs[name]=responses
                 continue
-            try:
-                if name=='weekly_user_profile':
-                    profiles=[]
-                    for row in json.loads((out/'weekly_gold.json').read_text(encoding='utf-8')):
-                        start=datetime.strptime(row['week']+'-1','%G-W%V-%u').date()
-                        profiles.append(_gold_profile(build_profile_from_weekly_summary(row,user_id=row['user_id'],campaign_id=row['campaign_id'],source_week_start=str(start),source_week_end=str(start+timedelta(days=7)))))
-                    frame(profiles,module.PROFILE_SCHEMA).createOrReplaceTempView('local_mission_profile')
-                if name=='next_week_missions':
-                    df=build_next_week_missions(spark.read.table('weekly_user_profile'),module.MISSION_BUNDLE_SCHEMA)
-                elif name=='weekly_outputs_gold':
-                    report['stages'][name]={'status':'not_implemented','reason':'팀 main의 최종 묶음은 placeholder'}
-                    continue
-                else:df=fn()
-                save(name,df)
-            except Exception as exc:
-                report['stages'][name]={'status':'failed','error':str(exc)}
-                (out/(name+'.json')).unlink(missing_ok=True)
-                print(name, 'FAILED:', str(exc)[:300], flush=True)
-
+            if name=='weekly_user_profile':
+                profiles=[]
+                for row in results['weekly_gold']:
+                    start=datetime.strptime(row['week']+'-1','%G-W%V-%u').date()
+                    history=[r for r in results['mission_response_weekly'] if r['user_id']==row['user_id'] and r['campaign_id']==row['campaign_id'] and r['week_start']<=str(start)]
+                    profiles.append(_gold_profile(build_profile_from_weekly_summary(row,user_id=row['user_id'],campaign_id=row['campaign_id'],source_week_start=str(start),source_week_end=str(start+timedelta(days=7)),bundle_history=_responses_to_bundles(history),mission_history_source='local_mission_response')))
+                frame(profiles,module.PROFILE_SCHEMA).createOrReplaceTempView('local_mission_profile')
+            if name=='next_week_missions':
+                bundles=[issue(state,p,datetime.fromisoformat(p['effective_week_start']).date(),[p]) for p in results['weekly_user_profile']]
+                df=frame(bundles,module.MISSION_BUNDLE_SCHEMA)
+            elif name=='reward_ledger':
+                ledger=publish_rewards(state,results['reward_calculation'])
+                materialized_inputs['reward_ledger_history']=ledger
+                save(name,frame(ledger,LEDGER_HISTORY_SCHEMA));continue
+            elif name=='weekly_outputs_gold':
+                df=frame(weekly_outputs(results),module.WEEKLY_OUTPUTS_DRAFT_SCHEMA)
+            else:df=registry[name]()
+            save(name,df)
+    except Exception as exc:
+        report['stages'][name]={'status':'failed','error':str(exc)}
+        for pending in stages[stages.index(name)+1:]:report['stages'][pending]={'status':'blocked','dependency':name}
+        raise
     finally:
         (out/'run.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
         spark.stop()
-    if any(s["status"]=="failed" for s in report["stages"].values()):
-        raise SystemExit(1)
 
 
 if __name__=='__main__':main()
