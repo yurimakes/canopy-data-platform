@@ -5,3 +5,4 @@ __pycache__/
 .venv/
 .databricks/
 mlflow.db
+*.egg-info/
