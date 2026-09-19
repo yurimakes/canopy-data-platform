@@ -142,6 +142,8 @@ def infer_predictions(
         F.lit(None).cast("double").alias("confidence"),
         F.lit(model_name).alias("model_name"),
         F.lit(model_version).cast("string").alias("model_version"),
+        F.col("processor_entered_at"),
+        F.col("feature_compute_started_at"),
         F.col("features_processed_at"),
         F.col("_prediction.predicted_at").alias("predicted_at"),
     )

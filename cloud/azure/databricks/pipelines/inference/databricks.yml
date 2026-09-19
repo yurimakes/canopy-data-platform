@@ -33,6 +33,12 @@ variables:
     default: replay_continuous_gps_observations
   continuous_replay_output_table:
     default: replay_continuous_mode_predictions
+  replay_continuous_pause_status:
+    description: Continuous replay job state; keep PAUSED by default in development and override to UNPAUSED only for intentional tests.
+    default: PAUSED
+  continuous_replay_trigger_interval:
+    description: Standard-mode replay trigger interval. Keep 1 second by default; override for controlled latency experiments.
+    default: 1 second
   transition_model_uri:
     description: Registered-model identity retained for output metadata.
     default: models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
@@ -40,8 +46,8 @@ variables:
     description: Native LightGBM skops artifact in a Unity Catalog Volume.
     default: /Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops
   state_timeout:
-    description: Stateful trip-retention policy. Only none is supported in the first append-only implementation.
-    default: none
+    description: Processing-time TTL for per-trip inference state. Placeholder guardrail until explicit trip_ended cleanup is implemented.
+    default: 2h
   timezone:
     default: UTC
 

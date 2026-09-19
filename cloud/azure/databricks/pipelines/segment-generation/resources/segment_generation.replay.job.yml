@@ -3,7 +3,7 @@ resources:
     segment_generation_replay_continuous:
       name: canopy-segment-generation-replay-continuous-${bundle.target}
       continuous:
-        pause_status: UNPAUSED
+        pause_status: PAUSED
       max_concurrent_runs: 1
       tasks:
         - task_key: segment_generation_replay

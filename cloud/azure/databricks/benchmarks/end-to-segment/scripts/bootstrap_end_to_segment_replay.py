@@ -13,9 +13,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--schema", required=True)
     p.add_argument("--gps-source-table", required=True)
     p.add_argument("--trip-end-source-table", required=True)
+    p.add_argument("--segments-source-table", required=True)
     p.add_argument("--replay-gps-table", required=True)
     p.add_argument("--replay-trip-end-table", required=True)
     p.add_argument("--arrival-table", required=True)
+    p.add_argument("--replay-segments-table", required=True)
     return p.parse_args()
 
 
@@ -37,6 +39,7 @@ def main() -> None:
 
     ensure_from_source(spark, q(args.gps_source_table), q(args.replay_gps_table))
     ensure_from_source(spark, q(args.trip_end_source_table), q(args.replay_trip_end_table))
+    ensure_from_source(spark, q(args.segments_source_table), q(args.replay_segments_table))
 
     arrival_name = q(args.arrival_table)
     if not spark.catalog.tableExists(arrival_name):

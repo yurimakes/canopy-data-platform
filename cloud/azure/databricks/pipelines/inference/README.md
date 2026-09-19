@@ -38,6 +38,8 @@ The implementation is behaviorally pinned to `canopy-transition-model-mlflow/pre
 
 Features use `trip_id`, `event_time`, `lat`, and `lon`. The `raw_speed` value from Pipeline A is deliberately not a model feature: model `speed` is derived from haversine coordinate displacement and elapsed time and is expressed in km/h.
 
+The streaming path rebuilds rolling kinematic context once from the retained bounded history per trip/microbatch, then computes only each newly accepted point incrementally. Persisted state remains raw-point based, so this optimization does not change the checkpoint schema.
+
 The implementation preserves reference behavior:
 
 - elapsed seconds clamped to a minimum of `0.1`;
@@ -49,17 +51,33 @@ The implementation preserves reference behavior:
 
 ## Stateful streaming semantics
 
-Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State retains up to 151 raw observations so the earliest speed in a 150-speed rolling window still has its predecessor.
+Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State is stored natively as scalar metadata plus a bounded `MapState` keyed by sequence for up to 151 raw observations, so the earliest speed in a 150-speed rolling window still has its predecessor. The map form lets the processor add only new points and remove only expired oldest points instead of rewriting the full history. The previous monolithic JSON state has been removed.
 
 This first version is intentionally append-only:
 
 - an unseen row with a sequence greater than the last emitted sequence is processed;
 - a duplicate `event_id`, duplicate sequence, or row arriving behind the emitted sequence frontier is ignored;
 - historical predictions are not rewritten when a late row arrives;
-- all seen event IDs remain in trip state while the trip state exists;
-- no state timeout is applied in this first version.
+- duplicate tracking is bounded to the retained 151-point history; sequence monotonicity remains the primary guard against reprocessing older rows;
+- per-trip state uses a processing-time TTL; the current placeholder is 2 hours and resets whenever the trip state is updated.
 
-This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design may add explicit trip finalization or correction semantics.
+This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design should use the existing `trip_ended` lifecycle signal for deterministic cleanup; TTL remains a fallback for abandoned trips or missing lifecycle events.
+
+## Inference-stage telemetry
+
+Development telemetry is carried through the prediction table to isolate the
+remaining latency floor:
+
+- `processor_entered_at`: Python `transformWithState` processor entry for the
+  trip/microbatch;
+- `feature_compute_started_at`: immediately before feature extraction for the
+  accepted point;
+- `features_processed_at`: immediately after that point's feature vector is ready;
+- `predicted_at`: after the LightGBM Pandas UDF returns its prediction.
+
+These timestamps separate source/trigger wait, state-processor setup/queueing,
+per-point feature computation, and prediction latency. They do not change the
+persisted state schema.
 
 ## Public output
 

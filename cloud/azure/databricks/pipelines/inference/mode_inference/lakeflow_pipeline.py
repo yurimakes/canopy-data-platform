@@ -5,7 +5,7 @@ from __future__ import annotations
 from pyspark import pipelines as dp
 from pyspark.sql import SparkSession
 
-from mode_inference.configuration import ModeInferenceConfig
+from mode_inference.configuration import ModeInferenceConfig, state_timeout_ms
 from mode_inference.contracts import MODE_PREDICTIONS_SCHEMA_DDL
 from mode_inference.model_inference import infer_predictions
 from mode_inference.state import stateful_feature_rows
@@ -25,6 +25,17 @@ def _conf(name: str) -> str:
     return value.strip()
 
 
+def _optional_positive_int_conf(name: str, default: int) -> int:
+    raw_value = _spark().conf.get(f"canopy.{name}", str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"invalid canopy.{name}: {raw_value!r}") from exc
+    if value < 1:
+        raise ValueError(f"invalid canopy.{name}: {raw_value!r}")
+    return value
+
+
 CONFIG = ModeInferenceConfig(
     catalog=_conf("catalog"),
     silver_schema=_conf("silver_schema"),
@@ -35,14 +46,21 @@ CONFIG = ModeInferenceConfig(
     state_timeout=_conf("state_timeout"),
     timezone=_spark().conf.get("spark.sql.session.timeZone"),
 )
+
+STATE_STORE_PARTITIONS = _optional_positive_int_conf("state_store_partitions", 200)
+
+
 @dp.table(
     name=CONFIG.output_table,
     schema=MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Raw pointwise LightGBM transportation-mode predictions; no smoothing or segmentation.",
+    spark_conf={
+        "spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS),
+    },
 )
 def mode_predictions():
     observations = _spark().readStream.table(CONFIG.input_table)
-    features = stateful_feature_rows(observations)
+    features = stateful_feature_rows(observations, state_timeout_ms(CONFIG.state_timeout))
     return infer_predictions(
         features,
         _spark(),

@@ -1,13 +1,13 @@
 resources:
   jobs:
-    end_to_segment_benchmark:
-      name: canopy-end-to-segment-benchmark-${bundle.target}
+    inference_latency_benchmark:
+      name: canopy-inference-latency-benchmark-${bundle.target}
       max_concurrent_runs: 1
       parameters:
         - name: source_trip_id
           default: 5e8d897e-d159-4b12-af34-3ec4d74a6393
         - name: run_id
-          default: e2s-001
+          default: inference-001
         - name: users
           default: "5"
         - name: points_per_user
@@ -39,15 +39,14 @@ resources:
           depends_on:
             - task_key: produce
           spark_python_task:
-            python_file: ${workspace.file_path}/scripts/report_end_to_segment_replay.py
+            python_file: ${workspace.file_path}/scripts/report_inference_latency.py
             parameters:
               - --catalog=${var.catalog}
               - --schema=${var.schema}
               - --trip-ended-table=${var.replay_trip_ended_table}
               - --prediction-table=${var.replay_predictions_table}
               - --arrival-table=${var.replay_arrival_table}
-              - --segments-table=${var.replay_segments_table}
-              - --benchmark-table=${var.benchmark_table}
+              - --pipeline-id=${var.replay_inference_pipeline_id}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
               - --timeout-seconds=180

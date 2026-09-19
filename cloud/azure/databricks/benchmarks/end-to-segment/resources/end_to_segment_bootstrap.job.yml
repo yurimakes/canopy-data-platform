@@ -12,9 +12,11 @@ resources:
               - --schema=${var.schema}
               - --gps-source-table=${var.source_gps_table}
               - --trip-end-source-table=${var.source_trip_ended_table}
+              - --segments-source-table=${var.source_segments_table}
               - --replay-gps-table=${var.replay_gps_table}
               - --replay-trip-end-table=${var.replay_trip_ended_table}
               - --arrival-table=${var.replay_arrival_table}
+              - --replay-segments-table=${var.replay_segments_table}
           environment_key: bootstrap_env
       environments:
         - environment_key: bootstrap_env

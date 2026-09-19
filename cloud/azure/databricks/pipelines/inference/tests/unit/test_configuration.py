@@ -1,6 +1,6 @@
 import pytest
 
-from mode_inference.configuration import ModeInferenceConfig
+from mode_inference.configuration import ModeInferenceConfig, state_timeout_ms
 
 
 def test_development_defaults_own_only_predictions():
@@ -22,3 +22,10 @@ def test_rejects_reserved_schema_and_unsupported_timeout():
         ModeInferenceConfig(silver_schema="information_schema")
     with pytest.raises(ValueError, match="state_timeout"):
         ModeInferenceConfig(state_timeout="7 days")
+
+
+def test_state_timeout_defaults_to_two_hours_and_parses_to_ms():
+    config = ModeInferenceConfig()
+    assert config.state_timeout == "2h"
+    assert state_timeout_ms(config.state_timeout) == 7_200_000
+    assert state_timeout_ms("30m") == 1_800_000

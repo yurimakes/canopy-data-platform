@@ -15,7 +15,7 @@ resources:
         dependencies:
           - -r ${workspace.file_path}/requirements.lakeflow.txt
       configuration:
-        pipelines.trigger.interval: "1 second"
+        pipelines.trigger.interval: ${var.continuous_replay_trigger_interval}
         canopy.catalog: ${var.catalog}
         canopy.silver_schema: ${var.silver_schema}
         canopy.input_observations_table: ${var.continuous_replay_input_table}
@@ -23,4 +23,5 @@ resources:
         canopy.transition_model_uri: ${var.transition_model_uri}
         canopy.transition_model_artifact_path: ${var.transition_model_artifact_path}
         canopy.state_timeout: ${var.state_timeout}
+        canopy.state_store_partitions: "4"
         spark.sql.session.timeZone: ${var.timezone}
