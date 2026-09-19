@@ -5,6 +5,7 @@ import * as Network from 'expo-network';
 import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
 import { AuthScreen } from './src/ui/AuthScreen';
 import { ServiceScreen } from './src/ui/ServiceScreen';
+import {useCommunity} from './src/communityClient';
 import { updateProfile,restoreProfile,logoutProfile } from './src/profileStore';
 import type { Profile, PlannedRoute } from './src/service';
 import { Collector } from './src/collector';
@@ -31,6 +32,7 @@ export default function App() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);
+  const community=useCommunity(profile?.id);
   const [entered,setEntered]=useState(false);
   const [route,setRoute]=useState<PlannedRoute|null>(null);
   const trackRef=useRef<{id:string;events:GpsEvent[]}>({id:'',events:[]});
@@ -183,6 +185,7 @@ export default function App() {
   if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile)void enter(profile).catch(e=>setError(String(e)));}}
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen key={profile.id}
+    {...community}
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
     trips={ownedTrips} onSelect={select}
     onCollectionMode={mode=>{if(mode==='developer'&&profile.role!=='developer')return;c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}

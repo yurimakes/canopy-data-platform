@@ -1,6 +1,7 @@
+import Constants from 'expo-constants';
 import * as SecureStore from 'expo-secure-store';
 import type {AccountSession} from './accountClient';
-const key='canopy.server-session.v1';
+const key=Constants.expoConfig?.extra?.localOnly?'canopy.local-session.v1':'canopy.server-session.v1';
 let current:AccountSession|null=null,loaded=false;
 export async function loadSession(){
   if(!loaded){const raw=await SecureStore.getItemAsync(key);current=raw?JSON.parse(raw):null;loaded=true;}

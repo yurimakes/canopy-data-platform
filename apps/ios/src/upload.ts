@@ -1,10 +1,11 @@
 import type { Storage } from './storage';
 import type { GpsEvent } from './types';
 
-export type ApiConfig = { url: string; functionKey: string };
+export type ApiConfig = { url: string; functionKey: string; allowLocalHttp?:boolean };
 export function validateApi(config: ApiConfig): ApiConfig {
   const url = new URL(config.url);
-  if (url.protocol!=='https:' || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/api/gps'))
+  const local=config.allowLocalHttp===true&&url.protocol==='http:'&&/^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(url.hostname);
+  if ((!local&&url.protocol!=='https:') || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/api/gps'))
     throw new Error('GPS API는 인증정보 없는 HTTPS /api/gps 주소여야 합니다.');
   if (!config.functionKey.trim()) throw new Error('GPS 함수 키가 설정되지 않았습니다.');
   return config;

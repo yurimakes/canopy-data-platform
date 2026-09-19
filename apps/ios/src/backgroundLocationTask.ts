@@ -12,14 +12,14 @@ export const LOCATION_TASK = 'canopy-gps-background-v1';
 let storage: Promise<Storage> | undefined;
 export function getStorage() {
   return storage ??= (async () => {
-    const db=new Storage(await openDatabaseAsync('canopy-collector.db'));
+    const db=new Storage(await openDatabaseAsync(Constants.expoConfig?.extra?.localOnly?'canopy-local-collector.db':'canopy-collector.db'));
     await db.init(Crypto.randomUUID,new Date().toISOString());
     return db;
   })().catch(e=>{storage=undefined;throw e;});
 }
 export function apiConfig(): ApiConfig | null {
   const extra=Constants.expoConfig?.extra;
-  return extra?.gpsApiUrl && extra?.gpsFunctionKey ? {url:extra.gpsApiUrl,functionKey:extra.gpsFunctionKey} : null;
+  return extra?.gpsApiUrl && extra?.gpsFunctionKey ? {url:extra.gpsApiUrl,functionKey:extra.gpsFunctionKey,allowLocalHttp:__DEV__&&extra.localOnly===true} : null;
 }
 let uploader: Uploader | undefined;
 export async function getUploader() {return uploader ??= new Uploader(await getStorage(),apiConfig,Crypto.randomUUID);}
