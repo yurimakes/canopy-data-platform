@@ -23,7 +23,7 @@ class ModeInferenceConfig:
     output_predictions_name: str = "silver_mode_predictions"
     model_uri: str = "models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1"
     model_artifact_path: str = "/Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops"
-    state_timeout: str = "none"
+    state_timeout: str = "2h"
     timezone: str = "UTC"
 
     def __post_init__(self) -> None:
@@ -39,8 +39,11 @@ class ModeInferenceConfig:
             raise ValueError("model_uri must be an MLflow models:/ URI")
         if not self.model_artifact_path.startswith("/Volumes/"):
             raise ValueError("model_artifact_path must be a Unity Catalog Volume path")
-        if self.state_timeout.strip().lower() != "none":
-            raise ValueError("only state_timeout=none is supported")
+        timeout = self.state_timeout.strip().lower()
+        if not re.fullmatch(r"[1-9][0-9]*[smh]", timeout):
+            raise ValueError(
+                "state_timeout must be a positive duration such as 30m, 2h, or 7200s"
+            )
         if self.timezone.strip().upper() != "UTC":
             raise ValueError("only UTC is supported")
 
@@ -51,3 +54,22 @@ class ModeInferenceConfig:
     @property
     def output_table(self) -> str:
         return f"{self.catalog}.{self.silver_schema}.{self.output_predictions_name}"
+
+
+_STATE_TIMEOUT_MULTIPLIERS_MS = {
+    "s": 1_000,
+    "m": 60_000,
+    "h": 3_600_000,
+}
+
+
+def state_timeout_ms(value: str) -> int:
+    """Parse validated compact state timeout strings into milliseconds."""
+    normalized = value.strip().lower()
+    match = re.fullmatch(r"([1-9][0-9]*)([smh])", normalized)
+    if match is None:
+        raise ValueError(
+            "state_timeout must be a positive duration such as 30m, 2h, or 7200s"
+        )
+    quantity, unit = match.groups()
+    return int(quantity) * _STATE_TIMEOUT_MULTIPLIERS_MS[unit]
