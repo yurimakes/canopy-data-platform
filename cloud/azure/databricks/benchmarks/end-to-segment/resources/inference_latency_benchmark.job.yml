@@ -1,0 +1,58 @@
+resources:
+  jobs:
+    inference_latency_benchmark:
+      name: canopy-inference-latency-benchmark-${bundle.target}
+      max_concurrent_runs: 1
+      parameters:
+        - name: source_trip_id
+          default: 5e8d897e-d159-4b12-af34-3ec4d74a6393
+        - name: run_id
+          default: inference-001
+        - name: users
+          default: "5"
+        - name: points_per_user
+          default: "300"
+        - name: sequences_per_batch
+          default: "10"
+        - name: batch_interval_ms
+          default: "1000"
+      tasks:
+        - task_key: produce
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/produce_end_to_segment_replay.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --source-table=${var.source_gps_table}
+              - --replay-table=${var.replay_gps_table}
+              - --trip-ended-table=${var.replay_trip_ended_table}
+              - --arrival-table=${var.replay_arrival_table}
+              - --source-trip-id={{job.parameters.source_trip_id}}
+              - --run-id={{job.parameters.run_id}}
+              - --users={{job.parameters.users}}
+              - --points-per-user={{job.parameters.points_per_user}}
+              - --sequences-per-batch={{job.parameters.sequences_per_batch}}
+              - --batch-interval-ms={{job.parameters.batch_interval_ms}}
+          environment_key: benchmark_env
+
+        - task_key: report
+          depends_on:
+            - task_key: produce
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/report_inference_latency.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --trip-ended-table=${var.replay_trip_ended_table}
+              - --prediction-table=${var.replay_predictions_table}
+              - --arrival-table=${var.replay_arrival_table}
+              - --run-id={{job.parameters.run_id}}
+              - --users={{job.parameters.users}}
+              - --timeout-seconds=180
+              - --poll-seconds=1
+          environment_key: benchmark_env
+
+      environments:
+        - environment_key: benchmark_env
+          spec:
+            environment_version: "4"
