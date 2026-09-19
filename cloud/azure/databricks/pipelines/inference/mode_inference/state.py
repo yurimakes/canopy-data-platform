@@ -18,11 +18,11 @@ except ImportError:  # pragma: no cover - keeps pure unit tests importable
 
 
 META_STATE_SCHEMA = "last_sequence BIGINT NOT NULL"
-POINT_STATE_SCHEMA = (
+POINT_MAP_KEY_SCHEMA = "sequence BIGINT NOT NULL"
+POINT_MAP_VALUE_SCHEMA = (
     "event_id STRING NOT NULL, "
     "user_id STRING NOT NULL, "
     "trip_id STRING NOT NULL, "
-    "sequence BIGINT NOT NULL, "
     "event_time TIMESTAMP NOT NULL, "
     "lat DOUBLE NOT NULL, "
     "lon DOUBLE NOT NULL"
@@ -50,27 +50,30 @@ def _normalize_event_time(value: datetime) -> datetime:
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def _point_tuple(point: GpsPoint) -> tuple[Any, ...]:
+def _point_map_key(point: GpsPoint) -> tuple[int]:
+    return (point.sequence,)
+
+
+def _point_map_value(point: GpsPoint) -> tuple[Any, ...]:
     return (
         point.event_id,
         point.user_id,
         point.trip_id,
-        point.sequence,
         _normalize_event_time(point.event_time),
         point.lat,
         point.lon,
     )
 
 
-def _point_from_state(value: Any) -> GpsPoint:
+def _point_from_map_state(sequence: int, value: Any) -> GpsPoint:
     return GpsPoint(
         event_id=str(value[0]),
         user_id=str(value[1]),
         trip_id=str(value[2]),
-        sequence=int(value[3]),
-        event_time=_normalize_event_time(value[4]),
-        lat=float(value[5]),
-        lon=float(value[6]),
+        sequence=int(sequence),
+        event_time=_normalize_event_time(value[3]),
+        lat=float(value[4]),
+        lon=float(value[5]),
     )
 
 
@@ -153,9 +156,10 @@ class TripFeatureProcessor(_StatefulProcessor):
             META_STATE_SCHEMA,
             ttlDurationMs=self._ttl_duration_ms,
         )
-        self._point_state = handle.getListState(
-            "trip_feature_points",
-            POINT_STATE_SCHEMA,
+        self._point_state = handle.getMapState(
+            "trip_feature_points_by_sequence",
+            POINT_MAP_KEY_SCHEMA,
+            POINT_MAP_VALUE_SCHEMA,
             ttlDurationMs=self._ttl_duration_ms,
         )
 
@@ -173,12 +177,13 @@ class TripFeatureProcessor(_StatefulProcessor):
             if self._meta_state.exists()
             else -1
         )
-        points = (
-            [_point_from_state(value) for value in self._point_state.get()]
-            if self._point_state.exists()
-            else []
-        )
+        points = []
+        if self._point_state.exists():
+            for map_key, map_value in self._point_state.iterator():
+                points.append(_point_from_map_state(int(map_key[0]), map_value))
+            points.sort(key=lambda point: point.sequence)
         seen = {point.event_id for point in points}
+        previous_sequences = {point.sequence for point in points}
 
         outputs, points, _seen, last_sequence = advance_trip(
             trip_id,
@@ -189,10 +194,18 @@ class TripFeatureProcessor(_StatefulProcessor):
         )
 
         if outputs:
+            retained_sequences = {point.sequence for point in points}
             self._meta_state.update((last_sequence,))
-            # A single bounded rewrite resets TTL consistently for all retained
-            # history rows and avoids per-point RocksDB writes.
-            self._point_state.put([_point_tuple(point) for point in points])
+
+            for point in points:
+                if point.sequence not in previous_sequences:
+                    self._point_state.updateValue(
+                        _point_map_key(point),
+                        _point_map_value(point),
+                    )
+
+            for sequence in previous_sequences - retained_sequences:
+                self._point_state.removeKey((sequence,))
 
         for values in outputs:
             if self._row_factory is not None:
