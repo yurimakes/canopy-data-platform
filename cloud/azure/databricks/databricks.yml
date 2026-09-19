@@ -17,6 +17,14 @@ variables:
     default: silver_mode_predictions
   segments_table:
     default: silver_mode_segments
+  replay_trip_ended_table:
+    default: replay_continuous_trip_ended_events
+  replay_gps_observations_table:
+    default: replay_continuous_gps_observations
+  replay_mode_predictions_table:
+    default: replay_continuous_mode_predictions
+  replay_segments_table:
+    default: replay_continuous_mode_segments
   max_repair_gap_seconds:
     description: Maximum adjacent event-time gap for one-point repair.
     default: 3
