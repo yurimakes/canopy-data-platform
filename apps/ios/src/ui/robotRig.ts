@@ -12,15 +12,18 @@ export function robotRig(action: CharacterAction) {
     const light = new T.DirectionalLight(color, intensity); light.position.set(x, y, z); scene.add(light);
   }
   const materials: T.Material[] = [];
+  let flatCharacter = true;
   const mat = (color: string, roughness = .3, metalness = .08) => {
-    const m = new T.MeshPhysicalMaterial({ color, roughness, metalness, clearcoat: .8, clearcoatRoughness: .18 });
+    const m = flatCharacter
+      ? new T.MeshBasicMaterial({ color, toneMapped: false })
+      : new T.MeshPhysicalMaterial({ color, roughness, metalness, clearcoat: .8, clearcoatRoughness: .18 });
     materials.push(m); return m;
   };
   const ivory = mat('#f4f2df', .24), face = mat('#fffbed', .34);
   const leafGreen = mat('#7eab40', .29), trim = mat('#aac876', .23), glove = mat('#3d7650', .36);
   const joint = mat('#263e32', .4), eyeBlack = mat('#091b12', .11), irisMat = mat('#347846', .18);
-  const white = new T.MeshBasicMaterial({ color: '#ffffff' }); materials.push(white);
-  const mint = new T.MeshStandardMaterial({ color: '#d5ffe0', emissive: '#83ffa5', emissiveIntensity: .65 }); materials.push(mint);
+  const white = new T.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }); materials.push(white);
+  const mint = new T.MeshBasicMaterial({ color: '#d5ffe0', toneMapped: false }); materials.push(mint);
   const body = new T.Group(); scene.add(body);
   function mesh(parent: T.Object3D, geo: T.BufferGeometry, material: T.Material, x = 0, y = 0, z = 0) {
     const m = new T.Mesh(geo, material); m.position.set(x, y, z); parent.add(m); return m;
@@ -138,6 +141,7 @@ export function robotRig(action: CharacterAction) {
     return { hip, knee, ankle };
   }
   const legs = [leg(-1), leg(1)];
+  flatCharacter = false;
   const popper = pivot(right.wrist, 'popper', 0, -.19, .035);
   popper.rotation.z = Math.PI;
   const paper = mat('#eac779', .27, .4);

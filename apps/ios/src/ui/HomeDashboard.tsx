@@ -10,7 +10,7 @@ export function HomeDashboard({p,busy,onRoute,onResult,onBaseline,onRewards}:{p:
  const baseline=p.baseline?.state==='ready'?p.baseline.data:null,balance=p.rewards?.state==='ready'?p.rewards.data.balance:null;
  return <View style={{padding:20,gap:18}}>
   <View onLayout={e=>setHeroWidth(e.nativeEvent.layout.width)} style={{backgroundColor:'#e8efdc',borderRadius:32,padding:24,paddingBottom:12,overflow:'hidden'}}>
-   <Image source={require('../../assets/canopy-ui/home-park.png')} resizeMode="contain" style={{position:'absolute',left:0,right:0,bottom:-70,width:'100%',height:heroWidth*1672/940}}/>
+   <Image source={require('../../assets/canopy-ui/home-park.png')} resizeMode="stretch" style={{position:'absolute',left:0,bottom:-70,width:heroWidth,height:heroWidth*1672/940}}/>
    <LinearGradient pointerEvents="none" colors={['#f4faf7f2','#f4faf7ad','#f4faf708']} locations={[0,.58,1]} start={{x:0,y:0}} end={{x:1,y:.25}} style={{position:'absolute',top:0,left:0,right:0,bottom:0}}/>
    <Text style={{color:'#67824e',letterSpacing:1.8,fontSize:10,fontWeight:'800'}}>MAKE YOUR WAY GREENER</Text>
    <View style={{flexDirection:'row',alignItems:'center',marginTop:8}}><View style={{flex:1,minWidth:0,gap:12}}><Text style={[S.title,{fontSize:25,lineHeight:35}]}>{p.profile.nickname}님,{'\n'}오늘도 가볍게{'\n'}시작해요.</Text><Text style={S.note}>더 나은 선택,{'\n'}캐노피와 함께.</Text></View><View style={{width:145,marginRight:-8}}><CanopyMascot pose="cycle" height={205}/></View></View>
