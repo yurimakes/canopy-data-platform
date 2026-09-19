@@ -108,12 +108,14 @@ def advance_trip(
     points: list[GpsPoint] | None = None,
     seen_event_ids: set[str] | None = None,
     last_sequence: int = -1,
+    processor_entered_at: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], list[GpsPoint], set[str], int]:
     """Advance append-only state with bounded point and duplicate history."""
     history = list(points or [])[-MAX_RAW_POINTS:]
     seen = set(seen_event_ids or {point.event_id for point in history})
     seen.intersection_update(point.event_id for point in history)
     outputs: list[dict[str, Any]] = []
+    processor_entered_at = processor_entered_at or datetime.now(timezone.utc)
     feature_extractor = IncrementalFeatureExtractor(history)
 
     ordered = sorted(
@@ -131,6 +133,7 @@ def advance_trip(
         if point.event_id in seen or point.sequence <= last_sequence:
             continue
 
+        feature_compute_started_at = datetime.now(timezone.utc)
         feature_values = feature_extractor.append(point)
         history = history[-(MAX_RAW_POINTS - 1):]
         history.append(point)
@@ -141,6 +144,8 @@ def advance_trip(
                 "trip_id": point.trip_id,
                 "sequence": point.sequence,
                 "event_time": point.event_time,
+                "processor_entered_at": processor_entered_at,
+                "feature_compute_started_at": feature_compute_started_at,
                 "features_processed_at": datetime.now(timezone.utc),
                 **feature_values,
             }
@@ -184,6 +189,7 @@ class TripFeatureProcessor(_StatefulProcessor):
     ) -> Iterator[Any]:
         del timerValues
         trip_id = _trip_id(key)
+        processor_entered_at = datetime.now(timezone.utc)
 
         last_sequence = (
             int(self._meta_state.get()[0])
@@ -204,6 +210,7 @@ class TripFeatureProcessor(_StatefulProcessor):
             points,
             seen,
             last_sequence,
+            processor_entered_at=processor_entered_at,
         )
 
         if outputs:
