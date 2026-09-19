@@ -31,6 +31,9 @@ variables:
     default: replay_low_latency_mode_segments
   benchmark_table:
     default: replay_end_to_segment_benchmarks
+  replay_inference_pipeline_id:
+    description: Pipeline ID used to read stream_progress event-log metrics for the continuous replay inference benchmark.
+    default: eee266c3-c002-45ff-8c46-1f57e177838f
 
 targets:
   trial:
