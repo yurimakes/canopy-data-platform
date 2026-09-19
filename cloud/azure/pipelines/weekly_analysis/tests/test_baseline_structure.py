@@ -74,6 +74,7 @@ class BaselineHelperStructureTest(unittest.TestCase):
             "select_personal_ready_users",
             "build_global_eligibility",
             "build_global_baseline",
+            "build_baseline_gold",
         }
 
         actual = {
@@ -189,6 +190,82 @@ class BaselineHelperStructureTest(unittest.TestCase):
                 "eligibility_policy",
             },
         )
+
+    def test_baseline_gold_pipeline_calls_helper(self):
+        function = find_function(
+            self.pipeline_tree,
+            "baseline_gold",
+        )
+
+        self.assertIn(
+            "build_baseline_gold_df",
+            called_names(function),
+        )
+        self.assertNotIn(
+            "empty_result",
+            called_names(function),
+        )
+        self.assertEqual(
+            call_keywords(
+                function,
+                "build_baseline_gold_df",
+            ),
+            {
+                "personal",
+                "global_baseline",
+                "personal_fields",
+                "global_fields",
+            },
+        )
+
+    def test_baseline_gold_guards_both_grains_and_missing_global(self):
+        function = find_function(
+            self.helper_tree,
+            "build_baseline_gold",
+        )
+        source = ast.get_source_segment(self.helper_source, function)
+
+        self.assertIn(
+            'Window.partitionBy(*personal_keys)',
+            source,
+        )
+        self.assertIn(
+            'Window.partitionBy(*global_keys)',
+            source,
+        )
+        self.assertIn(
+            "Duplicate Personal Baseline snapshot for user/campaign/week",
+            source,
+        )
+        self.assertIn(
+            "Duplicate Global Baseline snapshot for campaign/week",
+            source,
+        )
+        self.assertIn(
+            "Missing Global Baseline snapshot for Personal campaign/week",
+            source,
+        )
+
+    def test_baseline_gold_preserves_nested_snapshots_without_union(self):
+        function = find_function(
+            self.helper_tree,
+            "build_baseline_gold",
+        )
+        source = ast.get_source_segment(self.helper_source, function)
+
+        self.assertIn(').alias("personal")', source)
+        self.assertIn(').alias("global")', source)
+        self.assertNotIn("union", source.lower())
+        self.assertNotIn("selectExpr", source)
+        for forbidden in (
+            ".collect(",
+            ".toPandas(",
+            ".write",
+            ".save(",
+            "CosmosClient",
+            "dbutils",
+        ):
+            self.assertNotIn(forbidden, source)
 
 
 if __name__ == "__main__":

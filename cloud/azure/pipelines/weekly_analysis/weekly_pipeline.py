@@ -40,6 +40,7 @@ from helpers.spark_baseline import (
     select_personal_ready_users,
     build_global_eligibility,
     build_global_baseline as build_global_baseline_df,
+    build_baseline_gold as build_baseline_gold_df,
 )
 from baseline_eligibility import (
     load_eligibility_policy,
@@ -52,6 +53,7 @@ from helpers.weekly_user_profile import build_weekly_user_profile
 from helpers.campaign_kpi import (
     build_campaign_kpi as build_campaign_kpi_df,
 )
+from helpers.reward import build_reward_calculation as build_reward_calculation_df
 
 policy = load_eligibility_policy()
 spark = SparkSession.builder.getOrCreate()
@@ -65,6 +67,13 @@ BASELINE_POLICY_VERSION = BASELINE_POLICY["policy_version"]
 
 with open(os.path.join(databricks_module_path, "ranking_policy.yaml"), "r", encoding="utf-8") as _ranking_policy_file:
     RANKING_POLICY = yaml.safe_load(_ranking_policy_file)
+
+with open(os.path.join(databricks_module_path, "reward_policy.yaml"), "r", encoding="utf-8") as _reward_policy_file:
+    REWARD_POLICY = yaml.safe_load(_reward_policy_file)
+REWARD_CONVERSION_RATE_OVERRIDE = spark.conf.get(
+    "canopy.reward.conversion_rate_override",
+    "",
+)
 
 # 기존 Personal 코드에서 출퇴근 범위가 확인된 경우에만 Personal Baseline 계산 목적인데 현재는 test를 위해서 아래값으로. (변경필요할시 말해주세요 [민철 수정])
 COMMUTE_SCOPE_VERIFIED = (
@@ -226,6 +235,12 @@ BEHAVIOR_DRAFT_SCHEMA = """
     before_avg_weekly_kg_co2e DOUBLE, after_avg_weekly_kg_co2e DOUBLE,
     change_kg_co2e DOUBLE, change_rate DOUBLE,
     status STRING, reason STRING, policy_version STRING
+"""
+REWARD_CALC_SCHEMA = """
+    user_id STRING, campaign_id STRING, week STRING,
+    status STRING, payable BOOLEAN, points DOUBLE,
+    reason STRING, point_reason STRING,
+    missions_completed_this_week BIGINT, policy_version STRING
 """
 # 랭킹: 실제 지급 및 조정 합계 입력 기준. 포인트 단위와 동점 처리 합의 필요
 RANKING_DRAFT_SCHEMA = """
@@ -390,11 +405,17 @@ def global_baseline():
     )
 
 
-@dp.materialized_view(schema=BASELINE_GOLD_SCHEMA, comment="계산 미연결. 개인과 Global 통합 형태는 컬럼 초안")
+@dp.materialized_view(
+    schema=BASELINE_GOLD_SCHEMA,
+    comment="Personal 및 Global Baseline을 user/campaign/week 단위로 함께 보존",
+)
 def baseline_gold():
-    # 개인 결과와 Global 결과의 저장 형식 지정. 서로 다른 컬럼의 단순 합치기 제외
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(BASELINE_GOLD_SCHEMA, "personal_baseline", "global_baseline")
+    return build_baseline_gold_df(
+        personal=spark.read.table("personal_baseline"),
+        global_baseline=spark.read.table("global_baseline"),
+        personal_fields=T.StructType.fromDDL(PERSONAL_SCHEMA).fieldNames(),
+        global_fields=T.StructType.fromDDL(GLOBAL_SCHEMA).fieldNames(),
+    )
 
 
 @dp.temporary_view(comment="Weekly Gold 기반 Behavior Change 관측 KPI")
@@ -404,21 +425,18 @@ def behavior_change():
     )
 
 
-@dp.temporary_view(comment="계산 미연결. 기존 미션 프로필 Gold 출력 컬럼")
+@dp.temporary_view(comment="Canonical Mission Profile Gold projection")
 def weekly_user_profile():
-    weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
-    
-    mission_response_path = os.environ.get(
-        "CANOPY_GOLD_MISSION_RESPONSE_PATH",
-        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/"
+    mission_profile_path = os.environ.get(
+        "CANOPY_GOLD_MISSION_PROFILE_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_profile/",
     )
-    
-    try:
-        mission_df = spark.read.format("delta").load(mission_response_path)
-    except Exception:
-        mission_df = None
-
-    return build_weekly_user_profile(weekly_df=weekly_df, mission_df=mission_df)
+    profile_df = _read_optional_delta(
+        mission_profile_path,
+        PROFILE_SCHEMA,
+        "mission_profile",
+    )
+    return build_weekly_user_profile(profile_df)
 
 
 @dp.materialized_view(schema=MISSION_BUNDLE_SCHEMA, comment="계산 미연결. 기존 mission_bundle.v1 출력 컬럼")
@@ -520,6 +538,34 @@ def _read_optional_delta(path, schema, input_name):
             "using typed 0-row DataFrame for development validation."
         )
         return spark.createDataFrame([], schema)
+
+
+@dp.materialized_view(
+    schema=REWARD_CALC_SCHEMA,
+    comment="Weekly Gold와 준비 완료 Baseline 기반 Reward Calculation",
+)
+def reward_calculation():
+    mission_response_path = os.environ.get(
+        "CANOPY_GOLD_MISSION_RESPONSE_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/",
+    )
+    mission_response_df = _read_optional_delta(
+        mission_response_path,
+        """
+        campaign_id STRING, user_id STRING,
+        week_start STRING, week_end STRING, completed BOOLEAN
+        """,
+        "mission_response_weekly",
+    )
+
+    return build_reward_calculation_df(
+        weekly_gold=spark.read.table("weekly_gold"),
+        personal_baseline=spark.read.table("personal_baseline"),
+        global_baseline=spark.read.table("global_baseline"),
+        mission_response=mission_response_df,
+        policy=REWARD_POLICY,
+        conversion_rate_override=REWARD_CONVERSION_RATE_OVERRIDE,
+    )
 
 
 @dp.materialized_view(
