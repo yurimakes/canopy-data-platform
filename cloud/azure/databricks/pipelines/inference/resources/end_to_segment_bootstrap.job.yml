@@ -1,0 +1,22 @@
+resources:
+  jobs:
+    end_to_segment_bootstrap:
+      name: canopy-end-to-segment-bootstrap-${bundle.target}
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: bootstrap
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/bootstrap_end_to_segment_replay.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.silver_schema}
+              - --gps-source-table=${var.input_observations_table}
+              - --trip-end-source-table=silver_trip_ended_events
+              - --replay-gps-table=${var.continuous_replay_input_table}
+              - --replay-trip-end-table=${var.continuous_replay_trip_ended_table}
+              - --arrival-table=${var.continuous_replay_arrival_table}
+          environment_key: bootstrap_env
+      environments:
+        - environment_key: bootstrap_env
+          spec:
+            environment_version: "4"

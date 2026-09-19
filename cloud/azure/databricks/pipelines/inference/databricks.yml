@@ -1,0 +1,63 @@
+bundle:
+  name: canopy-mode-inference
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - mode_inference/**
+    - requirements.lakeflow.txt
+    - scripts/**
+  exclude:
+    - .venv/**
+    - tests/**
+    - '**/__pycache__/**'
+
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  silver_schema:
+    default: sandbox
+  input_observations_table:
+    default: silver_gps_observations
+  output_predictions_table:
+    default: silver_mode_predictions
+  replay_input_observations_table:
+    default: replay_gps_observations
+  replay_output_predictions_table:
+    default: replay_mode_predictions
+  replay_benchmark_table:
+    default: replay_inference_benchmarks
+  continuous_replay_input_table:
+    default: replay_continuous_gps_observations
+  continuous_replay_output_table:
+    default: replay_continuous_mode_predictions
+  continuous_replay_trip_ended_table:
+    default: replay_continuous_trip_ended_events
+  continuous_replay_arrival_table:
+    default: replay_continuous_arrivals
+  continuous_replay_segments_table:
+    default: replay_continuous_mode_segments
+  end_to_segment_benchmark_table:
+    default: replay_end_to_segment_benchmarks
+  transition_model_uri:
+    description: Registered-model identity retained for output metadata.
+    default: models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
+  transition_model_artifact_path:
+    description: Native LightGBM skops artifact in a Unity Catalog Volume.
+    default: /Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops
+  state_timeout:
+    description: Stateful trip-retention policy. Only none is supported in the first append-only implementation.
+    default: none
+  timezone:
+    default: UTC
+
+targets:
+  trial:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

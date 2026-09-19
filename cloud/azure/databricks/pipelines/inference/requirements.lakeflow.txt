@@ -1,0 +1,7 @@
+# Spark and Lakeflow are supplied by Databricks.
+lightgbm>=4.5,<5
+numpy>=2.1,<3
+pandas>=2.2,<3
+pyarrow>=18,<22
+scikit-learn>=1.6,<2
+skops>=0.10,<1
