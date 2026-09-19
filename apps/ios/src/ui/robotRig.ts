@@ -28,7 +28,13 @@ export function robotRig(action: CharacterAction) {
   const ink = new T.MeshBasicMaterial({color:'#52653e',side:T.BackSide,toneMapped:false});materials.push(ink);
   const body = new T.Group(); scene.add(body);
   function mesh(parent: T.Object3D, geo: T.BufferGeometry, material: T.Material, x = 0, y = 0, z = 0) {
-    const m = new T.Mesh(geo, material); m.position.set(x, y, z); parent.add(m); return m;
+    const m = new T.Mesh(geo, material); m.position.set(x, y, z); parent.add(m);
+    if(flatCharacter && (material===ivory || material===glove || material===leafGreen)){
+      const edge=geo.clone(),position=edge.getAttribute('position'),normal=edge.getAttribute('normal');
+      if(normal){for(let i=0;i<position.count;i++)position.setXYZ(i,position.getX(i)+normal.getX(i)*.005,position.getY(i)+normal.getY(i)*.005,position.getZ(i)+normal.getZ(i)*.005);}
+      const outline=new T.Mesh(edge,ink);outline.name='characterOutline';m.add(outline);
+    }
+    return m;
   }
   function orb(parent: T.Object3D, material: T.Material, x: number, y: number, z: number, sx: number, sy = sx, sz = sx, roundness = 1) {
     const g = new T.SphereGeometry(1, 40, 28);
@@ -41,9 +47,6 @@ export function robotRig(action: CharacterAction) {
       g.computeVertexNormals();
     }
     const m = mesh(parent, g, material, x, y, z); m.scale.set(sx, sy, sz);
-    if(flatCharacter && (material===ivory || material===face || material===leafGreen || material===glove) && Math.max(sx,sy,sz)>.09){
-      const outline=new T.Mesh(g,ink);outline.scale.setScalar(1.015);m.add(outline);
-    }
     return m;
   }
   function pivot(parent: T.Object3D, name: string, x: number, y: number, z = 0) {

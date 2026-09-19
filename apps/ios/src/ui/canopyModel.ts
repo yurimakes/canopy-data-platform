@@ -37,10 +37,6 @@ export function createCanopyHead(){
   const texture=atlasTexture();
   const faceMaterial=new T.MeshBasicMaterial({map:texture,side:T.DoubleSide,toneMapped:false});
   const green=new T.MeshBasicMaterial({color:'#829e58',toneMapped:false});
-  const shell=new T.Mesh(shellGeometry([
-    [-.48,.025,.025,0],[-.43,.36,.23,-.04],[-.31,.55,.35,-.04],[-.10,.64,.405,-.025],
-    [.13,.64,.38,-.03],[.32,.54,.29,-.04],[.44,.38,.19,-.05],[.51,.02,.02,-.05],
-  ]),green);group.add(shell);
   const outline=new T.CatmullRomCurve3(faceContour.map(p=>new T.Vector3(p[0],p[1],0)),true,'catmullrom',.3);
   const positions:number[]=[],uv:number[]=[],indices:number[]=[],rings=22,sides=96;
   for(let r=0;r<=rings;r++)for(let j=0;j<=sides;j++){
@@ -51,13 +47,27 @@ export function createCanopyHead(){
   }
   const g=new T.BufferGeometry();g.setAttribute('position',new T.Float32BufferAttribute(positions,3));g.setAttribute('uv',new T.Float32BufferAttribute(uv,2));g.setIndex(indices);g.computeVertexNormals();
   const face=new T.Mesh(g,faceMaterial);face.name='referenceFace';group.add(face);
+  // The visor and helmet share the same perimeter, rather than intersecting
+  // independently modelled surfaces. The first shell ring is the visor edge.
+  const shellPositions:number[]=[],shellIndices:number[]=[];
+  const sections=[[1,.30],[1.045,.29],[1.10,.12],[1.055,-.12],[.82,-.32],[.38,-.43],[.001,-.45]];
+  const shellProfile=new T.CatmullRomCurve3(sections.map(p=>new T.Vector3(p[0],p[1],0)),false,'centripetal');
+  const shellRings=36;
+  for(let r=0;r<=shellRings;r++)for(let j=0;j<=sides;j++){
+    const p=outline.getPoint(j/sides),profile=shellProfile.getPoint(r/shellRings),scale=Math.max(.001,profile.x),z=profile.y;
+    shellPositions.push((p.x-188)*.0046*scale,(292-p.y)*.0046*scale,z);
+    if(r<shellRings&&j<sides){const k=r*(sides+1)+j;shellIndices.push(k,k+1,k+sides+1,k+1,k+sides+2,k+sides+1);}
+  }
+  const shellGeometry=new T.BufferGeometry();shellGeometry.setAttribute('position',new T.Float32BufferAttribute(shellPositions,3));shellGeometry.setIndex(shellIndices);shellGeometry.computeVertexNormals();
+  const shell=new T.Mesh(shellGeometry,green);shell.name='continuousHelmet';group.add(shell);
+
   return {group,setExpression(expression:0|1|2){texture.offset.x=[0,350/textureWidth,702/textureWidth][expression];},dispose(){texture.dispose();faceMaterial.dispose();green.dispose();}};
 }
 
 export function createReferenceLeaves(){
   const group=new T.Group();group.name='referenceLeaves';
   const texture=atlasTexture();
-  const material=new T.MeshBasicMaterial({map:texture,side:T.DoubleSide,toneMapped:false});
+  const material=new T.MeshBasicMaterial({map:texture,side:T.DoubleSide,toneMapped:false,alphaTest:.1});
   const contours=[
     [[212,177],[166,164],[127,135],[103,95],[98,40],[139,47],[176,73],[207,112],[224,153]],
     [[214,179],[238,140],[278,111],[318,99],[348,104],[325,145],[282,169],[240,180]],
