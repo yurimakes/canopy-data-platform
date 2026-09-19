@@ -15,11 +15,141 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--trip-ended-table", required=True)
     p.add_argument("--prediction-table", required=True)
     p.add_argument("--arrival-table", required=True)
+    p.add_argument("--pipeline-id", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--users", type=int, required=True)
     p.add_argument("--timeout-seconds", type=int, default=180)
     p.add_argument("--poll-seconds", type=float, default=1.0)
     return p.parse_args()
+
+
+
+def stream_progress_report(
+    spark: SparkSession,
+    pipeline_id: str,
+    window_start,
+    window_end,
+) -> dict:
+    """Return best-effort Lakeflow stream-progress metrics for the benchmark window."""
+    try:
+        progress = spark.sql(
+            f"""
+            SELECT
+              timestamp,
+              get_json_object(details, '$.stream_progress.progress_json') AS progress_json
+            FROM event_log('{pipeline_id}')
+            WHERE event_type = 'stream_progress'
+              AND timestamp >= TIMESTAMP '{window_start}'
+              AND timestamp <= TIMESTAMP '{window_end}'
+            ORDER BY timestamp
+            """
+        ).where(F.col("progress_json").isNotNull())
+
+        parsed = (
+            progress.select(
+                "timestamp",
+                F.get_json_object("progress_json", "$.batchId").cast("long").alias("batch_id"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.durationMs.triggerExecution",
+                ).cast("double").alias("trigger_execution_ms"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.durationMs.addBatch",
+                ).cast("double").alias("add_batch_ms"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.durationMs.queryPlanning",
+                ).cast("double").alias("query_planning_ms"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.durationMs.commitBatch",
+                ).cast("double").alias("commit_batch_ms"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].numRowsUpdated",
+                ).cast("long").alias("num_rows_updated"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].numRowsTotal",
+                ).cast("long").alias("num_rows_total"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].numShufflePartitions",
+                ).cast("long").alias("num_shuffle_partitions"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].numStateStoreInstances",
+                ).cast("long").alias("num_state_store_instances"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].allUpdatesTimeMs",
+                ).cast("double").alias("all_updates_time_ms"),
+                F.get_json_object(
+                    "progress_json",
+                    "$.stateOperators[0].commitTimeMs",
+                ).cast("double").alias("state_commit_time_ms"),
+            )
+        )
+
+        rows = parsed.collect()
+        if not rows:
+            return {
+                "available": False,
+                "reason": "no stream_progress rows in benchmark window",
+            }
+
+        def numeric_values(name: str) -> list[float]:
+            return [float(row[name]) for row in rows if row[name] is not None]
+
+        def summarize(name: str) -> dict | None:
+            values = numeric_values(name)
+            if not values:
+                return None
+            return {
+                "avg": sum(values) / len(values),
+                "max": max(values),
+            }
+
+        partition_values = sorted(
+            {
+                int(row["num_shuffle_partitions"])
+                for row in rows
+                if row["num_shuffle_partitions"] is not None
+            }
+        )
+        state_store_values = sorted(
+            {
+                int(row["num_state_store_instances"])
+                for row in rows
+                if row["num_state_store_instances"] is not None
+            }
+        )
+
+        return {
+            "available": True,
+            "stream_progress_rows": len(rows),
+            "num_shuffle_partitions": partition_values,
+            "num_state_store_instances": state_store_values,
+            "trigger_execution_ms": summarize("trigger_execution_ms"),
+            "add_batch_ms": summarize("add_batch_ms"),
+            "query_planning_ms": summarize("query_planning_ms"),
+            "commit_batch_ms": summarize("commit_batch_ms"),
+            "all_updates_time_ms": summarize("all_updates_time_ms"),
+            "state_commit_time_ms": summarize("state_commit_time_ms"),
+            "num_rows_updated": summarize("num_rows_updated"),
+            "num_rows_total": summarize("num_rows_total"),
+            "batch_ids": [
+                int(row["batch_id"])
+                for row in rows
+                if row["batch_id"] is not None
+            ],
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
 
 
 def main() -> None:
@@ -201,6 +331,17 @@ def main() -> None:
         .collect()
     )
 
+    benchmark_window = stage_rows.agg(
+        F.min("replay_visible_at").alias("window_start"),
+        F.max("predicted_at").alias("window_end"),
+    ).collect()[0]
+    stream_metrics = stream_progress_report(
+        spark,
+        args.pipeline_id,
+        benchmark_window["window_start"],
+        benchmark_window["window_end"],
+    )
+
     summary = {
         name: (
             int(stage_summary[name])
@@ -216,6 +357,7 @@ def main() -> None:
             "run_id": args.run_id,
             "completed_trips": completed_trips,
             "all_prediction_rows": summary,
+            "stream_progress": stream_metrics,
             "final_sequence_per_trip": {
                 r["trip_id"]: {
                     "replay_visible_at": str(r["replay_visible_at"]),
