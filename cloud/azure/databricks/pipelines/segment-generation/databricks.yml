@@ -25,6 +25,8 @@ variables:
     default: replay_continuous_mode_predictions
   replay_segments_table:
     default: replay_continuous_mode_segments
+  replay_low_latency_segments_table:
+    default: replay_low_latency_mode_segments
   max_repair_gap_seconds:
     description: Maximum adjacent event-time gap for one-point repair.
     default: 3
