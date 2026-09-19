@@ -26,6 +26,7 @@
     "expo-sharing": "~57.0.19",
     "expo-sqlite": "~57.0.3",
     "expo-task-manager": "~57.0.16",
+    "fflate": "^0.8.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.3",

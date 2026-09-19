@@ -1,4 +1,5 @@
 import * as T from 'three';
+import {createCanopyHead, createReferenceLeaves, shellGeometry} from './canopyModel';
 import { characterMotion, legAngles, footCycle, gardenMotion, type CharacterAction } from './mascotMotion';
 
 // Rigid shell pieces rotate around anatomical pivots, keeping the robot's shape.
@@ -78,12 +79,11 @@ export function robotRig(action: CharacterAction) {
     return g;
   }
   orb(body, joint, 0, .79, -.02, .31, .37, .245);
-  orb(body, ivory, 0, .84, .03, .355, .385, .28);
+  mesh(body, shellGeometry([[.46,.06,.09,.02],[.51,.23,.18,.025],[.64,.285,.24,.025],[.84,.35,.285,.035],[1.04,.33,.25,.025],[1.16,.24,.18,0],[1.21,.10,.08,0]]), ivory);
   for (const side of [-1, 1]) { const panel = orb(body, leafGreen, side * .265, .72, -.035, .065, .24, .20); panel.rotation.z = side * -.25; }
   orb(body, joint, 0, 1.18, 0, .14, .09, .135);
   const head = pivot(body, 'head', 0, 1.65);
-  orb(head, leafGreen, 0, -.012, 0, .65, .50, .405, 1);
-  orb(head, face, 0, -.035, .245, .596, .450, .245, 1);
+  const authoredHead=createCanopyHead();head.add(authoredHead.group);
   for (const s of [-1, 1]) {
     orb(head, joint, s * .619, -.085, -.035, .067, .238, .23);
     orb(head, ivory, s * .659, -.085, -.018, .065, .219, .215);
@@ -94,33 +94,17 @@ export function robotRig(action: CharacterAction) {
   const sprout = pivot(head, 'sprout', 0, .426, -.01);
   const crown=orb(sprout,leafGreen,0,-.035,.225,.235,.055,.235); crown.rotation.x=.32;
   line(sprout, [[0, 0, 0], [-.01, .1, 0], [-.045, .24, -.02]], .025, glove);
-  const leafA = leaf(sprout, .98, .47); leafA.position.set(-.03, .14, 0); leafA.rotation.y = -.2;
-  const leafB = leaf(sprout, .83, -.98); leafB.position.set(0, .105, .01); leafB.rotation.y = .2;
-  const eyes = [-1, 1].map(side => {
-    const group = pivot(head, 'eye', side * .242, .060, .463);
-    group.rotation.y=side*.30;
-    orb(group, eyeBlack, 0, 0, 0, .146, .198, .028);
-    orb(group, irisMat, 0, -.036, .025, .114, .146, .010);
-    orb(group, eyeBlack, 0, .025, .035, .078, .119, .008);
-    orb(group, white, -.043, .094, .043, .040, .049, .005);
-    orb(group, white, .049, -.082, .043, .012, .016, .004);
-    const lidGroup=pivot(head,'closedEye',side*.242,.060,.463);lidGroup.rotation.y=side*.30;
-    const lid = line(lidGroup, [[-.125,-.035,.035],[0,.068,.046],[.125,-.035,.035]], .023, eyeBlack); lid.visible = false;
-    return { group, lid };
-  });
-  const mouthShape = new T.Shape(); mouthShape.moveTo(-.105, 0); mouthShape.quadraticCurveTo(0, -.027, .105, 0); mouthShape.quadraticCurveTo(.080, -.120, 0, -.120); mouthShape.quadraticCurveTo(-.081, -.120, -.105, 0);
-  const mouth=mesh(head, new T.ShapeGeometry(mouthShape, 24), joint, 0, -.139, .493);
-  const tongue=orb(head, mat('#bd7b6c', .4), 0, -.232, .497, .045, .015, .003);
+  const referenceLeaves=createReferenceLeaves();referenceLeaves.group.position.set(0,.08,0);sprout.add(referenceLeaves.group);
   orb(body, leafGreen, 0, .965, .298, .164, .164, .028);
   mesh(body, new T.TorusGeometry(.155, .010, 12, 48), mint, 0, .965, .326);
   const badge=emblem(body,.24); badge.position.set(0,.965,.336);
   function arm(side: number) {
     const shoulder = pivot(body, side < 0 ? 'leftShoulder' : 'rightShoulder', side * .33, 1.085);
     orb(shoulder, joint, 0, 0, 0, .105);
-    orb(shoulder, glove, side * .018, -.095, .012, .096, .15, .097);
+    mesh(shoulder,shellGeometry([[-.26,.055,.056,0],[-.22,.078,.078,0],[-.10,.098,.09,.012],[-.015,.082,.082,0],[.025,.025,.025,0]]),glove);
     const elbow = pivot(shoulder, 'elbow', 0, -.23);
     orb(elbow, joint, 0, 0, 0, .075);
-    orb(elbow, ivory, 0, -.085, .005, .116, .162, .112, .88);
+    mesh(elbow,shellGeometry([[-.23,.078,.076,.008],[-.20,.101,.096,.009],[-.09,.116,.106,.006],[.012,.077,.076,0],[.032,.04,.04,0]]),ivory);
     const wrist = pivot(elbow, 'wrist', 0, -.215);
     orb(wrist, trim, 0, .008, 0, .084, .035, .083);
     orb(wrist, glove, 0, -.073, .005, .091, .103, .043);
@@ -139,10 +123,10 @@ export function robotRig(action: CharacterAction) {
   function leg(side: number) {
     const hip = pivot(body, 'hip', side * .162, .515);
     orb(hip, joint, 0, 0, 0, .104);
-    orb(hip, ivory, 0, -.11, .005, .132, .173, .126);
+    mesh(hip,shellGeometry([[-.27,.074,.072,0],[-.22,.093,.092,0],[-.10,.125,.12,.006],[.012,.12,.11,0],[.037,.065,.065,0]]),ivory);
     const knee = pivot(hip, 'knee', 0, -.245);
     orb(knee, joint, 0, 0, 0, .08);
-    orb(knee, ivory, 0, -.096, .012, .131, .180, .126, .88);
+    mesh(knee,shellGeometry([[-.27,.10,.112,.016],[-.21,.126,.126,.016],[-.08,.12,.105,.008],[.018,.082,.076,0],[.034,.04,.04,0]]),ivory);
     const ankle = pivot(knee, 'ankle', 0, -.245);
     orb(ankle, glove, 0, -.019, .062, .139, .067, .208, .86);
     orb(ankle, glove, 0, .025, .018, .129, .084, .158);
@@ -222,7 +206,7 @@ export function robotRig(action: CharacterAction) {
     const joy=action==='complete'?Math.sin(Math.PI*Math.min(1,Math.max(0,(t-.75)/1.3))):0;
     body.position.y+=joy*.065;
     body.rotation.z = m.walking ? .015 * m.step : -.035 * m.recoil;
-    mouth.scale.set(1+joy*.22,1+joy*.15,1);tongue.position.y=-.232-joy*.009;
+    authoredHead.setExpression(Math.max(m.blink,action==='complete'&&joy>.8?1:0)>.75?1:m.wink>.75?2:0);
     head.rotation.set(m.walking ? .012 * Math.cos(m.cycle * Math.PI * 4) : 0, .025 * Math.sin(t * 1.2), m.headTilt);
     sprout.rotation.z = .025 * Math.sin(t * 2.4); sprout.rotation.x = m.walking ? .035 * m.step : 0;
     left.shoulder.rotation.set(m.walking ? footCycle(m.cycle).z * 2.1 : -.1, 0, -.20);
@@ -236,11 +220,6 @@ export function robotRig(action: CharacterAction) {
       const angles = legAngles(foot.y - .515 - m.bounce, foot.z);
       legs[i].hip.rotation.x = angles.hip; legs[i].knee.rotation.x = angles.knee; legs[i].ankle.rotation.x = angles.ankle;
     }
-    eyes.forEach((eye, i) => {
-      const close = Math.max(m.blink, action==='complete'&&joy>.8?1:0,i === 1 ? m.wink : 0);
-      eye.group.scale.y = Math.max(.04, 1 - close);
-      eye.group.visible = close < .92; eye.lid.visible = close >= .92;
-    });
     if(action==='cycle') {
       body.rotation.set(0,1.02,0); body.position.set(-.08*Math.sin(1.02),.235,-.08*Math.cos(1.02));
       const angle=t*Math.PI*2/1.5;
@@ -271,7 +250,7 @@ export function robotRig(action: CharacterAction) {
       left.shoulder.rotation.set(-.15,0,-.3-1.55*g.hello);
       left.elbow.rotation.set(0,0,-.35*g.hello);left.wrist.rotation.z=g.wave*.42;
       for(let i=0;i<2;i++) {const angles=legAngles(.085-.305,.34);legs[i].hip.rotation.x=angles.hip;legs[i].knee.rotation.x=angles.knee;legs[i].ankle.rotation.x=angles.ankle;}
-      eyes.forEach(eye=>{const close=Math.max(m.blink,g.smile);eye.group.scale.y=Math.max(.04,1-close);eye.group.visible=close<.92;eye.lid.visible=close>=.92;});
+      authoredHead.setExpression(Math.max(m.blink,g.smile)>.75?1:0);
       scene.updateMatrixWorld(true);const origin=nozzle.getWorldPosition(new T.Vector3());
       drops.forEach((drop,i)=>{const u=(t*1.8+i/18)%1;drop.visible=g.pour>.65;drop.position.set(T.MathUtils.lerp(origin.x,.78,u)+(i%3-1)*.008,T.MathUtils.lerp(origin.y,.02,u*u),T.MathUtils.lerp(origin.z,.18,u));drop.scale.set(.009*g.pour,.022*g.pour,.009*g.pour);});
     }
@@ -291,7 +270,7 @@ export function robotRig(action: CharacterAction) {
     });
     shadows.forEach(s => { s.scale.x = 1 - m.bounce; });
   }
-  function dispose() { scene.traverse(o => { if (o instanceof T.Mesh) o.geometry.dispose(); }); materials.forEach(m => m.dispose()); }
+  function dispose() { authoredHead.dispose(); referenceLeaves.dispose(); scene.traverse(o => { if (o instanceof T.Mesh) o.geometry.dispose(); }); materials.forEach(m => m.dispose()); }
   update(0);
   return { scene, camera, update, dispose };
 }
