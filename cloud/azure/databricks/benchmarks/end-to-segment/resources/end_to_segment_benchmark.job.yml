@@ -45,6 +45,7 @@ resources:
               - --schema=${var.schema}
               - --trip-ended-table=${var.replay_trip_ended_table}
               - --prediction-table=${var.replay_predictions_table}
+              - --arrival-table=${var.replay_arrival_table}
               - --segments-table=${var.replay_segments_table}
               - --benchmark-table=${var.benchmark_table}
               - --run-id={{job.parameters.run_id}}
