@@ -7,8 +7,8 @@ export function robotRig(action: CharacterAction) {
   const camera = new T.PerspectiveCamera(30, 1, .1, 30);
   camera.position.set(0, 1.35, 6.0);
   camera.lookAt(0, 1.24, 0);
-  scene.add(new T.HemisphereLight(0xf3fcff, 0x748469, 2));
-  for (const [color, intensity, x, y, z] of [[0xfff4df, 3.1, -3, 5, 4], [0xd8f5ff, 1.7, 3, 3, 2], [0xffffff, 3, 1, 4, -3]]) {
+  scene.add(new T.HemisphereLight(0xffffff, 0xb0bca4, 1.15));
+  for (const [color, intensity, x, y, z] of [[0xffffff, .65, -3, 5, 4], [0xffffff, .18, 3, 3, 2]]) {
     const light = new T.DirectionalLight(color, intensity); light.position.set(x, y, z); scene.add(light);
   }
   const materials: T.Material[] = [];
@@ -19,11 +19,12 @@ export function robotRig(action: CharacterAction) {
       : new T.MeshPhysicalMaterial({ color, roughness, metalness, clearcoat: .8, clearcoatRoughness: .18 });
     materials.push(m); return m;
   };
-  const ivory = mat('#f2f3ee', .24), face = mat('#f7f8f3', .34);
-  const leafGreen = mat('#82a363', .29), trim = mat('#b6ce93', .23), glove = mat('#446b4b', .36);
+  const ivory = mat('#e9e7dd', .24), face = mat('#f3f0e7', .34);
+  const leafGreen = mat('#82a35a', .29), trim = mat('#b1c987', .23), glove = mat('#4c703e', .36);
   const joint = mat('#263e32', .4), eyeBlack = mat('#091b12', .11), irisMat = mat('#347846', .18);
   const white = new T.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }); materials.push(white);
   const mint = new T.MeshBasicMaterial({ color: '#d5ffe0', toneMapped: false }); materials.push(mint);
+  const ink = new T.MeshBasicMaterial({color:'#52653e',side:T.BackSide,toneMapped:false});materials.push(ink);
   const body = new T.Group(); scene.add(body);
   function mesh(parent: T.Object3D, geo: T.BufferGeometry, material: T.Material, x = 0, y = 0, z = 0) {
     const m = new T.Mesh(geo, material); m.position.set(x, y, z); parent.add(m); return m;
@@ -38,7 +39,11 @@ export function robotRig(action: CharacterAction) {
       }
       g.computeVertexNormals();
     }
-    const m = mesh(parent, g, material, x, y, z); m.scale.set(sx, sy, sz); return m;
+    const m = mesh(parent, g, material, x, y, z); m.scale.set(sx, sy, sz);
+    if(flatCharacter && (material===ivory || material===face || material===leafGreen || material===glove) && Math.max(sx,sy,sz)>.09){
+      const outline=new T.Mesh(g,ink);outline.scale.setScalar(1.015);m.add(outline);
+    }
+    return m;
   }
   function pivot(parent: T.Object3D, name: string, x: number, y: number, z = 0) {
     const p = new T.Group(); p.name = name; p.position.set(x, y, z); parent.add(p); return p;
@@ -77,8 +82,8 @@ export function robotRig(action: CharacterAction) {
   for (const side of [-1, 1]) { const panel = orb(body, leafGreen, side * .265, .72, -.035, .065, .24, .20); panel.rotation.z = side * -.25; }
   orb(body, joint, 0, 1.18, 0, .14, .09, .135);
   const head = pivot(body, 'head', 0, 1.65);
-  orb(head, leafGreen, 0, -.012, 0, .65, .49, .405, .88);
-  orb(head, face, 0, -.035, .245, .600, .445, .245, .9);
+  orb(head, leafGreen, 0, -.012, 0, .65, .50, .405, 1);
+  orb(head, face, 0, -.035, .245, .596, .450, .245, 1);
   for (const s of [-1, 1]) {
     orb(head, joint, s * .619, -.085, -.035, .067, .238, .23);
     orb(head, ivory, s * .659, -.085, -.018, .065, .219, .215);
@@ -92,18 +97,20 @@ export function robotRig(action: CharacterAction) {
   const leafA = leaf(sprout, .98, .47); leafA.position.set(-.03, .14, 0); leafA.rotation.y = -.2;
   const leafB = leaf(sprout, .83, -.98); leafB.position.set(0, .105, .01); leafB.rotation.y = .2;
   const eyes = [-1, 1].map(side => {
-    const group = pivot(head, 'eye', side * .247, .055, .478);
-    orb(group, eyeBlack, 0, 0, 0, .134, .178, .035);
-    orb(group, irisMat, 0, -.025, .031, .100, .130, .013);
-    orb(group, eyeBlack, 0, .025, .039, .071, .105, .009);
-    orb(group, white, -.043, .087, .047, .039, .047, .005);
-    orb(group, white, .049, -.072, .047, .012, .016, .004);
-    const lid = line(head, [[side * .247 - .118, .018, .508], [side * .247, .103, .518], [side * .247 + .118, .018, .508]], .021, eyeBlack); lid.visible = false;
+    const group = pivot(head, 'eye', side * .242, .060, .463);
+    group.rotation.y=side*.30;
+    orb(group, eyeBlack, 0, 0, 0, .146, .198, .028);
+    orb(group, irisMat, 0, -.036, .025, .114, .146, .010);
+    orb(group, eyeBlack, 0, .025, .035, .078, .119, .008);
+    orb(group, white, -.043, .094, .043, .040, .049, .005);
+    orb(group, white, .049, -.082, .043, .012, .016, .004);
+    const lidGroup=pivot(head,'closedEye',side*.242,.060,.463);lidGroup.rotation.y=side*.30;
+    const lid = line(lidGroup, [[-.125,-.035,.035],[0,.068,.046],[.125,-.035,.035]], .023, eyeBlack); lid.visible = false;
     return { group, lid };
   });
-  const mouthShape = new T.Shape(); mouthShape.moveTo(-.085, 0); mouthShape.quadraticCurveTo(0, -.021, .085, 0); mouthShape.quadraticCurveTo(.065, -.102, 0, -.102); mouthShape.quadraticCurveTo(-.067, -.102, -.085, 0);
-  mesh(head, new T.ShapeGeometry(mouthShape, 24), joint, 0, -.125, .511);
-  orb(head, mat('#bd7b6c', .4), 0, -.204, .515, .034, .012, .003);
+  const mouthShape = new T.Shape(); mouthShape.moveTo(-.105, 0); mouthShape.quadraticCurveTo(0, -.027, .105, 0); mouthShape.quadraticCurveTo(.080, -.120, 0, -.120); mouthShape.quadraticCurveTo(-.081, -.120, -.105, 0);
+  const mouth=mesh(head, new T.ShapeGeometry(mouthShape, 24), joint, 0, -.139, .493);
+  const tongue=orb(head, mat('#bd7b6c', .4), 0, -.232, .497, .045, .015, .003);
   orb(body, leafGreen, 0, .965, .298, .164, .164, .028);
   mesh(body, new T.TorusGeometry(.155, .010, 12, 48), mint, 0, .965, .326);
   const badge=emblem(body,.24); badge.position.set(0,.965,.336);
@@ -212,7 +219,10 @@ export function robotRig(action: CharacterAction) {
   function applyBody(t: number) {
     const m = characterMotion(action, t);
     body.position.y = m.bounce; body.rotation.y = m.yaw;
-    body.rotation.z = m.walking ? .015 * m.step : -.015 * m.recoil;
+    const joy=action==='complete'?Math.sin(Math.PI*Math.min(1,Math.max(0,(t-.75)/1.3))):0;
+    body.position.y+=joy*.065;
+    body.rotation.z = m.walking ? .015 * m.step : -.035 * m.recoil;
+    mouth.scale.set(1+joy*.22,1+joy*.15,1);tongue.position.y=-.232-joy*.009;
     head.rotation.set(m.walking ? .012 * Math.cos(m.cycle * Math.PI * 4) : 0, .025 * Math.sin(t * 1.2), m.headTilt);
     sprout.rotation.z = .025 * Math.sin(t * 2.4); sprout.rotation.x = m.walking ? .035 * m.step : 0;
     left.shoulder.rotation.set(m.walking ? footCycle(m.cycle).z * 2.1 : -.1, 0, -.20);
@@ -227,12 +237,12 @@ export function robotRig(action: CharacterAction) {
       legs[i].hip.rotation.x = angles.hip; legs[i].knee.rotation.x = angles.knee; legs[i].ankle.rotation.x = angles.ankle;
     }
     eyes.forEach((eye, i) => {
-      const close = Math.max(m.blink, i === 1 ? m.wink : 0);
+      const close = Math.max(m.blink, action==='complete'&&joy>.8?1:0,i === 1 ? m.wink : 0);
       eye.group.scale.y = Math.max(.04, 1 - close);
       eye.group.visible = close < .92; eye.lid.visible = close >= .92;
     });
     if(action==='cycle') {
-      body.rotation.set(0,1.02,0); body.position.set(0,.235,-.08);
+      body.rotation.set(0,1.02,0); body.position.set(-.08*Math.sin(1.02),.235,-.08*Math.cos(1.02));
       const angle=t*Math.PI*2/1.5;
       for(let i=0;i<2;i++) {
         const a=angle+i*Math.PI, y=.38+Math.sin(a)*.13, z=Math.cos(a)*.13;
@@ -244,6 +254,12 @@ export function robotRig(action: CharacterAction) {
       wheels.forEach(w=>{w.rotation.x=angle*1.8;});
       for(const arm of [left,right]){arm.shoulder.rotation.set(-1.12,0,0);arm.elbow.rotation.set(.15,0,0);arm.wrist.rotation.set(.1,0,0);arm.fingers.forEach(f=>{f.rotation.x=-1.0;});}
       head.rotation.set(-.035,.06*Math.sin(t*.8),.025*Math.sin(t*2));
+    }
+    if(action==='complete') {
+      head.rotation.y=.16*joy;
+      head.rotation.z=-.07*joy;
+      left.shoulder.rotation.z=-.20-.30*joy;
+      left.elbow.rotation.z=-.08-.16*joy;
     }
     if(action==='garden') {
       const g=gardenMotion(t);
@@ -266,7 +282,7 @@ export function robotRig(action: CharacterAction) {
     const m = applyBody(t);
     confetti.forEach((piece, i) => {
       const age = m.burstAge - (i % 4) * .016;
-      piece.visible = age >= 0 && age < 2.8;
+      piece.visible = action==='complete' && age >= 0 && age < 2.8;
       if (!piece.visible) return;
       const a = i * 2.39996, speed = .38 + (i % 7) * .08;
       piece.position.set(burstOrigin.x + Math.cos(a) * speed * age, burstOrigin.y + (1.6 + (i % 4) * .15) * age - 1.3 * age * age, burstOrigin.z + Math.sin(a) * .38 * age);
