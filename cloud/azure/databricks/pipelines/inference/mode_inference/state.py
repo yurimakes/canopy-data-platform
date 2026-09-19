@@ -119,12 +119,19 @@ def advance_trip(
 
 
 class TripFeatureProcessor(_StatefulProcessor):
-    def __init__(self, row_factory: Any = None) -> None:
+    def __init__(self, ttl_duration_ms: int, row_factory: Any = None) -> None:
+        if ttl_duration_ms <= 0:
+            raise ValueError("ttl_duration_ms must be positive")
         self._state: Any = None
+        self._ttl_duration_ms = ttl_duration_ms
         self._row_factory = row_factory
 
     def init(self, handle: Any) -> None:
-        self._state = handle.getValueState("trip_feature_state", STATE_SCHEMA)
+        self._state = handle.getValueState(
+            "trip_feature_state",
+            STATE_SCHEMA,
+            ttlDurationMs=self._ttl_duration_ms,
+        )
 
     def handleInputRows(self, key: Any, rows: Iterator[Any], timerValues: Any = None) -> Iterator[Any]:
         del timerValues
@@ -150,10 +157,14 @@ class TripFeatureProcessor(_StatefulProcessor):
         pass
 
 
-def stateful_feature_rows(observations: Any, processor: TripFeatureProcessor | None = None) -> Any:
+def stateful_feature_rows(
+    observations: Any,
+    ttl_duration_ms: int,
+    processor: TripFeatureProcessor | None = None,
+) -> Any:
     return observations.groupBy("trip_id").transformWithState(
-        statefulProcessor=processor or TripFeatureProcessor(),
+        statefulProcessor=processor or TripFeatureProcessor(ttl_duration_ms),
         outputStructType=FEATURE_OUTPUT_SCHEMA_DDL,
         outputMode="Append",
-        timeMode="None",
+        timeMode="ProcessingTime",
     )
