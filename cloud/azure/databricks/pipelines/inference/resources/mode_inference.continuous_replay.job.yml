@@ -3,7 +3,7 @@ resources:
     mode_inference_continuous_replay:
       name: canopy-mode-inference-continuous-replay-${bundle.target}
       continuous:
-        pause_status: PAUSED
+        pause_status: ${var.replay_continuous_pause_status}
       max_concurrent_runs: 1
       tasks:
         - task_key: inference
