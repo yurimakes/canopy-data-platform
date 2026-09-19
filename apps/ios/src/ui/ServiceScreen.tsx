@@ -1,5 +1,6 @@
 import {CanopyMascot} from './CanopyMascot';
 import Constants from 'expo-constants';
+import {LivePrediction,LocalWeekly} from './LocalTools';
 import React,{useEffect,useRef,useState} from 'react';
 import {ActivityIndicator,ImageBackground,Modal,Pressable,ScrollView,Text,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
@@ -38,7 +39,8 @@ export function ServiceScreen(p:ServiceProps){
       <Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>
     </View>
     <ScrollView key={tab} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:S.scroll} showsVerticalScrollIndicator={false}>
-      {Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · Azure 미사용 · ML 모델 연결 전에는 여정 결과 대기</Text></View>}
+      {Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · PC에서 처리 · Azure 미사용</Text></View>}
+      {tab==='home'&&p.profile.role==='developer'&&<LocalWeekly/>}
       {tab==='home'?<ImageBackground source={require('../../assets/canopy-ui/home-park.png')} resizeMode="cover" style={{flex:1,minHeight:560,backgroundColor:'#f1faf5'}} imageStyle={{width:'100%',height:'100%'}}>
         <View style={{flex:1,padding:26,paddingTop:34,justifyContent:'space-between'}}>
           <View style={{gap:14}}><Text style={[S.title,{fontSize:29,lineHeight:41}]}>오늘도{ '\n'}지구를 위한{ '\n'}좋은 선택을 해볼까요?</Text><Text style={[S.note,{color:C.deep,lineHeight:23}]}>당신의 작은 이동이{ '\n'}더 큰 변화를 만들어요</Text></View>
@@ -48,6 +50,7 @@ export function ServiceScreen(p:ServiceProps){
       </ImageBackground>:<Fade key={tab}>
       {tab==='route'&&(busy?<Card><Text style={S.heading}>이미 여정을 기록 중이에요</Text><Button title="진행 중인 여정" onPress={()=>setTab('journey')}/></Card>:<RoutePlanner direction={direction} profile={p.profile} onChoose={choose} onFree={()=>choose(null)}/>)}
       {tab==='journey'&&<>
+        <LivePrediction tripId={p.tripId}/>
         <View style={[S.card,S.between,{zIndex:1}]}><View><Text style={S.heading}>{busy?'지금 이동 중이에요!':'출발할 준비 됐나요?'}</Text><Note>{busy?'현재 위치를 기록하고 있어요':'선택한 경로를 확인해주세요'}</Note></View><Icon name="navigate-circle-outline" size={30}/></View>
         <View style={{marginHorizontal:-20,marginTop:-28}}><JourneyMap height={400} points={busy?points:[]} route={p.route}/></View>
         <Card><Text style={S.heading}>{p.route?`${p.route.from.name} → ${p.route.to.name}`:'자유로운 여정'}</Text>
