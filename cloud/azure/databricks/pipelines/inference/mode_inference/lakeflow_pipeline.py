@@ -5,7 +5,7 @@ from __future__ import annotations
 from pyspark import pipelines as dp
 from pyspark.sql import SparkSession
 
-from mode_inference.configuration import ModeInferenceConfig
+from mode_inference.configuration import ModeInferenceConfig, state_timeout_ms
 from mode_inference.contracts import MODE_PREDICTIONS_SCHEMA_DDL
 from mode_inference.model_inference import infer_predictions
 from mode_inference.state import stateful_feature_rows
@@ -60,7 +60,7 @@ STATE_STORE_PARTITIONS = _optional_positive_int_conf("state_store_partitions", 2
 )
 def mode_predictions():
     observations = _spark().readStream.table(CONFIG.input_table)
-    features = stateful_feature_rows(observations)
+    features = stateful_feature_rows(observations, state_timeout_ms(CONFIG.state_timeout))
     return infer_predictions(
         features,
         _spark(),
