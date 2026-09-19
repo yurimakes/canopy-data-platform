@@ -122,7 +122,7 @@ def calculate_rewards(spark, campaign_id, week, policy):
             "campaign_id": campaign_id,
             "week": week,
             "status": status,
-            "payable": status != "not_eligible",
+            "payable": status != "not_eligible" and points is not None,
             "points": points,
             "reason": reason,
             "point_reason": point_reason,

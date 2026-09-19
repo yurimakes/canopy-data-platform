@@ -20,20 +20,43 @@ def _require_columns(df: DataFrame, required: set[str], name: str) -> None:
         raise ValueError(f"{name} missing required columns: {', '.join(missing)}")
 
 
-def _conversion_rate(policy: dict) -> float:
-    """A missing or unusable reward rate must stop calculation."""
-    rate = policy.get("point_formula", {}).get("conversion_rate")
-    if (
-        isinstance(rate, bool)
-        or not isinstance(rate, Real)
-        or not math.isfinite(rate)
-        or rate <= 0
-    ):
+def _conversion_rate(
+    policy: dict,
+    conversion_rate_override: str = "",
+) -> tuple[float | None, bool]:
+    """Resolve canonical rate first, then an optional development override."""
+    canonical_rate = policy.get("point_formula", {}).get("conversion_rate")
+    if canonical_rate is not None:
+        if (
+            isinstance(canonical_rate, bool)
+            or not isinstance(canonical_rate, Real)
+            or not math.isfinite(canonical_rate)
+            or canonical_rate <= 0
+        ):
+            raise ValueError(
+                "reward_policy.yaml point_formula.conversion_rate must be "
+                "a positive finite number when configured"
+            )
+        return float(canonical_rate), False
+
+    override = "" if conversion_rate_override is None else str(
+        conversion_rate_override
+    ).strip()
+    if not override:
+        return None, False
+    try:
+        parsed_override = float(override)
+    except (TypeError, ValueError) as exc:
         raise ValueError(
-            "reward_policy.yaml point_formula.conversion_rate must be "
-            "configured as a positive finite number before Reward Calculation"
+            "canopy.reward.conversion_rate_override must be a positive "
+            "finite number when configured"
+        ) from exc
+    if not math.isfinite(parsed_override) or parsed_override <= 0:
+        raise ValueError(
+            "canopy.reward.conversion_rate_override must be a positive "
+            "finite number when configured"
         )
-    return float(rate)
+    return parsed_override, True
 
 
 def _week_spine(weekly_gold: DataFrame) -> DataFrame:
@@ -112,16 +135,45 @@ def _classify_status(
 
 
 def _points_for_status(
-    status: Column, delta: Column, policy: dict, rate: float,
+    status: Column, delta: Column, policy: dict, rate: float | None,
 ) -> Column:
+    calculated = (
+        F.lit(None).cast("double") if rate is None
+        else F.greatest(delta, F.lit(0.0)) / F.lit(rate)
+    )
     return (
         F.when(status == "not_eligible", F.lit(None).cast("double"))
         .when(
             status == "no_change",
             F.lit(policy.get("points", {}).get("no_change")).cast("double"),
         )
-        .otherwise(F.greatest(delta, F.lit(0.0)) / F.lit(rate))
+        .otherwise(calculated)
     )
+
+
+def _point_reason_for_status(
+    status: Column,
+    delta: Column,
+    rate: float | None,
+    uses_dev_override: bool,
+) -> Column:
+    formula_reason = (
+        F.lit("point_formula.conversion_rate not configured in policy")
+        if rate is None else F.concat(
+            F.lit("max(delta="), delta.cast("string"),
+            F.lit(", 0) / conversion_rate("), F.lit(str(rate)), F.lit(")"),
+            F.lit(" [dev_override]" if uses_dev_override else ""),
+        )
+    )
+    return (
+        F.when(status == "not_eligible", F.lit("not_eligible"))
+        .when(status == "no_change", F.lit("policy.points.no_change"))
+        .otherwise(formula_reason)
+    )
+
+
+def _payable_for_status(status: Column, points: Column) -> Column:
+    return (status != "not_eligible") & points.isNotNull()
 
 
 def build_reward_calculation(
@@ -130,9 +182,13 @@ def build_reward_calculation(
     global_baseline: DataFrame,
     mission_response: DataFrame,
     policy: dict,
+    conversion_rate_override: str = "",
 ) -> DataFrame:
     """Build one reward row per current or ready-personal user and ISO week."""
-    rate = _conversion_rate(policy)
+    rate, uses_dev_override = _conversion_rate(
+        policy,
+        conversion_rate_override,
+    )
     _require_columns(
         weekly_gold,
         {"user_id", "campaign_id", "week", "trip_count", "total_kg_co2e", "total_distance_m"},
@@ -221,13 +277,11 @@ def build_reward_calculation(
         _points_for_status(F.col("status"), F.col("_delta"), policy, rate),
     ).withColumn(
         "point_reason",
-        F.when(F.col("status") == "not_eligible", F.lit("not_eligible"))
-        .when(F.col("status") == "no_change", F.lit("policy.points.no_change"))
-        .otherwise(
-            F.concat(
-                F.lit("max(delta="), F.col("_delta").cast("string"),
-                F.lit("), 0) / conversion_rate("), F.lit(str(rate)), F.lit(")"),
-            )
+        _point_reason_for_status(
+            F.col("status"),
+            F.col("_delta"),
+            rate,
+            uses_dev_override,
         ),
     )
     return scored.select(
@@ -235,7 +289,8 @@ def build_reward_calculation(
         F.col("campaign_id").cast("string").alias("campaign_id"),
         F.col("week").cast("string").alias("week"),
         F.col("status").cast("string").alias("status"),
-        (F.col("status") != "not_eligible").cast("boolean").alias("payable"),
+        _payable_for_status(F.col("status"), F.col("points"))
+        .cast("boolean").alias("payable"),
         F.col("points").cast("double").alias("points"),
         F.col("reason").cast("string").alias("reason"),
         F.col("point_reason").cast("string").alias("point_reason"),

@@ -23,6 +23,8 @@ resources:
       development: true
       configuration:
         spark.sql.session.timeZone: UTC
+        # DEV_ONLY: temporary E2E validation rate; this is not the official Reward policy.
+        canopy.reward.conversion_rate_override: "1.0"
       libraries:
         - file:
             path: ${workspace.file_path}/weekly_pipeline.py
