@@ -1,0 +1,11 @@
+resources:
+  jobs:
+    generic_event_ingestion_continuous:
+      name: canopy-generic-event-ingestion-continuous-${bundle.target}
+      continuous:
+        pause_status: PAUSED
+      max_concurrent_runs: 1
+      tasks:
+        - task_key: generic_event_ingestion
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.generic_event_ingestion_pipeline.id}
