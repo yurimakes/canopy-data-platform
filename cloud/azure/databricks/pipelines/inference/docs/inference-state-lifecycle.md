@@ -68,12 +68,17 @@ back into inference.
 
 ## Checkpoint migration note
 
-Enabling TTL changes the operator time mode from `NoTime` to
-`ProcessingTime`. Treat this as a stateful-query migration, not as an ordinary
-configuration-only restart. The replay pipeline should be the first validation
-target. If Databricks rejects reuse of the existing checkpoint/state, do not
-silently delete production state; establish an explicit reset/migration procedure
-first.
+Two checkpoint-breaking state migrations now exist on this development branch:
+
+1. TTL changed the operator time mode from `NoTime` to `ProcessingTime` and
+   wrapped state with TTL metadata.
+2. The state representation changed from one JSON `ValueState` to native
+   scalar metadata plus bounded `ListState` point history.
+
+Treat both as stateful-query migrations, not ordinary configuration restarts.
+Validate against replay first. If Databricks rejects reuse of an existing
+checkpoint/state, do not disable schema checking and do not silently reset
+production state; establish an explicit reset/migration procedure first.
 
 ## Current validation target
 
