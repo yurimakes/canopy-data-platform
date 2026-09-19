@@ -27,6 +27,9 @@ variables:
   mission_container_name:
     description: Runtime Cosmos container holding issued Mission Bundles
     default: ""
+  mission_profile_container_name:
+    description: Runtime Cosmos container holding latest Mission Profiles
+    default: ""
 
 resources:
   pipelines:
@@ -88,9 +91,32 @@ resources:
           run_if: ALL_SUCCESS
           pipeline_task:
             pipeline_id: ${resources.pipelines.weekly_analysis_pipeline.id}
-        - task_key: publish_reward_ledger
+        - task_key: materialize_mission_profile
           depends_on:
             - task_key: run_weekly_pipeline
+          run_if: ALL_SUCCESS
+          environment_key: mission_response_materialization
+          max_retries: 0
+          timeout_seconds: 600
+          spark_python_task:
+            python_file: ${workspace.file_path}/databricks/materialize_mission_profile_weekly.py
+            source: WORKSPACE
+            parameters:
+              - "--campaign-id"
+              - "{{job.parameters.campaign_id}}"
+              - "--week"
+              - "{{job.parameters.week}}"
+              - "--weekly-source"
+              - "table:${var.catalog}.${var.schema}.weekly_gold"
+              - "--service-credential-name"
+              - "${var.mission_service_credential_name}"
+              - "--profile-container"
+              - "${var.mission_profile_container_name}"
+              - "--endpoint"
+              - "https://cosmos-canopy-dev.documents.azure.com:443/"
+        - task_key: publish_reward_ledger
+          depends_on:
+            - task_key: materialize_mission_profile
           run_if: ALL_SUCCESS
           environment_key: reward_publish
           max_retries: 0

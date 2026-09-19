@@ -174,6 +174,7 @@ class MissionResponseWeeklyWiringStructureTest(unittest.TestCase):
             [
                 "materialize_mission_response_weekly",
                 "run_weekly_pipeline",
+                "materialize_mission_profile",
                 "publish_reward_ledger",
                 "refresh_weekly_after_reward",
                 "publish_weekly_cosmos",
@@ -185,7 +186,7 @@ class MissionResponseWeeklyWiringStructureTest(unittest.TestCase):
         )
         self.assertEqual(
             self.tasks["publish_reward_ledger"]["depends_on"],
-            [{"task_key": "run_weekly_pipeline"}],
+            [{"task_key": "materialize_mission_profile"}],
         )
 
     def test_mission_task_uses_job_scope_variable_and_cosmos_dependency(self):

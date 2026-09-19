@@ -418,21 +418,18 @@ def behavior_change():
     )
 
 
-@dp.temporary_view(comment="계산 미연결. 기존 미션 프로필 Gold 출력 컬럼")
+@dp.temporary_view(comment="Canonical Mission Profile Gold projection")
 def weekly_user_profile():
-    weekly_df = spark.read.table("dbw_canopy_dev.weekly_analysis_scaffold.weekly_gold")
-    
-    mission_response_path = os.environ.get(
-        "CANOPY_GOLD_MISSION_RESPONSE_PATH",
-        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_response_weekly/"
+    mission_profile_path = os.environ.get(
+        "CANOPY_GOLD_MISSION_PROFILE_PATH",
+        "abfss://curated@stcanopydev5dt.dfs.core.windows.net/gold/mission_profile/",
     )
-    
-    try:
-        mission_df = spark.read.format("delta").load(mission_response_path)
-    except Exception:
-        mission_df = None
-
-    return build_weekly_user_profile(weekly_df=weekly_df, mission_df=mission_df)
+    profile_df = _read_optional_delta(
+        mission_profile_path,
+        PROFILE_SCHEMA,
+        "mission_profile",
+    )
+    return build_weekly_user_profile(profile_df)
 
 
 @dp.materialized_view(schema=MISSION_BUNDLE_SCHEMA, comment="계산 미연결. 기존 mission_bundle.v1 출력 컬럼")

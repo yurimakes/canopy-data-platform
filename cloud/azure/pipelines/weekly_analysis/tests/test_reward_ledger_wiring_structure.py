@@ -153,7 +153,9 @@ class RewardLedgerWiringStructureTest(unittest.TestCase):
         self.assertEqual(
             task_order,
             [
+                "materialize_mission_response_weekly",
                 "run_weekly_pipeline",
+                "materialize_mission_profile",
                 "publish_reward_ledger",
                 "refresh_weekly_after_reward",
                 "publish_weekly_cosmos",
@@ -161,7 +163,7 @@ class RewardLedgerWiringStructureTest(unittest.TestCase):
         )
         self.assertEqual(
             self.tasks["publish_reward_ledger"]["depends_on"],
-            [{"task_key": "run_weekly_pipeline"}],
+            [{"task_key": "materialize_mission_profile"}],
         )
         refresh = self.tasks["refresh_weekly_after_reward"]
         self.assertEqual(
