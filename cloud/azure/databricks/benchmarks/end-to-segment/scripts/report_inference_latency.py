@@ -191,11 +191,12 @@ def main() -> None:
             "features_to_prediction_ms",
             "visible_to_prediction_ms",
             (
-                F.col("s.predicted_at").cast("double")
-                - F.col("t.parsed_at").cast("double")
-            )
-            .multiply(1000.0)
-            .alias("trip_end_to_prediction_ms"),
+                (
+                    F.col("s.predicted_at").cast("double")
+                    - F.col("t.parsed_at").cast("double")
+                )
+                * 1000.0
+            ).alias("trip_end_to_prediction_ms"),
         )
         .collect()
     )
