@@ -40,6 +40,7 @@ from helpers.spark_baseline import (
     select_personal_ready_users,
     build_global_eligibility,
     build_global_baseline as build_global_baseline_df,
+    build_baseline_gold as build_baseline_gold_df,
 )
 from baseline_eligibility import (
     load_eligibility_policy,
@@ -404,11 +405,17 @@ def global_baseline():
     )
 
 
-@dp.materialized_view(schema=BASELINE_GOLD_SCHEMA, comment="계산 미연결. 개인과 Global 통합 형태는 컬럼 초안")
+@dp.materialized_view(
+    schema=BASELINE_GOLD_SCHEMA,
+    comment="Personal 및 Global Baseline을 user/campaign/week 단위로 함께 보존",
+)
 def baseline_gold():
-    # 개인 결과와 Global 결과의 저장 형식 지정. 서로 다른 컬럼의 단순 합치기 제외
-    # 아래 빈 결과 반환 부분을 계산 코드와 return 결과로 교체
-    return empty_result(BASELINE_GOLD_SCHEMA, "personal_baseline", "global_baseline")
+    return build_baseline_gold_df(
+        personal=spark.read.table("personal_baseline"),
+        global_baseline=spark.read.table("global_baseline"),
+        personal_fields=T.StructType.fromDDL(PERSONAL_SCHEMA).fieldNames(),
+        global_fields=T.StructType.fromDDL(GLOBAL_SCHEMA).fieldNames(),
+    )
 
 
 @dp.temporary_view(comment="Weekly Gold 기반 Behavior Change 관측 KPI")
