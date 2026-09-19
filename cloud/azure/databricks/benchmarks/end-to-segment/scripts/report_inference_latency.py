@@ -1,0 +1,243 @@
+"""Wait for replay inference completion and report inference-stage latency only."""
+
+from __future__ import annotations
+
+import argparse
+import time
+
+from pyspark.sql import SparkSession, functions as F
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument("--catalog", required=True)
+    p.add_argument("--schema", required=True)
+    p.add_argument("--trip-ended-table", required=True)
+    p.add_argument("--prediction-table", required=True)
+    p.add_argument("--arrival-table", required=True)
+    p.add_argument("--run-id", required=True)
+    p.add_argument("--users", type=int, required=True)
+    p.add_argument("--timeout-seconds", type=int, default=180)
+    p.add_argument("--poll-seconds", type=float, default=1.0)
+    return p.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
+
+    trip_end_name = f"{args.catalog}.{args.schema}.{args.trip_ended_table}"
+    predictions_name = f"{args.catalog}.{args.schema}.{args.prediction_table}"
+    arrivals_name = f"{args.catalog}.{args.schema}.{args.arrival_table}"
+    prefix = f"replay:{args.run_id}:trip:"
+
+    trip_ends = (
+        spark.table(trip_end_name)
+        .where(F.col("trip_id").startswith(prefix))
+        .select("trip_id", "parsed_at", "expected_last_sequence")
+    )
+
+    deadline = time.monotonic() + args.timeout_seconds
+    completed_trips = 0
+    while time.monotonic() < deadline:
+        max_predictions = (
+            spark.table(predictions_name)
+            .where(F.col("trip_id").startswith(prefix))
+            .groupBy("trip_id")
+            .agg(F.max("sequence").alias("max_predicted_sequence"))
+        )
+        completed_trips = (
+            trip_ends.alias("t")
+            .join(max_predictions.alias("p"), "trip_id", "left")
+            .where(
+                F.col("p.max_predicted_sequence")
+                >= F.col("t.expected_last_sequence")
+            )
+            .select("trip_id")
+            .distinct()
+            .count()
+        )
+        if completed_trips >= args.users:
+            break
+        print(
+            "INFERENCE_WAIT",
+            {"completed_trips": completed_trips, "expected": args.users},
+        )
+        time.sleep(args.poll_seconds)
+
+    if completed_trips < args.users:
+        raise TimeoutError(
+            f"timed out with {completed_trips}/{args.users} inference-complete trips "
+            f"for {args.run_id}"
+        )
+
+    prediction_rows = (
+        spark.table(predictions_name)
+        .where(F.col("trip_id").startswith(prefix))
+        .select(
+            "event_id",
+            "trip_id",
+            "sequence",
+            "features_processed_at",
+            "predicted_at",
+        )
+    )
+
+    arrivals = (
+        spark.table(arrivals_name)
+        .where(F.col("run_id") == args.run_id)
+        .select(
+            "event_id",
+            "trip_id",
+            "sequence",
+            "replay_visible_at",
+        )
+    )
+
+    stage_rows = (
+        arrivals.alias("a")
+        .join(
+            prediction_rows.alias("p"),
+            F.col("a.event_id") == F.col("p.event_id"),
+            "inner",
+        )
+        .select(
+            F.col("a.trip_id").alias("trip_id"),
+            F.col("a.sequence").alias("sequence"),
+            F.col("a.replay_visible_at").alias("replay_visible_at"),
+            F.col("p.features_processed_at").alias("features_processed_at"),
+            F.col("p.predicted_at").alias("predicted_at"),
+        )
+        .withColumn(
+            "visible_to_features_ms",
+            (
+                F.col("features_processed_at").cast("double")
+                - F.col("replay_visible_at").cast("double")
+            )
+            * 1000.0,
+        )
+        .withColumn(
+            "features_to_prediction_ms",
+            (
+                F.col("predicted_at").cast("double")
+                - F.col("features_processed_at").cast("double")
+            )
+            * 1000.0,
+        )
+        .withColumn(
+            "visible_to_prediction_ms",
+            (
+                F.col("predicted_at").cast("double")
+                - F.col("replay_visible_at").cast("double")
+            )
+            * 1000.0,
+        )
+    )
+
+    stage_summary = stage_rows.agg(
+        F.count("*").alias("rows"),
+        F.avg("visible_to_features_ms").alias("avg_visible_to_features_ms"),
+        F.expr("percentile_approx(visible_to_features_ms, 0.50)").alias(
+            "p50_visible_to_features_ms"
+        ),
+        F.expr("percentile_approx(visible_to_features_ms, 0.95)").alias(
+            "p95_visible_to_features_ms"
+        ),
+        F.max("visible_to_features_ms").alias("max_visible_to_features_ms"),
+        F.avg("features_to_prediction_ms").alias(
+            "avg_features_to_prediction_ms"
+        ),
+        F.expr(
+            "percentile_approx(features_to_prediction_ms, 0.50)"
+        ).alias("p50_features_to_prediction_ms"),
+        F.expr(
+            "percentile_approx(features_to_prediction_ms, 0.95)"
+        ).alias("p95_features_to_prediction_ms"),
+        F.max("features_to_prediction_ms").alias(
+            "max_features_to_prediction_ms"
+        ),
+        F.avg("visible_to_prediction_ms").alias(
+            "avg_visible_to_prediction_ms"
+        ),
+        F.expr(
+            "percentile_approx(visible_to_prediction_ms, 0.50)"
+        ).alias("p50_visible_to_prediction_ms"),
+        F.expr(
+            "percentile_approx(visible_to_prediction_ms, 0.95)"
+        ).alias("p95_visible_to_prediction_ms"),
+        F.max("visible_to_prediction_ms").alias(
+            "max_visible_to_prediction_ms"
+        ),
+    ).collect()[0]
+
+    final_sequence_stage = (
+        stage_rows.alias("s")
+        .join(
+            trip_ends.select(
+                "trip_id",
+                "parsed_at",
+                F.col("expected_last_sequence").alias("final_sequence"),
+            ).alias("t"),
+            (F.col("s.trip_id") == F.col("t.trip_id"))
+            & (F.col("s.sequence") == F.col("t.final_sequence")),
+            "inner",
+        )
+        .select(
+            F.col("s.trip_id").alias("trip_id"),
+            "replay_visible_at",
+            "features_processed_at",
+            "predicted_at",
+            "visible_to_features_ms",
+            "features_to_prediction_ms",
+            "visible_to_prediction_ms",
+            (
+                F.col("s.predicted_at").cast("double")
+                - F.col("t.parsed_at").cast("double")
+            )
+            .multiply(1000.0)
+            .alias("trip_end_to_prediction_ms"),
+        )
+        .collect()
+    )
+
+    summary = {
+        name: (
+            int(stage_summary[name])
+            if name == "rows"
+            else float(stage_summary[name])
+        )
+        for name in stage_summary.__fields__
+    }
+
+    print(
+        "INFERENCE_ONLY_REPORT",
+        {
+            "run_id": args.run_id,
+            "completed_trips": completed_trips,
+            "all_prediction_rows": summary,
+            "final_sequence_per_trip": {
+                r["trip_id"]: {
+                    "replay_visible_at": str(r["replay_visible_at"]),
+                    "features_processed_at": str(r["features_processed_at"]),
+                    "predicted_at": str(r["predicted_at"]),
+                    "visible_to_features_ms": float(
+                        r["visible_to_features_ms"]
+                    ),
+                    "features_to_prediction_ms": float(
+                        r["features_to_prediction_ms"]
+                    ),
+                    "visible_to_prediction_ms": float(
+                        r["visible_to_prediction_ms"]
+                    ),
+                    "trip_end_to_prediction_ms": float(
+                        r["trip_end_to_prediction_ms"]
+                    ),
+                }
+                for r in final_sequence_stage
+            },
+        },
+    )
+
+
+if __name__ == "__main__":
+    main()
