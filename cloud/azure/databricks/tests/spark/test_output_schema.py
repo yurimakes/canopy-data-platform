@@ -16,7 +16,7 @@ def test_feature_output_schema_is_accepted_by_spark():
     spark = SparkSession.builder.master("local[1]").appName("pipeline-b-schema-test").getOrCreate()
     try:
         schema = StructType.fromDDL(FEATURE_OUTPUT_SCHEMA_DDL)
-        assert [field.name for field in schema.fields][5:] == list(FEATURE_NAMES)
+        assert [field.name for field in schema.fields][6:] == list(FEATURE_NAMES)
         assert all(not field.nullable for field in schema.fields)
     finally:
         spark.stop()
