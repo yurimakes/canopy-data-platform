@@ -1,3 +1,4 @@
+import {PopulationPreview} from './PopulationPreview';
 import {localAction} from '../communityClient';
 import React,{useRef,useState} from 'react';
 import {Modal,Platform,Pressable,ScrollView,Text,View} from 'react-native';
@@ -46,7 +47,7 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree}:{pro
   async function search(){if(!from||!to||busy)return;setBusy(true);setError('');setSelected(null);setRoutes(null);try{
     const extra=Constants.expoConfig?.extra??{},url=routeApiUrl(extra);
     const token=extra.tripAccessToken,key=extra.tripFunctionKey||extra.gpsFunctionKey;
-    if(extra.localOnly){const r=await localAction('/journey/quote',{from,to,direction});setRoutes([r]);return;}
+    if(extra.localOnly){const r=await localAction('/journey/quote',{from,to,direction});setRoutes([r]);setSelected(r);return;}
     const r=await searchRoutes(url,{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})},from,to);setRoutes(r);
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   return <>
@@ -64,14 +65,14 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree}:{pro
     {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.minutes}분 경로 상세보기`} onPress={()=>setSelected(r)} style={[S.card,{gap:12,boxShadow:'0 4px 16px #174c3909'}]}>
       <Text style={[S.metric,{fontSize:26,color:C.ink}]}>{r.minutes}분</Text>
       <Note>{km(r.distance_m)} / {r.fare==null?'요금 정보 없음':`${r.fare.toLocaleString()}원`}</Note>
-      {r.expectedKg!==undefined&&<View style={{backgroundColor:C.mint,borderRadius:16,padding:14,gap:6}}><Text style={S.label}>Population 기준 {(r.expectedKg*1000).toFixed(0)} gCO₂e</Text><Note>이 기준보다 적게 배출하면 여정 보상 대상이에요.</Note></View>}
+      {r.expectedKg!==undefined&&<PopulationPreview route={r}/>}
       {r.provider==='local-test'&&<Note>오프라인 직선거리 기준 · 길 안내 경로가 아닙니다. 시간은 도보 참고값입니다.</Note>}
       <RouteStrip route={r}/><View style={S.between}><Text numberOfLines={1} style={[S.note,{flex:1}]}>{r.legs.filter(l=>l.mode!=='WALK').map(l=>l.name).join(' / ')||'도보'}</Text><Text style={S.pill}>경로 상세보기</Text></View>
     </Pressable>)}
     <Button title="경로 없이 자유롭게 기록하기" quiet onPress={onFree}/>
     <Modal visible={!!selected} animationType="slide" onRequestClose={()=>setSelected(null)}><SafeAreaView style={S.root}>
       <View style={[S.row,{padding:16}]}><Pressable accessibilityRole="button" accessibilityLabel="경로 목록으로" onPress={()=>setSelected(null)} style={{padding:8}}><Icon name="arrow-back"/></Pressable><Text style={S.heading}>경로 상세보기</Text></View>
-      {selected&&<ScrollView contentContainerStyle={S.scroll}><Card><Text style={[S.metric,{fontSize:28}]}>{selected.minutes}분</Text><Note>{km(selected.distance_m)} / {selected.fare==null?'요금 정보 없음':`${selected.fare.toLocaleString()}원`}</Note><RouteStrip route={selected}/></Card>
+      {selected&&<ScrollView contentContainerStyle={S.scroll}>{selected.expectedKg!==undefined&&<PopulationPreview route={selected}/>}<Card><Text style={[S.metric,{fontSize:28}]}>{selected.minutes}분</Text><Note>{km(selected.distance_m)} / {selected.fare==null?'요금 정보 없음':`${selected.fare.toLocaleString()}원`}</Note><RouteStrip route={selected}/></Card>
         <View style={{borderRadius:16,overflow:'hidden'}}><JourneyMap points={[]} route={selected}/></View>
         <Text style={S.label}>상세 이동 경로</Text><Card>
           <View style={S.row}><Icon name="location-outline"/><Text style={S.label}>{selected.from.name} 출발</Text></View>

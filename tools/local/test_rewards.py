@@ -93,6 +93,8 @@ def test_real_ktdb_quote(tmp_path):
     record=store(tmp_path).read_item(quote['id'])
     assert record['model_version'].startswith('ktdb-population-')
     assert sum(record['probabilities'].values())==pytest.approx(1)
+    assert quote['modeProbabilities']==record['probabilities']
+    assert all(0<=p<=1 for p in quote['modeProbabilities'].values())
     assert len(record['features'])==19
     assert 0<quote['expectedKg']<1
     assert 'fixture' not in record['model_version']

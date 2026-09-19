@@ -26,7 +26,7 @@ def test_quote(data,user,route):
         'development_only':True,'model_version':'fixture-population-v1','policy':extension_policy(),
         'expires_at':(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()}
     store(data).create_item(quote)
-    return {**route,'id':quote['id'],'quoteId':quote['id'],'expectedKg':quote['expected_kg'],'baselineSource':quote['source'],
+    return {**route,'id':quote['id'],'quoteId':quote['id'],'expectedKg':quote['expected_kg'],'baselineSource':quote['source'],'modeProbabilities':quote.get('probabilities',{}),
         'provider':'local-test','searchedAt':datetime.now(timezone.utc).isoformat(),'fare':None}
 
 
@@ -42,7 +42,7 @@ def route_quote(data,user,origin,destination,direction='outbound'):
         'route':route,'direction':direction,'development_only':True,'policy':extension_policy(),
         'expires_at':(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()}
     store(data).create_item(quote)
-    return {**route,'id':quote['id'],'quoteId':quote['id'],'expectedKg':quote['expected_kg'],'baselineSource':quote['source'],
+    return {**route,'id':quote['id'],'quoteId':quote['id'],'expectedKg':quote['expected_kg'],'baselineSource':quote['source'],'modeProbabilities':quote.get('probabilities',{}),
         'provider':'local-test','searchedAt':datetime.now(timezone.utc).isoformat(),'fare':None}
 
 
