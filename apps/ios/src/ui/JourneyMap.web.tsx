@@ -1,3 +1,4 @@
+import {bearing} from '../journeyGeometry';
 import React from 'react';
 import {View,Text} from 'react-native';
 import type {MapProps} from './JourneyMap';
@@ -25,9 +26,9 @@ export default function JourneyMap({points,route,height=310,places=[],selectedPl
       {route&&<polyline points={line([route.from,route.to])} fill="none" stroke="#799b92" strokeWidth={3} strokeDasharray="8 8"/>}
       {points.length>1&&<polyline points={line(points)} fill="none" stroke={C.green} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round"/>}
       {route&&marker(route.from,'출발',C.green,'from')}{route&&marker(route.to,'도착','#5072b4','to')}
-      {points.length>0&&marker(points[points.length-1],'최근 GPS',C.green,'gps')}
+      {points.length>0&&(()=>{const last=points[points.length-1],[x,y]=xy(last),angle=points.length>1?bearing(points[points.length-2],last):0;return <g transform={`translate(${x},${y})`}><circle r={25} fill="#10845422"/><circle r={17} fill="white"/><path d="M0 -12 L9 10 L0 6 L-9 10 Z" fill={C.green} transform={`rotate(${angle})`}/></g>;})()}
       {places.map((p,i)=>marker(p,places.length===1?p.name:`${i+1}`,i===selectedPlace?C.green:'#79918a','place'+i,()=>onSelectPlace?.(i)))}
     </svg>
-    <View style={{position:'absolute',bottom:8,alignSelf:'center',borderRadius:14,paddingHorizontal:12,paddingVertical:5,backgroundColor:'#ffffffed'}}><Text style={[S.note,{fontSize:11}]}>오프라인 위치 미리보기 · 도로 지도 아님</Text></View>
+    <View style={{position:'absolute',top:8,alignSelf:'center',borderRadius:14,paddingHorizontal:12,paddingVertical:5,backgroundColor:'#ffffffed'}}><Text style={[S.note,{fontSize:11}]}>오프라인 위치 미리보기 · 도로 지도 아님</Text></View>
   </View>;
 }

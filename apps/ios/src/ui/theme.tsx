@@ -7,7 +7,7 @@ export function Button({title,onPress,disabled=false,quiet=false,danger=false,bu
 export function Field({label,...props}:TextInputProps&{label:string}){return <View style={{gap:8}}><Text style={S.label}>{label}</Text><TextInput {...props} accessibilityLabel={label} placeholderTextColor="#8a9790" style={[S.input,props.style]}/></View>;}
 export function Card({children}:{children:React.ReactNode}){return <View style={S.card}>{children}</View>;}
 export function Note({children,error=false}:{children:React.ReactNode;error?:boolean}){return <Text accessibilityRole={error?'alert':undefined} style={[S.note,error&&{color:C.red}]}>{children}</Text>;}
-export function Stat({label,value}:{label:string;value:string}){return <View style={{flex:1,gap:8}}><Text style={S.note}>{label}</Text><Text style={S.metric}>{value}</Text></View>;}
+export function Stat({label,value}:{label:string;value:string}){return <View style={{flex:1,minWidth:0,gap:8}}><Text style={S.note}>{label}</Text><Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={.7} style={S.metric}>{value}</Text></View>;}
 export function Fade({children,delay=0}:{children:React.ReactNode;delay?:number}) {
   const progress=useRef(new Animated.Value(0)).current;
   useEffect(()=>{let alive=true;let animation:Animated.CompositeAnimation|undefined;
@@ -28,10 +28,10 @@ export const S=StyleSheet.create({
   row:{flexDirection:'row',alignItems:'center',gap:12},between:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
   title:{fontSize:26,lineHeight:35,fontWeight:'800',letterSpacing:-1,color:C.deep},heading:{fontSize:18,lineHeight:25,fontWeight:'700',color:C.ink},
   label:{fontSize:14,fontWeight:'600',color:C.ink},note:{fontSize:13,lineHeight:21,color:C.muted},metric:{fontSize:22,fontWeight:'700',color:C.deep},
-  card:{backgroundColor:C.white,borderRadius:24,padding:22,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
+  card:{backgroundColor:C.white,borderRadius:26,padding:20,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
   input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:48,borderRadius:28,backgroundColor:C.green,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
-  buttonText:{fontSize:14,fontWeight:'600',color:C.white},quiet:{backgroundColor:C.mint},
+  buttonText:{fontSize:15,fontWeight:'700',color:C.white},quiet:{backgroundColor:C.mint},
   pill:{color:C.green,backgroundColor:C.mint,paddingHorizontal:12,paddingVertical:6,borderRadius:12,fontSize:12,fontWeight:'600'},
   divider:{height:1,backgroundColor:C.line},link:{fontSize:14,color:C.green,fontWeight:'600'},
 });

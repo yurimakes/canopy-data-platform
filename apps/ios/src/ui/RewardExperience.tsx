@@ -10,18 +10,18 @@ import {km} from '../service';
 export function RewardCelebration({amount,title,onClose}:{amount:number;title:string;onClose():void}){
   const progress=useRef(new Animated.Value(0)).current;
   const [count,setCount]=useState(0);
-  useEffect(()=>{let alive=true;const listener=progress.addListener(({value})=>setCount(Math.round(value*amount)));
+  useEffect(()=>{let alive=true;const listener=progress.addListener(({value})=>setCount(Math.round(value*amount*100)/100));
     let animation:Animated.CompositeAnimation|undefined;
     void AccessibilityInfo.isReduceMotionEnabled().then(reduce=>{if(!alive)return;if(reduce)progress.setValue(1);else{
       animation=Animated.timing(progress,{toValue:1,duration:1400,easing:Easing.out(Easing.cubic),useNativeDriver:false});animation.start();
     }}).catch(()=>progress.setValue(1));return()=>{alive=false;animation?.stop();progress.removeListener(listener);};},[amount]);
   return <Modal transparent visible animationType="fade" onRequestClose={onClose}><ScrollView style={{flex:1,backgroundColor:'#092c26d9'}} contentContainerStyle={{flexGrow:1,justifyContent:'center',padding:24}}>
-    <View style={{backgroundColor:C.paper,borderRadius:32,padding:26,gap:16,alignItems:'center',width:'100%',maxWidth:420,alignSelf:'center'}}>
+    <View style={{backgroundColor:C.paper,borderRadius:32,padding:20,gap:16,alignItems:'center',width:'100%',maxWidth:420,alignSelf:'center'}}>
       <Text style={S.pill}>REWARD RECEIVED</Text>
       <View style={{height:230,width:'100%',justifyContent:'center'}}><CanopyMascot pose="complete" height={190}/>
-        <Animated.View style={{position:'absolute',right:15,bottom:8,backgroundColor:'#ffdf86',padding:18,borderRadius:60,borderWidth:4,borderColor:'#fff4c7',transform:[{perspective:650},{rotateY:progress.interpolate({inputRange:[0,1],outputRange:['-270deg','0deg']})},{translateY:progress.interpolate({inputRange:[0,1],outputRange:[45,0]})},{scale:progress.interpolate({inputRange:[0,.8,1],outputRange:[.45,1.1,1]})}]}}><Icon name="leaf" size={42} color="#946718"/></Animated.View>
+        <View style={{position:'absolute',right:0,bottom:0,width:110,height:110}}><CanopyMascot pose="coin" height={110}/></View>
       </View>
-      <Text style={[S.title,{textAlign:'center'}]}>작은 실천이 쌓였어요!</Text><Text style={[S.metric,{fontSize:42,color:C.green}]}>+{count.toLocaleString()} T</Text>
+      <Text style={[S.title,{textAlign:'center'}]}>작은 실천이 쌓였어요!</Text><Text style={[S.metric,{fontSize:42,color:C.green}]}>+{count.toLocaleString('ko-KR',{maximumFractionDigits:2})} T</Text>
       <Text style={[S.label,{textAlign:'center'}]}>{title}</Text><Note>지갑에 적립을 완료했어요.</Note>
       <View style={{width:'100%',marginTop:6}}><Button title="좋아요!" onPress={onClose}/></View>
     </View>

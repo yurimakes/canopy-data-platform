@@ -1,3 +1,5 @@
+import {HomeDashboard} from './HomeDashboard';
+import {ActiveJourney} from './ActiveJourney';
 import {JourneyComplete} from './RewardExperience';
 import {CanopyMascot} from './CanopyMascot';
 import Constants from 'expo-constants';
@@ -18,7 +20,10 @@ export type ServiceProps=MeasurementProps&{profile:Profile;trips:Summary[];event
   onCollectionMode(mode:'user'|'developer'):void;onProfile(p:Profile):Promise<void>;onRoute(p:PlannedRoute|null):void;onSelect(id:string):void;preview?:boolean;baseline?:RemotePanel<BaselineView>;missions?:RemotePanel<MissionView>;ranking?:RemotePanel<RankingView>;rewards?:RemotePanel<RewardView>;onRefreshCommunity?:()=>void};
 type Tab='home'|'route'|'journey'|'history'|'profile'|'missions'|'ranking'|'result'|'rewards'|'preview'|'baseline'|'tripdetail'|'notifications';
 export function ServiceScreen(p:ServiceProps){
-  const [tab,setTab]=useState<Tab>(p.active?'journey':'home'),[tools,setTools]=useState(p.collectionMode==='developer'),[stopOpen,setStopOpen]=useState(false),[edit,setEdit]=useState(false),[logout,setLogout]=useState(false);
+  const [tab,updateTab]=useState<Tab>(p.active?'journey':'home'),[tools,setTools]=useState(p.collectionMode==='developer'),[stopOpen,setStopOpen]=useState(false),[edit,setEdit]=useState(false),[logout,setLogout]=useState(false);
+  const navigation=useRef<Tab[]>([]),currentTab=useRef<Tab>(tab);
+  function setTab(next:Tab){if(currentTab.current===next)return;navigation.current.push(currentTab.current);if(navigation.current.length>50)navigation.current.shift();currentTab.current=next;updateTab(next);}
+  function goBack(){const next=navigation.current.pop()??'home';currentTab.current=next;updateTab(next);}
   const [direction,setDirection]=useState<'outbound'|'return'>('outbound');
   const [draft,setDraft]=useState(p.profile),[saveError,setSaveError]=useState(''),[saving,setSaving]=useState(false);
   const wasActive=useRef(!!p.active);
@@ -36,32 +41,16 @@ export function ServiceScreen(p:ServiceProps){
   if(tools&&p.profile.role==='developer')return <MeasurementScreen {...p} onBack={()=>{p.onCollectionMode('user');setTools(false);}}/>;
   return <SafeAreaView style={S.root} edges={['top','bottom']}>
     <View style={[S.between,{paddingHorizontal:20,minHeight:58,backgroundColor:tab==='home'?C.paper:C.white}]}>
-      <View style={S.row}>{tab==='home'?<Icon name="leaf" size={25}/>:!['missions','rewards','ranking','profile'].includes(tab)?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={()=>setTab('home')} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}<Text style={[S.heading,tab==='home'&&{fontSize:24,color:C.green}]}>{title[tab]}</Text></View>
+      <View style={S.row}>{tab==='home'?<Icon name="leaf" size={25}/>:navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}<Text style={[S.heading,tab==='home'&&{fontSize:24,color:C.green}]}>{title[tab]}</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>
     </View>
-    <ScrollView key={tab} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:S.scroll} showsVerticalScrollIndicator={false}>
-      {Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · PC에서 처리 · Azure 미사용</Text></View>}
-      {tab==='home'&&p.profile.role==='developer'&&<LocalWeekly/>}
-      {tab==='home'?<ImageBackground source={require('../../assets/canopy-ui/home-park.png')} resizeMode="cover" style={{flex:1,minHeight:560,backgroundColor:'#f1faf5'}} imageStyle={{width:'100%',height:'100%'}}>
-        <View style={{flex:1,padding:26,paddingTop:34,justifyContent:'space-between'}}>
-          <View style={{gap:14}}><Text style={[S.title,{fontSize:29,lineHeight:41}]}>오늘도{ '\n'}지구를 위한{ '\n'}좋은 선택을 해볼까요?</Text><Text style={[S.note,{color:C.deep,lineHeight:23}]}>당신의 작은 이동이{ '\n'}더 큰 변화를 만들어요</Text></View>
-          <CanopyMascot height={250}/>
-          <View style={{gap:12,paddingBottom:10}}>{([['outbound','출근 길찾기','leaf-outline'],['return','퇴근 길찾기','home-outline']] as const).map(([value,label,icon])=><Pressable key={value} accessibilityRole="button" onPress={()=>{setDirection(value);setTab(busy?'journey':'route');}} style={[S.between,{backgroundColor:C.white,borderRadius:30,paddingHorizontal:22,minHeight:57,boxShadow:'0 4px 18px #174c3910'}]}><View style={S.row}><Icon name={icon}/><Text style={[S.label,{fontSize:16}]}>{busy?'진행 중인 여정 보기':label}</Text></View><Icon name="chevron-forward" size={17}/></Pressable>)}</View>
-        </View>
-      </ImageBackground>:<Fade key={tab}>
+    <ScrollView key={tab} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
+      {tab==='home'&&Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · PC에서 처리 · Azure 미사용</Text></View>}
+
+      {tab==='home'?<><HomeDashboard p={p} busy={busy} onRoute={d=>{setDirection(d);setTab(busy?'journey':'route');}} onResult={()=>setTab('result')} onBaseline={()=>setTab('baseline')} onRewards={()=>setTab('rewards')}/>{p.profile.role==='developer'&&<View style={{padding:20}}><LocalWeekly/></View>}</>:<Fade key={tab}>
       {tab==='route'&&(busy?<Card><Text style={S.heading}>이미 여정을 기록 중이에요</Text><Button title="진행 중인 여정" onPress={()=>setTab('journey')}/></Card>:<RoutePlanner direction={direction} profile={p.profile} onChoose={choose} onFree={()=>choose(null)}/>)}
       {tab==='journey'&&<>
-        <LivePrediction tripId={p.tripId}/>
-        <View style={[S.card,S.between,{zIndex:1}]}><View><Text style={S.heading}>{busy?'지금 이동 중이에요!':'출발할 준비 됐나요?'}</Text><Note>{busy?'현재 위치를 기록하고 있어요':'선택한 경로를 확인해주세요'}</Note></View><Icon name="navigate-circle-outline" size={30}/></View>
-        <View style={{marginHorizontal:-20,marginTop:-28}}><JourneyMap height={400} points={busy?points:[]} route={p.route}/></View>
-        <Card><Text style={S.heading}>{p.route?`${p.route.from.name} → ${p.route.to.name}`:'자유로운 여정'}</Text>
-          {p.route&&<><Note>선택한 경로 / 예상 {p.route.minutes}분</Note><RouteStrip route={p.route}/></>}
-          <View style={S.row}><Stat label="기록 시간" value={busy?p.duration:'00:00'}/><Stat label="GPS 추정 거리" value={busy?km(measured):'0.00 km'}/></View>
-          <View style={S.divider}/><View style={S.row}><Stat label="저장된 위치" value={`${busy?p.count:0}개`}/><Stat label="전송 대기" value={`${p.pending??0}개`}/></View>
-          <Note>실시간 거리는 GPS로 추정한 값입니다. 최종 거리는 서버 처리 후 확정됩니다.</Note>
-          {arrival&&p.active&&<Note>목적지 근처에 도착했어요. 이동을 마쳤다면 여정 종료를 눌러주세요.</Note>}
-          {p.foregroundOnly&&<Note>Expo Go에서는 화면을 켜둔 상태로 측정해주세요.</Note>}
-        </Card>
+        <ActiveJourney p={p} direction={direction}/>
         {!!p.error&&<Card><Note error>{p.error}</Note><Button title="위치 설정 열기" quiet onPress={()=>p.onSettings?.()}/></Card>}
         {!!p.uploadError&&<Card><Text style={S.label}>기록은 휴대폰에 보관 중이에요</Text><Note>연결이 복구되면 자동 전송합니다.</Note><Button title="전송 다시 시도" quiet onPress={()=>p.onRetry?.()}/></Card>}
         {p.active&&!p.foregroundOnly&&!p.backgroundRunning&&<Button title="위치 기록 재개" quiet onPress={()=>p.onResume?.()}/>}
@@ -83,7 +72,7 @@ export function ServiceScreen(p:ServiceProps){
       {tab==='history'&&<><Text style={S.title}>내가 남긴 발자취</Text><Note>이 기기의 현재 프로필로 기록한 여정입니다.</Note>
         <View style={S.row}>{([['all','전체'],['user','사용자'],['developer','개발자']] as const).filter(([id])=>p.profile.role==='developer'||id==='all').map(([id,label])=><Button key={id} title={label} quiet={historyFilter!==id} onPress={()=>setHistoryFilter(id)}/>)}</View>
         {!filteredTrips.length&&<Card><Icon name="footsteps-outline" size={36}/><Text style={S.heading}>첫 여정을 기다리고 있어요</Text><Button title="여정 준비하기" onPress={()=>setTab('route')}/></Card>}
-        {filteredTrips.map(t=><Pressable key={t.trip_id} accessibilityRole="button" disabled={busy} onPress={()=>{p.onSelect(t.trip_id);setTab('result');}} style={S.card}><View style={S.between}><Text style={S.heading}>{new Date(t.started_at).toLocaleDateString('ko-KR')}</Text><Icon name="chevron-forward" size={18}/></View><Note>{new Date(t.started_at).toLocaleTimeString('ko-KR')} / GPS {t.gps_count}개</Note><Text style={S.pill}>{t.status==='recording'?'기록 중':t.status==='interrupted'?'기록 중단':'기록 종료'}</Text></Pressable>)}
+        {filteredTrips.map(t=><Pressable key={t.trip_id} accessibilityRole="button" disabled={busy} onPress={()=>{p.onSelect(t.trip_id);setTab('result');}} style={S.card}><View style={S.between}><Text style={S.heading}>{new Date(t.started_at).toLocaleDateString('ko-KR')}</Text><Icon name="chevron-forward" size={18}/></View><Note>{new Date(t.started_at).toLocaleTimeString('ko-KR')}에 시작한 여정</Note><Text style={S.pill}>{t.status==='recording'?'기록 중':t.status==='interrupted'?'기록 중단':'기록 종료'}</Text></Pressable>)}
       </>}
       {tab==='baseline'&&<BaselinePanel value={p.baseline} onRetry={p.onRefreshCommunity}/>}
       {tab==='missions'&&<MissionPanel value={p.missions} onRetry={p.onRefreshCommunity}/>}
