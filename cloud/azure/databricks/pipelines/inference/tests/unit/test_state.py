@@ -21,5 +21,6 @@ def test_state_keeps_151_raw_points_and_rolls_forward():
     assert len(output) == 180
     assert len(history) == MAX_RAW_POINTS
     assert history[0].sequence == 29
-    assert len(seen) == 180
+    assert len(seen) == MAX_RAW_POINTS
+    assert seen == {point.event_id for point in history}
     assert last_sequence == 179
