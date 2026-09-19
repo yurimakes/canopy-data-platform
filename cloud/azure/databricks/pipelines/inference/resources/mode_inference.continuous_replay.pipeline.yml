@@ -23,5 +23,5 @@ resources:
         canopy.transition_model_uri: ${var.transition_model_uri}
         canopy.transition_model_artifact_path: ${var.transition_model_artifact_path}
         canopy.state_timeout: ${var.state_timeout}
-        canopy.state_store_partitions: "8"
+        canopy.state_store_partitions: "4"
         spark.sql.session.timeZone: ${var.timezone}
