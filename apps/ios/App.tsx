@@ -5,7 +5,7 @@ import * as Network from 'expo-network';
 import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
 import { AuthScreen } from './src/ui/AuthScreen';
 import { ServiceScreen } from './src/ui/ServiceScreen';
-import {useCommunity} from './src/communityClient';
+import {useCommunity,prepareJourney} from './src/communityClient';
 import { updateProfile,restoreProfile,logoutProfile } from './src/profileStore';
 import type { Profile, PlannedRoute } from './src/service';
 import { Collector } from './src/collector';
@@ -174,6 +174,7 @@ export default function App() {
     if(!service||!c||!profile||['starting','recording','stopping'].includes(c.phase)||c.trip?.status==='recording')return;
     setError('');setTripError('');setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
     await service.db.saveSync('ui:pending-journey',{profile_id:profile.id,route});
+    await prepareJourney(route?.quoteId);
     await c?.start();
   }
   function select(id:string){

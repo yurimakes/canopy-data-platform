@@ -6,7 +6,7 @@ import {session} from './src/accountSession';
 import {accountConfig} from './src/accountConfig';
 import {AuthScreen} from './src/ui/AuthScreen';
 import {ServiceScreen} from './src/ui/ServiceScreen';
-import {useCommunity} from './src/communityClient';
+import {useCommunity,prepareJourney} from './src/communityClient';
 import {SCHEMA,type GpsEvent,type Summary,type TransportMode} from './src/types';
 import type {ServerTrip,FeedbackInput} from './src/tripApi';
 import type {Profile,PlannedRoute} from './src/service';
@@ -48,6 +48,7 @@ export default function App(){
   async function start(){
     if(active.current)return;setError('');setPhase('starting');
     try{
+      await prepareJourney(route?.quoteId);
       await fresh(); // 권한 확인 후 서버 여정 생성
       const device=localStorage.getItem('canopy.local.web-device')||crypto.randomUUID();localStorage.setItem('canopy.local.web-device',device);
       const t:ServerTrip=await call('/trips/start',{request_id:crypto.randomUUID(),device_id:device});

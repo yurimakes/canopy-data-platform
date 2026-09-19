@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,ActivityIndicator,Platform,Pressable,StyleSheet,Text,TextInput,View,type TextInputProps} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-export const C={green:'#108454',deep:'#124b40',ink:'#173c42',muted:'#748c87',mint:'#e9f7f0',paper:'#f4faf7',line:'#e3eee8',white:'#fff',red:'#b13c3c'};
+export const C={green:'#108454',deep:'#124b40',ink:'#173c42',muted:'#5f7871',mint:'#e9f7f0',paper:'#f4faf7',line:'#e3eee8',white:'#fff',red:'#b13c3c'};
 export function Icon({name,size=22,color=C.green}:{name:React.ComponentProps<typeof Ionicons>['name'];size?:number;color?:string}){return <Ionicons name={name} size={size} color={color}/>;}
 export function Button({title,onPress,disabled=false,quiet=false,danger=false,busy=false}:{title:string;onPress:()=>void;disabled?:boolean;quiet?:boolean;danger?:boolean;busy?:boolean}){return <Pressable accessibilityRole="button" accessibilityState={{disabled:disabled||busy,busy}} disabled={disabled||busy} onPress={onPress} style={({pressed})=>[S.button,quiet&&S.quiet,danger&&{backgroundColor:C.red},(pressed||disabled||busy)&&{opacity:.5}]}>{busy&&<ActivityIndicator color={quiet?C.green:'white'}/>}<Text style={[S.buttonText,quiet&&{color:C.green}]}>{title}</Text></Pressable>;}
 export function Field({label,...props}:TextInputProps&{label:string}){return <View style={{gap:8}}><Text style={S.label}>{label}</Text><TextInput {...props} accessibilityLabel={label} placeholderTextColor="#8a9790" style={[S.input,props.style]}/></View>;}
@@ -24,11 +24,11 @@ export function Floating({children}:{children:React.ReactNode}) {
   return <Animated.View style={{transform:[{translateY:y}]}}>{children}</Animated.View>;
 }
 export const S=StyleSheet.create({
-  root:{flex:1,backgroundColor:C.paper},scroll:{padding:20,paddingBottom:28,gap:16,width:'100%',maxWidth:640,alignSelf:'center'},
+  root:{flex:1,width:'100%',maxWidth:Platform.OS==='web'?480:undefined,alignSelf:'center',backgroundColor:C.paper},scroll:{padding:20,paddingBottom:28,gap:16,width:'100%',maxWidth:640,alignSelf:'center'},
   row:{flexDirection:'row',alignItems:'center',gap:12},between:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
   title:{fontSize:26,lineHeight:35,fontWeight:'800',letterSpacing:-1,color:C.deep},heading:{fontSize:18,lineHeight:25,fontWeight:'700',color:C.ink},
   label:{fontSize:14,fontWeight:'600',color:C.ink},note:{fontSize:13,lineHeight:21,color:C.muted},metric:{fontSize:22,fontWeight:'700',color:C.deep},
-  card:{backgroundColor:C.white,borderRadius:16,padding:18,gap:12,borderWidth:1,borderColor:C.line},
+  card:{backgroundColor:C.white,borderRadius:24,padding:22,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
   input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:48,borderRadius:28,backgroundColor:C.green,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
   buttonText:{fontSize:14,fontWeight:'600',color:C.white},quiet:{backgroundColor:C.mint},

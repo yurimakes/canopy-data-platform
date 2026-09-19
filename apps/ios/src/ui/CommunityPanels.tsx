@@ -1,13 +1,15 @@
+import {localAction} from '../communityClient';
+import {RewardCelebration} from './RewardExperience';
 import React,{useState} from 'react';
 import {ActivityIndicator,Pressable,Text,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
 
 // 앱 표시 모델. 서버 공통 스키마를 변경하지 않고 API 어댑터에서 변환 후 전달
 export type RemotePanel<T> = {state:'unavailable'|'loading'|'empty'|'forbidden'} | {state:'error';message:string} | {state:'ready';data:T};
-export type MissionView = {week:string;updatedAt:string;items:{id:string;title:string;category:string;description:string;progress:number;goal:number;unit:string;status:'active'|'completed'|'expired'}[]};
-export type RankingView = {week:string;updatedAt:string;personal:{id:string;name:string;rank:number;carbonKg:number;points?:number;isMe?:boolean}[];department:{id:string;name:string;rank:number;carbonKg:number;points?:number}[]};
-export type RewardView = {balance:number;items:{id:string;title:string;time:string;amount:number;status:'pending'|'paid'}[]};
-export type BaselineView = {status:'collecting'|'ready';updatedAt:string;personalKg:number|null;globalKg:number|null;reason:string;unit?:string};
+export type MissionView = {week:string;updatedAt:string;items:{id:string;title:string;category:string;description:string;progress:number;goal:number;unit:string;rewardPoints?:number;status:'active'|'claimable'|'completed'|'expired'}[]};
+export type RankingView = {awards?:Record<string,number>;week:string;updatedAt:string;personal:{id:string;name:string;rank:number;carbonKg:number;points?:number;isMe?:boolean}[];department:{id:string;name:string;rank:number;carbonKg:number;points?:number}[]};
+export type RewardView = {balance:number;developmentOnly?:boolean;items:{id:string;title:string;time:string;amount:number;kind?:string;status:'pending'|'paid'}[]};
+export type BaselineView = {status:'collecting'|'ready';updatedAt:string;personalKg:number|null;globalKg:number|null;reason:string;unit?:string;developmentOnly?:boolean;source?:string;trips?:number;observationDays?:number;week?:string;actualG?:number;rewardStatus?:string;expectedPoints?:number|null};
 export const unavailable={state:'unavailable'} as const;
 
 function Status({value,onRetry}:{value:Exclude<RemotePanel<unknown>,{state:'ready'}>;onRetry?:()=>void}) {
@@ -18,24 +20,40 @@ function Updated({week,time}:{week:string;time:string}) {return <View style={{ga
 
 export function BaselinePanel({value=unavailable,onRetry}:{value?:RemotePanel<BaselineView>;onRetry?:()=>void}) {
   return <><Text style={S.title}>나의 이동을{ '\n'}알아가는 시간.</Text><Note>Baseline은 이동 기록을 바탕으로 서버에서 계산한 비교 기준입니다. 경로 검색의 예상값과는 달라요.</Note>
-    {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<><Card><Text style={S.pill}>{value.data.status==='ready'?'기준 생성 완료':'이동 데이터 수집 중'}</Text><Note>{value.data.reason}</Note><View style={S.row}><Stat label="개인 기준" value={value.data.personalKg==null?'—':`${value.data.personalKg.toFixed(2)} ${value.data.unit??'kg'}`}/><Stat label="전체 기준" value={value.data.globalKg==null?'—':`${value.data.globalKg.toFixed(2)} ${value.data.unit??'kg'}`}/></View><Note>탄소 기준 단위: {value.data.unit??'kgCO₂e'}</Note><Note>갱신 {new Date(value.data.updatedAt).toLocaleString('ko-KR')}</Note></Card></>}
+    {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<><Card><Text style={S.pill}>{value.data.status==='ready'?'기준 생성 완료':'이동 데이터 수집 중'}</Text><Note>{value.data.reason}</Note><View style={S.row}><Stat label="개인 기준" value={value.data.personalKg==null?'—':value.data.personalKg.toFixed(2)}/><Stat label="전체 기준" value={value.data.globalKg==null?'—':value.data.globalKg.toFixed(2)}/></View>{value.data.developmentOnly&&<Note>검증용 기준 · {value.data.source}</Note>}<Note>주간 보상은 이번 주 거리당 탄소 배출량을 개인·전체 기준과 비교해 판단합니다. 낮을수록 좋으며, 이동 횟수와 관찰 기간 조건도 충족해야 합니다. 총 배출량만 줄였다고 지급되지는 않아요.</Note>{value.data.actualG!==undefined&&<View style={{backgroundColor:C.mint,padding:18,borderRadius:18,gap:12}}><Text style={S.label}>{value.data.week} 집계된 나의 배출량</Text><Text style={[S.metric,{fontSize:30}]}>{value.data.actualG.toFixed(2)} gCO₂e/km</Text><Note>개선 보상: 개인 기준보다 낮게 / 유지 보상: 개선에 해당하지 않을 때 전체 기준 이하</Note>{value.data.expectedPoints!=null&&<Text style={S.label}>이 집계의 주간 정산 포인트 {value.data.expectedPoints.toFixed(2)} T</Text>}</View>}<Note>탄소 기준 단위: {value.data.unit??'kgCO₂e'}</Note><Note>갱신 {new Date(value.data.updatedAt).toLocaleString('ko-KR')}</Note></Card></>}
     <Card><Icon name="footsteps-outline"/><Text style={S.heading}>평소처럼 이동해주세요</Text><Note>기준이 준비되기 전에도 여정을 기록할 수 있어요. 기준 생성 조건과 준비 여부는 서버에서 판단합니다.</Note></Card>
   </>;
 }
 
 export function MissionPanel({value=unavailable,onRetry}:{value?:RemotePanel<MissionView>;onRetry?:()=>void}) {
   const [filter,setFilter]=useState<'all'|'active'|'completed'>('active');
+  const [busy,setBusy]=useState<string|null>(null),[error,setError]=useState('');
+  const [reward,setReward]=useState<{amount:number;title:string}|null>(null);
+  const [claimed,setClaimed]=useState<string[]>([]);
+  async function claim(id:string){if(busy)return;setBusy(id);setError('');try{
+    const r=await localAction('/missions/acknowledge',{assignment_id:id});
+    if(r.status!=='paid')throw Error('지급 결과를 확인하지 못했어요. 다시 시도해주세요.');
+    setClaimed(v=>[...v,id]);setReward({amount:r.points,title:r.title});onRetry?.();
+  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(null);}}
+  const items=value.state==='ready'?value.data.items.map(m=>({...m,status:claimed.includes(m.id)?'completed':m.status})):[];
+  const visible=items.filter(m=>filter==='all'||(filter==='active'?['active','claimable'].includes(m.status):m.status===filter));
   return <>
-    <View style={S.row}>{([['active','진행 중'],['completed','완료'],['all','전체']] as const).map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:filter===id}} onPress={()=>setFilter(id)} style={{flex:1,alignItems:'center',padding:12,borderRadius:24,backgroundColor:filter===id?C.white:'transparent'}}><Text style={{color:filter===id?C.green:C.muted}}>{label}</Text></Pressable>)}</View>
+    <Text style={S.pill}>작은 실천, 확실한 변화</Text><Text style={S.title}>이번 주의{ '\n'}나를 위한 도전</Text>
+    <Note>목표를 달성하면 보상을 받아보세요. 받은 보상은 지갑에 바로 쌓여요.</Note>
+    <View style={[S.row,{backgroundColor:'#e5eee8',borderRadius:28,padding:4}]}>{([['active','진행 중'],['completed','완료'],['all','전체']] as const).map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:filter===id}} onPress={()=>setFilter(id)} style={{flex:1,alignItems:'center',padding:12,borderRadius:24,backgroundColor:filter===id?C.white:'transparent'}}><Text style={{fontWeight:'700',color:filter===id?C.deep:C.muted}}>{label}</Text></Pressable>)}</View>
+    {!!error&&<Note error>{error}</Note>}
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       <Updated week={value.data.week} time={value.data.updatedAt}/>
-      {value.data.items.filter(m=>filter==='all'||m.status===filter).map(m=><Card key={m.id}>
-        <View style={S.row}><Icon name={m.status==='completed'?'checkmark-circle-outline':'leaf-outline'} size={29}/><View style={{flex:1,gap:7}}><Text style={S.label}>{m.title}</Text><Text style={[S.note,{fontSize:11,lineHeight:15}]}>{m.progress.toLocaleString()} / {m.goal.toLocaleString()} {m.unit}</Text>
-          <View accessibilityRole="progressbar" accessibilityValue={{min:0,max:m.goal,now:m.progress}} style={{height:5,borderRadius:5,backgroundColor:'#dbe9e2',overflow:'hidden'}}><View style={{height:5,backgroundColor:C.green,width:`${m.goal>0?Math.min(100,Math.max(0,m.progress/m.goal*100)):0}%`}}/></View>
-        </View>{m.status==='completed'&&<Text style={S.pill}>완료</Text>}</View>
+      {visible.map((m,i)=><Card key={m.id}>
+        <View style={S.between}><View style={{backgroundColor:['#edf5d8','#e5eefb','#fff0db'][i%3],padding:14,borderRadius:20}}><Icon name={m.status==='completed'?'checkmark-circle':'leaf-outline'} size={30}/></View><Text style={S.pill}>{m.status==='completed'?'보상 수령 완료':m.status==='claimable'?'목표 달성!':m.category}</Text></View>
+        <Text style={S.heading}>{m.title}</Text><Note>{m.description}</Note>
+        <View style={S.between}><Text style={S.label}>{m.progress.toLocaleString()} / {m.goal.toLocaleString()} {m.unit}</Text><Text style={[S.label,{color:'#a27621'}]}>{m.rewardPoints!==undefined?`+${m.rewardPoints} T`:''}</Text></View>
+        <View accessibilityRole="progressbar" accessibilityValue={{min:0,max:m.goal,now:Math.min(m.goal,m.progress)}} style={{height:8,borderRadius:8,backgroundColor:'#e8f0eb',overflow:'hidden'}}><View style={{height:8,borderRadius:8,backgroundColor:C.green,width:`${m.goal>0?Math.min(100,Math.max(0,m.progress/m.goal*100)):0}%`}}/></View>
+        {m.status==='claimable'&&<Button title="보상 받기" busy={busy===m.id} disabled={!!busy} onPress={()=>void claim(m.id)}/>}
       </Card>)}
-      {!value.data.items.some(m=>filter==='all'||m.status===filter)&&<Status value={{state:'empty'}}/>}
+      {!visible.length&&<Status value={{state:'empty'}}/>}
     </>}
+    {reward&&<RewardCelebration {...reward} onClose={()=>{setReward(null);setFilter('completed');onRetry?.();}}/>}
   </>;
 }
 
@@ -44,9 +62,9 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
   if(season)return <><View style={{alignItems:'center',padding:20,gap:18,backgroundColor:C.mint,borderRadius:18}}><Text style={S.heading}>시즌 랭킹</Text><Text style={S.pill}>시즌 집계 준비 중</Text><View style={{padding:30,borderRadius:70,backgroundColor:'#fff6dd'}}><Icon name="trophy-outline" size={65} color="#b88a28"/></View><Text style={[S.heading,{textAlign:'center'}]}>이번 시즌, 가장 많은 탄소를{ '\n'}절감한 사람은 누구일까요?</Text><Note>시즌 기간과 보상은 운영 정책이 확정되면 안내됩니다.</Note></View><Button title="주간 랭킹 보기" onPress={()=>setSeason(false)}/></>;
   return <><View style={S.row}><View style={{flex:1}}><Button title="주간 랭킹" quiet onPress={()=>setSeason(false)}/></View><View style={{flex:1}}><Button title="시즌 랭킹" quiet onPress={()=>setSeason(true)}/></View></View>
     <View style={S.row}>{([['personal','개인'],['department','부서']] as const).map(([id,label])=><View key={id} style={{flex:1}}><Button title={label} quiet={group!==id} onPress={()=>setGroup(id)}/></View>)}</View>
-    <View style={{backgroundColor:C.mint,borderRadius:18,padding:20,gap:14}}><Text style={[S.label,{textAlign:'center'}]}>이번 주 TOP 3</Text><View style={{flexDirection:'row',alignItems:'flex-end',justifyContent:'center',gap:16}}>{[2,1,3].map(rank=>{const row=value.state==='ready'?value.data[group].find(r=>r.rank===rank):null;return <View key={rank} style={{flex:1,alignItems:'center',gap:6}}><View style={{width:rank===1?78:62,height:rank===1?78:62,borderRadius:40,backgroundColor:rank===1?'#fff1c4':rank===2?'#e5edf0':'#f3e5d9',alignItems:'center',justifyContent:'center',borderWidth:2,borderColor:C.white}}><Icon name={rank===1?'trophy':'ribbon-outline'} size={rank===1?35:27} color={rank===1?'#b88a28':rank===2?'#708b97':'#ad805e'}/></View><Text style={[S.metric,{fontSize:18,color:rank===1?'#bd8d30':C.muted}]}>{rank}</Text><Text numberOfLines={1} style={S.label}>{row?.name??'—'}</Text><Text style={[S.note,{fontSize:11}]}>{row?row.points!==undefined?`${row.points.toLocaleString()} P`:`${row.carbonKg.toFixed(2)} kg`:'집계 대기'}</Text></View>;})}</View></View>
+    <View style={{backgroundColor:C.mint,borderRadius:18,padding:20,gap:14}}><Text style={[S.label,{textAlign:'center'}]}>주간 TOP 3</Text><View style={{flexDirection:'row',alignItems:'flex-end',justifyContent:'center',gap:16}}>{[2,1,3].map(rank=>{const row=value.state==='ready'?value.data[group].find(r=>r.rank===rank):null;return <View key={rank} style={{flex:1,alignItems:'center',gap:6}}><View style={{width:rank===1?78:62,height:rank===1?78:62,borderRadius:40,backgroundColor:rank===1?'#fff1c4':rank===2?'#e5edf0':'#f3e5d9',alignItems:'center',justifyContent:'center',borderWidth:2,borderColor:C.white}}><Icon name={rank===1?'trophy':'ribbon-outline'} size={rank===1?35:27} color={rank===1?'#b88a28':rank===2?'#708b97':'#ad805e'}/></View><Text style={[S.metric,{fontSize:18,color:rank===1?'#bd8d30':C.muted}]}>{rank}</Text><Text numberOfLines={1} style={S.label}>{row?.name??'—'}</Text><Text style={[S.note,{fontSize:11}]}>{row?row.points!==undefined?`${row.points.toLocaleString()} P`:`${row.carbonKg.toFixed(2)} kg`:'집계 대기'}</Text></View>;})}</View></View>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
-      <Updated week={value.data.week} time={value.data.updatedAt}/><Note>주간 집계 결과입니다.</Note>
+      <Updated week={value.data.week} time={value.data.updatedAt}/><Note>주간 집계 결과입니다. 주가 마감되고 집계가 완료되면 상위권 보상이 따로 지급됩니다. 랭킹 보상 자체는 순위 점수에 더하지 않습니다.</Note>{value.data.awards&&<View style={S.row}>{Object.entries(value.data.awards).map(([rank,amount])=><Text key={rank} style={S.pill}>{rank}위 +{amount} T</Text>)}</View>}
       {!value.data[group].length&&<Status value={{state:'empty'}}/>}
       {value.data[group].map(row=><Card key={row.id}><View style={S.between}>
         <View style={[S.row,{flex:1}]}><Text style={[S.metric,{width:36}]}>{row.rank}</Text><View style={{flex:1,gap:4}}><Text style={S.label}>{row.name}{'isMe' in row&&row.isMe?' (나)':''}</Text><Note>{row.points!==undefined?`${row.points.toLocaleString()} 포인트`:`${row.carbonKg.toFixed(2)} kgCO₂e 감축`}</Note></View></View>
@@ -57,13 +75,15 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
 }
 
 export function RewardPanel({value=unavailable,onRetry}:{value?:RemotePanel<RewardView>;onRetry?:()=>void}) {
-  const [info,setInfo]=useState(false);
+  const [info,setInfo]=useState(false),[kind,setKind]=useState('all');
   return <><Card><View style={S.between}><View style={S.row}><Icon name="leaf-outline" size={40}/><View><Text style={S.note}>보유 토큰</Text><Text style={[S.metric,{color:C.green}]}>{value.state==='ready'?`${value.data.balance.toLocaleString()} T`:'— T'}</Text></View></View><Pressable accessibilityRole="button" onPress={()=>setInfo(!info)} style={{borderWidth:1,borderColor:C.green,borderRadius:20,padding:10}}><Text style={[S.link,{fontSize:12}]}>리워드 안내</Text></Pressable></View></Card>
-    {info&&<Card><View style={{alignItems:'center',padding:24}}><Icon name="gift-outline" size={48}/></View><Text style={S.heading}>일상의 이동을 가치 있게</Text><Note>여정과 미션의 보상은 서버에서 지급이 확정된 뒤 반영됩니다. 사용처와 교환 기능은 준비 중입니다.</Note><Button title="닫기" quiet onPress={()=>setInfo(false)}/></Card>}
-    <Text style={S.label}>최근 적립 내역</Text>
+    {info&&<Card><View style={{alignItems:'center',padding:24}}><Icon name="gift-outline" size={48}/></View><Text style={S.heading}>일상의 이동을 가치 있게</Text><Note>여정: 출발 전에 정한 기준보다 탄소를 적게 배출하면 적립. 미션: 목표 달성 후 보상 받기. 주간: 팀의 개선·유지 기준에 따라 정산. 랭킹: 마감된 주의 순위에 따라 별도 적립. 각 보상은 한 번만 지급됩니다.</Note><Button title="닫기" quiet onPress={()=>setInfo(false)}/></Card>}
+    <Text style={S.heading}>차곡차곡 쌓인 변화</Text>
+    {value.state==='ready'&&value.data.developmentOnly&&<Note>로컬 테스트 포인트 · 실제 자산으로 지급되지 않습니다.</Note>}
+    <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>{[['all','전체'],['trip','여정'],['mission','미션'],['weekly','주간'],['ranking','랭킹']].map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:kind===id}} onPress={()=>setKind(id)} style={{paddingHorizontal:15,paddingVertical:10,borderRadius:22,backgroundColor:kind===id?C.deep:C.white}}><Text style={{color:kind===id?C.white:C.deep,fontWeight:'600'}}>{label}</Text></Pressable>)}</View>
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       {!value.data.items.length&&<Status value={{state:'empty'}}/>}
-      {value.data.items.map(row=><Card key={row.id}><View style={S.between}><Icon name="sparkles-outline"/><View style={{flex:1,gap:6}}><Text style={S.label}>{row.title}</Text><Note>{new Date(row.time).toLocaleString('ko-KR')}</Note></View><View style={{alignItems:'flex-end',gap:6}}><Text style={S.heading}>{row.status==='paid'?`+${row.amount} T`:'처리 중'}</Text><Note>{row.status==='paid'?'지급 완료':'지급 확인 대기'}</Note></View></View></Card>)}
+      {value.data.items.filter(row=>kind==='all'||(row.kind??'weekly')===kind).map(row=><Card key={row.id}><View style={S.between}><Icon name="sparkles-outline"/><View style={{flex:1,gap:6}}><Text style={S.label}>{row.title}</Text><Note>{new Date(row.time).toLocaleString('ko-KR')}</Note></View><View style={{alignItems:'flex-end',gap:6}}><Text style={S.heading}>{row.status==='paid'?`+${row.amount} T`:'처리 중'}</Text><Note>{row.status==='paid'?'지급 완료':'지급 확인 대기'}</Note></View></View></Card>)}
     </>}
   </>;
 }

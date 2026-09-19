@@ -13,10 +13,11 @@ export default function JourneyMap({points,route,height=310,places,selectedPlace
   if(!first)return <View style={{height,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
   return <View><MapView ref={ref} onPanDrag={()=>setFollow(false)} style={{height,width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
     onMapReady={()=>{if(route)ref.current?.fitToCoordinates([route.from,route.to,...route.legs.flatMap(l=>l.points)],{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false});}}>
+    {route?.provider==='local-test'&&<Polyline coordinates={[route.from,route.to]} strokeWidth={3} strokeColor='#799b92' lineDashPattern={[6,6]}/>}
     {route?.legs.filter(l=>l.points.length>1).map((leg,i)=><Polyline key={i} coordinates={leg.points} strokeWidth={5} strokeColor={leg.mode==='WALK'?'#9baba5':'#5279d1'} lineDashPattern={leg.mode==='WALK'?[5,5]:undefined}/>)}
     {points.length>1&&<Polyline coordinates={points} strokeColor={C.green} strokeWidth={4}/>}
     <Marker coordinate={route?.from??first} title="출발" pinColor={C.green}/>
     {route&&<Marker coordinate={route.to} title="도착" pinColor="#5279d1"/>}
     {last&&<Marker coordinate={last} title="최근 GPS 위치" pinColor={C.deep}/>}
-  </MapView>{last&&<Pressable accessibilityRole="button" accessibilityLabel="내 위치로 지도 이동" onPress={()=>{setFollow(true);ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);}} style={{position:'absolute',bottom:16,right:16,padding:14,borderRadius:30,backgroundColor:C.white,elevation:3}}><Icon name="locate-outline"/></Pressable>}</View>;
+  </MapView>{route?.provider==='local-test'&&<View style={{position:'absolute',top:12,left:12,right:12,padding:8,borderRadius:12,backgroundColor:'#ffffffee'}}><Note>점선은 직선거리 비교 기준입니다. 실제 도로 길 안내가 아닙니다.</Note></View>}{last&&<Pressable accessibilityRole="button" accessibilityLabel="내 위치로 지도 이동" onPress={()=>{setFollow(true);ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);}} style={{position:'absolute',bottom:16,right:16,padding:14,borderRadius:30,backgroundColor:C.white,elevation:3}}><Icon name="locate-outline"/></Pressable>}</View>;
 }
