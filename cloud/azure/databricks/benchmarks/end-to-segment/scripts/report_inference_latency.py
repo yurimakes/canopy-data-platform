@@ -327,6 +327,14 @@ def main() -> None:
                 )
                 * 1000.0
             ).alias("trip_end_to_prediction_ms"),
+            F.greatest(
+                F.lit(0.0),
+                (
+                    F.col("s.predicted_at").cast("double")
+                    - F.col("t.parsed_at").cast("double")
+                )
+                * 1000.0,
+            ).alias("prediction_readiness_wait_ms"),
         )
         .collect()
     )
@@ -341,6 +349,26 @@ def main() -> None:
         benchmark_window["window_start"],
         benchmark_window["window_end"],
     )
+
+    readiness_values = [
+        float(r["prediction_readiness_wait_ms"])
+        for r in final_sequence_stage
+    ]
+    raw_trip_end_values = [
+        float(r["trip_end_to_prediction_ms"])
+        for r in final_sequence_stage
+    ]
+    final_sequence_summary = {
+        "avg_prediction_readiness_wait_ms": (
+            sum(readiness_values) / len(readiness_values)
+        ),
+        "max_prediction_readiness_wait_ms": max(readiness_values),
+        "avg_signed_trip_end_to_prediction_ms": (
+            sum(raw_trip_end_values) / len(raw_trip_end_values)
+        ),
+        "min_signed_trip_end_to_prediction_ms": min(raw_trip_end_values),
+        "max_signed_trip_end_to_prediction_ms": max(raw_trip_end_values),
+    }
 
     summary = {
         name: (
@@ -358,6 +386,7 @@ def main() -> None:
             "completed_trips": completed_trips,
             "all_prediction_rows": summary,
             "stream_progress": stream_metrics,
+            "final_sequence_summary": final_sequence_summary,
             "final_sequence_per_trip": {
                 r["trip_id"]: {
                     "replay_visible_at": str(r["replay_visible_at"]),
@@ -374,6 +403,9 @@ def main() -> None:
                     ),
                     "trip_end_to_prediction_ms": float(
                         r["trip_end_to_prediction_ms"]
+                    ),
+                    "prediction_readiness_wait_ms": float(
+                        r["prediction_readiness_wait_ms"]
                     ),
                 }
                 for r in final_sequence_stage
