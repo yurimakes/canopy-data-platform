@@ -25,6 +25,17 @@ def _conf(name: str) -> str:
     return value.strip()
 
 
+def _optional_positive_int_conf(name: str, default: int) -> int:
+    raw_value = _spark().conf.get(f"canopy.{name}", str(default)).strip()
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"invalid canopy.{name}: {raw_value!r}") from exc
+    if value < 1:
+        raise ValueError(f"invalid canopy.{name}: {raw_value!r}")
+    return value
+
+
 CONFIG = ModeInferenceConfig(
     catalog=_conf("catalog"),
     silver_schema=_conf("silver_schema"),
@@ -35,10 +46,17 @@ CONFIG = ModeInferenceConfig(
     state_timeout=_conf("state_timeout"),
     timezone=_spark().conf.get("spark.sql.session.timeZone"),
 )
+
+STATE_STORE_PARTITIONS = _optional_positive_int_conf("state_store_partitions", 200)
+
+
 @dp.table(
     name=CONFIG.output_table,
     schema=MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Raw pointwise LightGBM transportation-mode predictions; no smoothing or segmentation.",
+    spark_conf={
+        "spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS),
+    },
 )
 def mode_predictions():
     observations = _spark().readStream.table(CONFIG.input_table)
