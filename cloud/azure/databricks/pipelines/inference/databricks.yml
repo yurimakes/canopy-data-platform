@@ -33,6 +33,9 @@ variables:
     default: replay_continuous_gps_observations
   continuous_replay_output_table:
     default: replay_continuous_mode_predictions
+  replay_continuous_pause_status:
+    description: Continuous replay job state; keep PAUSED by default in development and override to UNPAUSED only for intentional tests.
+    default: PAUSED
   transition_model_uri:
     description: Registered-model identity retained for output metadata.
     default: models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
