@@ -51,7 +51,7 @@ The implementation preserves reference behavior:
 
 ## Stateful streaming semantics
 
-Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State is stored natively as scalar metadata plus a bounded `ListState` of up to 151 raw observations, so the earliest speed in a 150-speed rolling window still has its predecessor. The previous monolithic JSON state has been removed.
+Spark 4 `transformWithState` maintains independent state per `trip_id`. Rows within each input iterator are sorted by `(sequence, event_time, event_id)`. State is stored natively as scalar metadata plus a bounded `MapState` keyed by sequence for up to 151 raw observations, so the earliest speed in a 150-speed rolling window still has its predecessor. The map form lets the processor add only new points and remove only expired oldest points instead of rewriting the full history. The previous monolithic JSON state has been removed.
 
 This first version is intentionally append-only:
 
