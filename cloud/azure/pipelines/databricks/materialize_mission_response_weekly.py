@@ -2,7 +2,7 @@
 
 This task is intentionally outside Lakeflow transforms because issued Mission
 Bundle state is operational Cosmos data. It:
-1) reads frozen issued Mission Bundles from the existing Cosmos mission-state,
+1) reads frozen issued Mission Bundles from the configured Cosmos container,
 2) reads canonical/dev Final Trip rows,
 3) recomputes Mission Progress from the frozen completion_rule snapshot,
 4) builds one Mission Response row per issued assignment,
@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,12 +29,11 @@ DEFAULT_RESPONSE_PATH = (
     "gold/mission_response_weekly/"
 )
 DEFAULT_DATABASE = "canopy-db"
-DEFAULT_MISSION_CONTAINER = "mission-state"
 DEFAULT_TIMEZONE = "Asia/Seoul"
 SERVICE_CREDENTIAL_ENV = "CANOPY_DATABRICKS_SERVICE_CREDENTIAL_NAME"
 
 
-def repo_root() -> Path:
+def _databricks_module_dir() -> Path:
     starts = []
     if "__file__" in globals():
         starts.append(Path(__file__).resolve().parent)
@@ -42,6 +41,8 @@ def repo_root() -> Path:
 
     for start in starts:
         for path in (start, *start.parents):
+            if (path / "mission_progress.py").exists():
+                return path
             if (
                 path
                 / "cloud"
@@ -50,26 +51,24 @@ def repo_root() -> Path:
                 / "databricks"
                 / "mission_progress.py"
             ).exists():
-                return path
+                return path / "cloud" / "azure" / "pipelines" / "databricks"
 
     raise RuntimeError(
-        "Repository root not found. Run from the canopy-data-platform Git Folder."
+        "Databricks Mission module directory not found"
     )
 
 
-def _existing_cosmos_endpoint(root: Path) -> str:
+def _existing_cosmos_endpoint(
+    module_dir: Path,
+    endpoint: str | None = None,
+) -> str:
+    if endpoint and endpoint.strip():
+        return endpoint.strip()
     configured = os.environ.get("CANOPY_COSMOS_ENDPOINT")
     if configured:
         return configured
 
-    config_path = (
-        root
-        / "cloud"
-        / "azure"
-        / "pipelines"
-        / "weekly_analysis"
-        / "sync_campaign_membership.job.json"
-    )
+    config_path = module_dir.parent / "weekly_analysis" / "sync_campaign_membership.job.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     parameters = config["tasks"][0]["spark_python_task"]["parameters"]
 
@@ -83,12 +82,48 @@ def _existing_cosmos_endpoint(root: Path) -> str:
     return str(parameters[index + 1])
 
 
-def _mission_container(root: Path):
-    credential_name = os.environ.get(SERVICE_CREDENTIAL_ENV)
+def _service_credential_name(configured_name: str | None = None) -> str:
+    credential_name = (
+        configured_name or os.environ.get(SERVICE_CREDENTIAL_ENV) or ""
+    ).strip()
     if not credential_name:
         raise RuntimeError(
             f"{SERVICE_CREDENTIAL_ENV} is required for Databricks Mission runs"
         )
+    if "{{" in credential_name:
+        raise RuntimeError("Resolved Databricks service credential name required")
+    return credential_name
+
+
+def _mission_container_name(configured_name: str | None = None) -> str:
+    container_name = (
+        (configured_name or "").strip()
+        or (
+            os.environ.get(
+                "CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER",
+                "",
+            ).strip()
+        )
+    )
+    if not container_name:
+        raise RuntimeError(
+            "Mission container required via --mission-container or "
+            "CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER"
+        )
+    if "{{" in container_name:
+        raise RuntimeError("Resolved Mission container name required")
+    return container_name
+
+
+def _mission_container(
+    module_dir: Path,
+    *,
+    service_credential_name: str | None = None,
+    endpoint: str | None = None,
+    mission_container: str | None = None,
+):
+    credential_name = _service_credential_name(service_credential_name)
+    container_name = _mission_container_name(mission_container)
 
     from azure.cosmos import CosmosClient
     from databricks.sdk.runtime import dbutils
@@ -97,18 +132,26 @@ def _mission_container(root: Path):
         credential_name
     )
     client = CosmosClient(
-        _existing_cosmos_endpoint(root),
+        _existing_cosmos_endpoint(module_dir, endpoint),
         credential=credential,
     )
     database = client.get_database_client(
         os.environ.get("CANOPY_COSMOS_DATABASE", DEFAULT_DATABASE)
     )
-    return database.get_container_client(
-        os.environ.get(
-            "CANOPY_COSMOS_MISSION_ASSIGNMENT_CONTAINER",
-            DEFAULT_MISSION_CONTAINER,
-        )
-    )
+    return database.get_container_client(container_name)
+
+
+def _iso_week_bounds(week: str) -> tuple[str, str]:
+    week = (week or "").strip()
+    if not week or "{{" in week:
+        raise ValueError("Resolved ISO week required")
+    try:
+        monday = datetime.strptime(f"{week}-1", "%G-W%V-%u").date()
+    except ValueError as exc:
+        raise ValueError("week must use ISO YYYY-Www format") from exc
+    if monday.strftime("%G-W%V") != week:
+        raise ValueError("week must use a valid ISO YYYY-Www value")
+    return monday.isoformat(), (monday + timedelta(days=7)).isoformat()
 
 
 def _read_issued_bundles(container, campaign_id: str, week_start: str):
@@ -130,12 +173,6 @@ def _read_issued_bundles(container, campaign_id: str, week_start: str):
             enable_cross_partition_query=True,
         )
     )
-
-    if not bundles:
-        raise RuntimeError(
-            "No issued Mission Bundle found for "
-            f"campaign_id={campaign_id} week_start={week_start}"
-        )
 
     return bundles
 
@@ -223,7 +260,11 @@ def _write_response_partition(
     (
         frame.write.format("delta")
         .mode("overwrite")
-        .option("partitionOverwriteMode", "dynamic")
+        .option(
+            "replaceWhere",
+            "campaign_id = '" + campaign_id.replace("'", "''")
+            + "' AND week_start = '" + week_start.replace("'", "''") + "'",
+        )
         .partitionBy("campaign_id", "week_start")
         .save(target)
     )
@@ -278,13 +319,22 @@ def _verify_response_partition(
     }
 
 
-def run(campaign_id: str, week_start: str, week_end: str) -> dict[str, Any]:
+def run(
+    campaign_id: str,
+    week_start: str,
+    week_end: str,
+    *,
+    service_credential_name: str | None = None,
+    endpoint: str | None = None,
+    mission_container: str | None = None,
+) -> dict[str, Any]:
     from pyspark.sql import SparkSession
 
-    root = repo_root()
-    module_dir = (
-        root / "cloud" / "azure" / "pipelines" / "databricks"
-    )
+    campaign_id = (campaign_id or "").strip()
+    if not campaign_id or "{{" in campaign_id:
+        raise ValueError("Resolved campaign_id required")
+
+    module_dir = _databricks_module_dir()
     if str(module_dir) not in sys.path:
         sys.path.insert(0, str(module_dir))
 
@@ -295,10 +345,34 @@ def run(campaign_id: str, week_start: str, week_end: str) -> dict[str, Any]:
     spark.conf.set("spark.sql.session.timeZone", "UTC")
 
     bundles = _read_issued_bundles(
-        _mission_container(root),
+        _mission_container(
+            module_dir,
+            service_credential_name=service_credential_name,
+            endpoint=endpoint,
+            mission_container=mission_container,
+        ),
         campaign_id,
         week_start,
     )
+
+    if not bundles:
+        result = {
+            "status": "NO_ISSUED_BUNDLE",
+            "campaign_id": campaign_id,
+            "week_start": week_start,
+            "week_end": week_end,
+            "bundle_count": 0,
+            "issued_assignment_count": 0,
+            "final_trip_rows_read": 0,
+            "progress_rows": 0,
+            "partition_write_performed": False,
+            "existing_partition_preserved": True,
+            "mission_bundle_issued_here": False,
+            "current_policy_reinterpreted": False,
+            "behavior_change_used": False,
+        }
+        print(json.dumps(result, ensure_ascii=False, default=str))
+        return result
 
     mismatched = [
         bundle.get("bundle_id")
@@ -379,14 +453,30 @@ def run(campaign_id: str, week_start: str, week_end: str) -> dict[str, Any]:
     return result
 
 
+def parse_args(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--campaign-id", required=True)
+    parser.add_argument("--week", required=True)
+    parser.add_argument("--service-credential-name")
+    parser.add_argument("--endpoint")
+    parser.add_argument("--mission-container")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    week_start, week_end = _iso_week_bounds(args.week)
+    return run(
+        args.campaign_id,
+        week_start,
+        week_end,
+        service_credential_name=args.service_credential_name,
+        endpoint=args.endpoint,
+        mission_container=args.mission_container,
+    )
+
+
 if __name__ == "__main__":
-    campaign = sys.argv[1] if len(sys.argv) > 1 else ""
-    start = sys.argv[2] if len(sys.argv) > 2 else ""
-    end = sys.argv[3] if len(sys.argv) > 3 else ""
-
-    if not campaign or not start or not end:
-        raise ValueError(
-            "campaign_id, week_start, week_end parameters are required"
-        )
-
-    run(campaign, start, end)
+    main()

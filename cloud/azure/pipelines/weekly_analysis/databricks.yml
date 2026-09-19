@@ -2,6 +2,9 @@ bundle:
   name: canopy-weekly-analysis
 
 sync:
+  paths:
+    - .
+    - ../databricks
   exclude:
     - ".pytest_cache/**"
     - "**/.pytest_cache/**"
@@ -18,6 +21,12 @@ variables:
   schema:
     description: 개발 검증용 출력 스키마. 운영 이력 저장 및 후속 입력 위치 합의 후 변경
     default: weekly_analysis_scaffold
+  mission_service_credential_name:
+    description: Runtime Unity Catalog service credential for Mission Cosmos access
+    default: ""
+  mission_container_name:
+    description: Runtime Cosmos container holding issued Mission Bundles
+    default: ""
 
 resources:
   pipelines:
@@ -34,7 +43,7 @@ resources:
         canopy.reward.conversion_rate_override: "1.0"
       libraries:
         - file:
-            path: ${workspace.file_path}/weekly_pipeline.py
+            path: ${workspace.file_path}/weekly_analysis/weekly_pipeline.py
       tags:
         dev: "5dt024"
   jobs:
@@ -54,7 +63,29 @@ resources:
         - name: week
           default: ""
       tasks:
+        - task_key: materialize_mission_response_weekly
+          run_if: ALL_SUCCESS
+          environment_key: mission_response_materialization
+          max_retries: 0
+          timeout_seconds: 600
+          spark_python_task:
+            python_file: ${workspace.file_path}/databricks/materialize_mission_response_weekly.py
+            source: WORKSPACE
+            parameters:
+              - "--campaign-id"
+              - "{{job.parameters.campaign_id}}"
+              - "--week"
+              - "{{job.parameters.week}}"
+              - "--service-credential-name"
+              - "${var.mission_service_credential_name}"
+              - "--mission-container"
+              - "${var.mission_container_name}"
+              - "--endpoint"
+              - "https://cosmos-canopy-dev.documents.azure.com:443/"
         - task_key: run_weekly_pipeline
+          depends_on:
+            - task_key: materialize_mission_response_weekly
+          run_if: ALL_SUCCESS
           pipeline_task:
             pipeline_id: ${resources.pipelines.weekly_analysis_pipeline.id}
         - task_key: publish_reward_ledger
@@ -65,7 +96,7 @@ resources:
           max_retries: 0
           timeout_seconds: 300
           spark_python_task:
-            python_file: ${workspace.file_path}/publish_reward_ledger.py
+            python_file: ${workspace.file_path}/weekly_analysis/publish_reward_ledger.py
             source: WORKSPACE
             parameters:
               - "--campaign-id"
@@ -94,9 +125,14 @@ resources:
           max_retries: 0
           timeout_seconds: 300
           spark_python_task:
-            python_file: ${workspace.file_path}/publish_weekly.py
+            python_file: ${workspace.file_path}/weekly_analysis/publish_weekly.py
             source: WORKSPACE
       environments:
+        - environment_key: mission_response_materialization
+          spec:
+            environment_version: "4"
+            dependencies:
+              - "azure-cosmos==4.17.0"
         - environment_key: reward_publish
           spec:
             environment_version: "4"

@@ -56,9 +56,38 @@ class MissionResponseWeeklyMaterializationStructureTest(unittest.TestCase):
             self.source,
         )
         self.assertIn(
-            '"partitionOverwriteMode", "dynamic"',
+            '"replaceWhere"',
             self.source,
         )
+
+    def test_no_issued_bundle_is_an_explicit_zero_row_no_op(self):
+        run = next(
+            node for node in ast.walk(self.tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "run"
+        )
+        branch = next(
+            node for node in ast.walk(run)
+            if isinstance(node, ast.If) and ast.unparse(node.test) == "not bundles"
+        )
+        branch_source = ast.get_source_segment(self.source, branch)
+        self.assertIn('"status": "NO_ISSUED_BUNDLE"', branch_source)
+        self.assertIn('"issued_assignment_count": 0', branch_source)
+        self.assertIn('"final_trip_rows_read": 0', branch_source)
+        self.assertIn('"progress_rows": 0', branch_source)
+        self.assertIn('"partition_write_performed": False', branch_source)
+        self.assertIn('"existing_partition_preserved": True', branch_source)
+        self.assertNotIn("_write_response_partition", branch_source)
+        self.assertNotIn("_verify_response_partition", branch_source)
+        self.assertNotIn("replaceWhere", branch_source)
+        read_source = self._function_source("_read_issued_bundles")
+        self.assertNotIn("No issued Mission Bundle found", read_source)
+
+    def _function_source(self, name):
+        function = next(
+            node for node in ast.walk(self.tree)
+            if isinstance(node, ast.FunctionDef) and node.name == name
+        )
+        return ast.get_source_segment(self.source, function)
 
     def test_final_trip_default_matches_weekly_pipeline_dev_input(self):
         self.assertIn(
