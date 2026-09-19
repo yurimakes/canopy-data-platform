@@ -63,6 +63,22 @@ This first version is intentionally append-only:
 
 This is deterministic, but exact reference parity for a late point inserted before already emitted points is fundamentally incompatible with append-only output. Producers must deliver each trip close to sequence order. A later design should use the existing `trip_ended` lifecycle signal for deterministic cleanup; TTL remains a fallback for abandoned trips or missing lifecycle events.
 
+## Inference-stage telemetry
+
+Development telemetry is carried through the prediction table to isolate the
+remaining latency floor:
+
+- `processor_entered_at`: Python `transformWithState` processor entry for the
+  trip/microbatch;
+- `feature_compute_started_at`: immediately before feature extraction for the
+  accepted point;
+- `features_processed_at`: immediately after that point's feature vector is ready;
+- `predicted_at`: after the LightGBM Pandas UDF returns its prediction.
+
+These timestamps separate source/trigger wait, state-processor setup/queueing,
+per-point feature computation, and prediction latency. They do not change the
+persisted state schema.
+
 ## Public output
 
 `dbw_canopy_trial.sandbox.silver_mode_predictions` contains one raw pointwise prediction per accepted source event:
