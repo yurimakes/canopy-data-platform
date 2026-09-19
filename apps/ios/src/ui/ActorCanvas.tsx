@@ -15,8 +15,8 @@ export default function ActorCanvas({pose,animated}:{pose:MascotPose;animated:bo
   stop.current();const width=gl.drawingBufferWidth,height=gl.drawingBufferHeight;
   const renderer=createNativeRenderer(gl as unknown as WebGL2RenderingContext);renderer.setSize(width,height,false);
   renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
-  const actor=mascotScene(pose);actor.camera.aspect=width/height;actor.camera.updateProjectionMatrix();let frame=0,dead=false;const start=Date.now();
-  function draw(){if(dead)return;try{if(AppState.currentState==='active'){actor.update(animated&&!reduced.current?(Date.now()-start)/1000:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();}frame=requestAnimationFrame(draw);}catch(e){fail(e);}}
+  const actor=mascotScene(pose);actor.camera.aspect=width/height;actor.camera.updateProjectionMatrix();let frame=0,dead=false,elapsed=0,last:number|undefined;
+  function draw(){if(dead)return;try{const now=Date.now();if(AppState.currentState==='active'){if(last!==undefined&&animated&&!reduced.current)elapsed+=Math.min((now-last)/1000,.1);actor.update(animated&&!reduced.current?elapsed:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();last=now;}else{last=undefined;}frame=requestAnimationFrame(draw);}catch(e){fail(e);}}
   stop.current=()=>{dead=true;cancelAnimationFrame(frame);actor.dispose();renderer.dispose();};
   draw();
   }catch(e){fail(e);}
