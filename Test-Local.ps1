@@ -4,7 +4,7 @@ Set-Location $PSScriptRoot
 $python = Join-Path $PSScriptRoot '.venv/Scripts/python.exe'
 $env:CANOPY_TEST_PYTHON = $python
 if (Test-Path '.local-data/runtime/java/bin/java.exe') { $env:JAVA_HOME = Join-Path $PSScriptRoot '.local-data/runtime/java' }
-& $python -m pytest tools/local/test_local.py tools/local/test_business.py -q
+& $python -m pytest tools/local/test_local.py tools/local/test_business.py tools/local/test_rewards.py -q
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 Push-Location apps/ios
 try {

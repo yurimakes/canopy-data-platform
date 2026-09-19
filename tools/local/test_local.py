@@ -89,6 +89,19 @@ def test_local_api(tmp_path,model_mode):
         panel=request('community',token=token)
         assert len(panel['missions']['data']['items'])==4
         if model_mode=='auto':
+            request('local/reward-demo',{},new['access_token'],expected=403)
+            demo=request('local/reward-demo',{},token,expected=201)
+            assert demo['status']=='ready' and demo['is_mock'] is True
+            comparison=request('comparison/'+demo['trip_id'],token=token)
+            assert comparison['status']=='paid' and comparison['points']>0
+            assert comparison['model_version'].startswith('ktdb-population-')
+            assert request('comparison/'+demo['trip_id'],token=token)['id']==comparison['id']
+            missions=request('community',token=token)['missions']['data']['items']
+            earned=next(m for m in missions if m['status']=='claimable')
+            paid=request('missions/acknowledge',{'assignment_id':earned['id']},token)
+            again=request('missions/acknowledge',{'assignment_id':earned['id']},token)
+            assert paid['id']==again['id']
+            assert request('community',token=token)['rewards']['data']['balance']==comparison['points']+paid['points']
             request('local/export',{},token)
             target=ROOT/'.local-data/end-to-end/inputs';target.mkdir(parents=True,exist_ok=True)
             for source in (tmp_path/'inputs').glob('*.json'):shutil.copy2(source,target/source.name)

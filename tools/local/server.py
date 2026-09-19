@@ -131,6 +131,9 @@ def worker():
                         continue
                 if stopping and found:
                     api._process([trip]);export_trips()
+                    from journey_rewards import settle
+                    finished=api.get(trip['trip_id'],trip['user_id'])
+                    if finished['status']=='ready':settle(DATA,finished,finished,points)
             feedback_service().recover_pending()
         except Exception as exc:
             print('로컬 처리 오류:',type(exc).__name__,str(exc),flush=True)
@@ -209,11 +212,42 @@ class Handler(BaseHTTPRequestHandler):
                 service().get(tid,user['user_id'])
                 with database() as db:row=db.execute('SELECT body FROM predictions WHERE trip_id=?',(tid,)).fetchone()
                 return self.send(200,json.loads(row[0]) if row else {'status':'waiting','model':ML_STATE})
-            if path.startswith('/api/local/') or path in ('/api/community', '/api/trips'):
+            if path.startswith(('/api/local/','/api/comparison/','/api/missions/','/api/journey/')) or path in ('/api/community', '/api/trips'):
                 token = self.headers.get('Authorization', '').removeprefix('Bearer ')
                 user = accounts().authenticated(token)
                 if path.startswith('/api/local/') and user['role'] != 'developer':
                     raise ApiError(403, 'forbidden', '개발자 전용 기능')
+                if path == '/api/local/scenario' and self.command=='GET':
+                    from scenario_view import panels
+                    return self.send(200,panels())
+                if path == '/api/local/reward-demo' and self.command=='POST':
+                    from reward_demo import create
+                    return self.send(201,create(DATA,user))
+                if path == '/api/local/baseline-test' and self.command=='POST':
+                    from rewards import attach_test_baseline
+                    return self.send(200,attach_test_baseline(DATA,user))
+                if path == '/api/local/route-preview' and self.command=='POST':
+                    from journey_rewards import test_quote
+                    return self.send(200,test_quote(DATA,user,body.get('route')))
+                if path == '/api/journey/quote' and self.command=='POST':
+                    from journey_rewards import route_quote
+                    return self.send(200,route_quote(DATA,user,body['from'],body['to'],body.get('direction','outbound')))
+                if path == '/api/journey/places' and self.command=='POST':
+                    from population import search
+                    return self.send(200,{'places':search(body.get('query',''))})
+                if path == '/api/journey/prepare' and self.command=='POST':
+                    from journey_rewards import prepare
+                    prepare(DATA,user,body.get('quote_id'))
+                    return self.send(200,{'status':'prepared'})
+                if path.startswith('/api/comparison/') and self.command=='GET':
+                    from journey_rewards import settle
+                    trip=service().get(path.rsplit('/',1)[-1],user['user_id'])
+                    with database() as db:
+                        points=[json.loads(r[0]) for r in db.execute('SELECT body FROM gps WHERE trip_id=? ORDER BY sequence',(trip['trip_id'],))]
+                    return self.send(200,settle(DATA,user,trip,points))
+                if path == '/api/missions/acknowledge' and self.command=='POST':
+                    from rewards import acknowledge_mission
+                    return self.send(200,acknowledge_mission(DATA,user,body['assignment_id'],export_trips()))
                 if path == '/api/local/weekly':
                     return self.send(202 if self.command=='POST' else 200,weekly_run(self.command=='POST'))
                 if path == '/api/local/ml-result' and self.command == 'POST':
@@ -238,10 +272,23 @@ class Handler(BaseHTTPRequestHandler):
                 if path == '/api/community':
                     from projections import community
                     from business import current_missions
+                    trips=export_trips()
                     result=community(DATA,user)
-                    bundle=current_missions(DATA,user,export_trips())
+                    bundle=current_missions(DATA,user,trips)
                     from projections import mission_panel
-                    result['missions']=mission_panel(bundle)
+                    from rewards import acknowledged,baseline
+                    result['missions']=mission_panel(bundle,acknowledged(DATA,user))
+                    b=baseline(DATA,user)
+                    if b and b.get('status')=='ready':
+                        result['baseline']={'state':'ready','data':{**result.get('baseline',{}).get('data',{}),'status':'ready','personalKg':b['baseline_g_co2e_per_km'],
+                            'globalKg':result.get('baseline',{}).get('data',{}).get('globalKg'),'unit':'gCO₂e/km','updatedAt':__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),'reason':'개인 이동 기준 준비 완료',
+                            'developmentOnly':b.get('development_only',False),'trips':b.get('confirmed_trip_count',0),
+                            'observationDays':b.get('observation_days',0),'source':b.get('source','Weekly 개인 기준')}}
+                    if result['baseline']['state']=='empty':
+                        result['baseline']={'state':'ready','data':{'status':'collecting','personalKg':None,'globalKg':None,'unit':'gCO₂e/km','updatedAt':__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),'reason':'유효한 여정과 관찰 기간이 쌓이면 주간 집계에서 개인 기준을 만들어요.'}}
+                    from rewards import settle_ranking,bonus_wallet
+                    settle_ranking(DATA)
+                    result['rewards']=bonus_wallet(DATA,user,result['rewards'])
                     return self.send(200,result)
                 if path == '/api/trips':
                     return self.send(200, {'trips': [public(t) for t in export_trips() if t['user_id'] == user['user_id']]})
@@ -274,6 +321,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(503, 'offline_routes', '로컬 모드에서는 외부 길찾기를 사용하지 않습니다. 경로 없이 여정을 시작해주세요.')
             from trip_routes import dispatch
             code, result = dispatch(self.command, path, dict(self.headers), raw)
+            if path=='/api/trips/start' and 200<=code<300:
+                from journey_rewards import bind
+                bind(DATA,result,result['trip_id'])
             self.send(code, result)
         except ApiError as exc:
             self.send(exc.status, {'status':exc.code,'message':str(exc)})

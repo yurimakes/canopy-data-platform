@@ -3,7 +3,16 @@ import json
 from datetime import datetime, timezone
 
 
+def reward_title(row):
+    label=row.get('label','')
+    if row.get('status')=='adjusted':return '주간 보상 조정'
+    if 'personal_baseline' in label:return '주간 탄소 개선 보상'
+    if 'global_baseline' in label:return '주간 탄소 유지 보상'
+    return '주간 탄소 절감 보상'
+
+
 def community(data, user):
+    from rewards import extension_policy
     folder=data/'weekly'
     def rows(name):
         path=folder/(name+'.json')
@@ -22,7 +31,13 @@ def community(data, user):
         g=global_rows[-1] if global_rows else {}
         result['baseline']={'state':'ready','data':{'status':'ready' if p.get('status')=='ready' else 'collecting','updatedAt':now,
             'personalKg':p.get('baseline_g_co2e_per_km'),'globalKg':g.get('baseline_g_co2e_per_km'),
-            'unit':'gCO₂e/km','reason':p.get('eligibility_reason') or str(p.get('status','collecting'))}}
+            'unit':'gCO₂e/km','week':p['week'],'reason':'개인 기준 준비 완료' if p.get('status')=='ready' else '관찰 기간 또는 유효한 여정이 부족해요.'}}
+        weekly=[r for r in owned(rows('weekly_gold')) if r.get('week')==p['week']]
+        if weekly and weekly[-1]['total_distance_m']>0:
+            result['baseline']['data']['actualG']=weekly[-1]['total_kg_co2e']*1000000/weekly[-1]['total_distance_m']
+        reward=[r for r in owned(rows('reward_calculation')) if r.get('week')==p['week']]
+        if reward:
+            result['baseline']['data'].update(rewardStatus=reward[-1]['status'],expectedPoints=reward[-1]['points'])
     bundles=sorted(owned(rows('next_week_missions')),key=lambda r:r.get('week_start',''))
     if bundles:
         b=bundles[-1]
@@ -38,22 +53,24 @@ def community(data, user):
             return [{'id':r.get('user_id') or r.get('department_id'),'name':r.get('user_id') or r.get('department_id'),
                 'rank':r['rank'],'carbonKg':0,'points':r['reward_points'],'isMe':r.get('user_id')==user['user_id']}
                 for r in rankings if r['week']==week and r['ranking_type']==kind]
-        result['ranking']={'state':'ready','data':{'week':week,'updatedAt':now,'personal':mapped('personal'),'department':mapped('department')}}
+        result['ranking']={'state':'ready','data':{'week':week,'updatedAt':now,'personal':mapped('personal'),'department':mapped('department'),'awards':extension_policy()['rank_awards']}}
     ledger_path=data/'inputs/reward_ledger_history.json'
     ledger=owned(json.loads(ledger_path.read_text(encoding='utf-8'))) if ledger_path.exists() else []
     if ledger:
         paid=[r for r in ledger if r.get('status') in ('paid','adjusted')]
         result['rewards']={'state':'ready','data':{'balance':sum(r.get('points',0) for r in paid),'items':[
-            {'id':r['reward_id'],'title':r.get('reason','주간 보상'),'time':r.get('created_at',now),'amount':r.get('points',0),
-            'status':'paid' if r.get('status') in ('paid','adjusted') else 'pending'} for r in ledger]}}
+            {'id':r['reward_id'],'title':reward_title(r),'time':r.get('occurred_at',now),'amount':r.get('points',0),
+            'kind':'weekly','status':'paid' if r.get('status') in ('paid','adjusted') else 'pending'} for r in ledger]}}
     for panel,stage in [('baseline','personal_baseline'),('missions','next_week_missions'),('ranking','ranking')]:
         state=run.get('stages',{}).get(stage,{})
         if state.get('status')=='failed':result[panel]={'state':'error','message':'로컬 계산 실패: '+state.get('error','')[:250]}
     return result
 
 
-def mission_panel(bundle):
+def mission_panel(bundle,acknowledged=None):
+    from rewards import extension_policy
+    reward=extension_policy()['mission_tokens']
     return {'state':'ready','data':{'week':bundle['week_start'],'updatedAt':bundle.get('created_at'),'items':[
         {'id':m['assignment_id'],'title':m['mission_name'],'category':m['category_label'],'description':m['mission_description'],
-         'progress':m.get('progress_count',0),'goal':m['target_count'],'unit':m['progress_unit'],
-         'status':'completed' if m.get('completed') else 'active'} for m in bundle['missions']]}}
+         'rewardPoints':reward,'progress':m.get('progress_count',0),'goal':m['target_count'],'unit':m['progress_unit'],
+         'status':('completed' if m['assignment_id'] in (acknowledged or set()) else 'claimable') if m.get('completed') else 'active'} for m in bundle['missions']]}}

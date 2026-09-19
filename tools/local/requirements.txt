@@ -11,3 +11,5 @@ pytest==9.1.1
 scikit-learn==1.6.1
 joblib==1.6.0
 tzdata==2026.4
+catboost==1.2.10
+pyproj==3.7.2
