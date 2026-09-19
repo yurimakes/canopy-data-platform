@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator, Mapping
 from datetime import datetime, timezone
 from typing import Any
@@ -17,8 +16,16 @@ except ImportError:  # pragma: no cover - keeps pure unit tests importable
         pass
 
 
-STATE_SCHEMA = "state_json STRING NOT NULL"
-STATE_VERSION = 1
+META_STATE_SCHEMA = "last_sequence BIGINT NOT NULL"
+POINT_STATE_SCHEMA = (
+    "event_id STRING NOT NULL, "
+    "user_id STRING NOT NULL, "
+    "trip_id STRING NOT NULL, "
+    "sequence BIGINT NOT NULL, "
+    "event_time TIMESTAMP NOT NULL, "
+    "lat DOUBLE NOT NULL, "
+    "lon DOUBLE NOT NULL"
+)
 
 
 def _value(row: Any, name: str) -> Any:
@@ -33,39 +40,28 @@ def _trip_id(key: Any) -> str:
     return str(key)
 
 
-def _encode(points: list[GpsPoint], seen: set[str], last_sequence: int) -> str:
-    return json.dumps({
-        "version": STATE_VERSION,
-        "last_sequence": last_sequence,
-        "seen_event_ids": sorted(seen),
-        "points": [
-            {
-                "event_id": point.event_id,
-                "user_id": point.user_id,
-                "trip_id": point.trip_id,
-                "sequence": point.sequence,
-                "event_time": point.event_time.isoformat(),
-                "lat": point.lat,
-                "lon": point.lon,
-            }
-            for point in points
-        ],
-    }, separators=(",", ":"), sort_keys=True)
+def _point_tuple(point: GpsPoint) -> tuple[Any, ...]:
+    return (
+        point.event_id,
+        point.user_id,
+        point.trip_id,
+        point.sequence,
+        point.event_time,
+        point.lat,
+        point.lon,
+    )
 
 
-def _decode(value: str) -> tuple[list[GpsPoint], set[str], int]:
-    payload = json.loads(value)
-    if payload.get("version") != STATE_VERSION:
-        raise ValueError("unsupported trip-state version")
-    points = [
-        GpsPoint(
-            event_id=item["event_id"], user_id=item["user_id"], trip_id=item["trip_id"],
-            sequence=int(item["sequence"]), event_time=datetime.fromisoformat(item["event_time"]),
-            lat=float(item["lat"]), lon=float(item["lon"]),
-        )
-        for item in payload["points"]
-    ]
-    return points, set(payload["seen_event_ids"]), int(payload["last_sequence"])
+def _point_from_state(value: Any) -> GpsPoint:
+    return GpsPoint(
+        event_id=str(value[0]),
+        user_id=str(value[1]),
+        trip_id=str(value[2]),
+        sequence=int(value[3]),
+        event_time=value[4],
+        lat=float(value[5]),
+        lon=float(value[6]),
+    )
 
 
 def point_from_row(row: Any) -> GpsPoint:
@@ -87,70 +83,112 @@ def advance_trip(
     seen_event_ids: set[str] | None = None,
     last_sequence: int = -1,
 ) -> tuple[list[dict[str, Any]], list[GpsPoint], set[str], int]:
-    """Advance append-only state; rows late beyond the current sequence are ignored."""
-    history = list(points or [])
-    seen = set(seen_event_ids or set())
+    """Advance append-only state with bounded point and duplicate history."""
+    history = list(points or [])[-MAX_RAW_POINTS:]
+    seen = set(seen_event_ids or {point.event_id for point in history})
+    seen.intersection_update(point.event_id for point in history)
     outputs: list[dict[str, Any]] = []
-    ordered = sorted(rows, key=lambda row: (
-        int(_value(row, "sequence")), _value(row, "event_time"), str(_value(row, "event_id"))
-    ))
+
+    ordered = sorted(
+        rows,
+        key=lambda row: (
+            int(_value(row, "sequence")),
+            _value(row, "event_time"),
+            str(_value(row, "event_id")),
+        ),
+    )
     for row in ordered:
         point = point_from_row(row)
         if point.trip_id != trip_id:
             raise ValueError("grouping key does not match row trip_id")
         if point.event_id in seen or point.sequence <= last_sequence:
             continue
+
         history = history[-(MAX_RAW_POINTS - 1):]
         history.append(point)
         feature_values = extract_features(history)[-1]
-        outputs.append({
-            "event_id": point.event_id,
-            "user_id": point.user_id,
-            "trip_id": point.trip_id,
-            "sequence": point.sequence,
-            "event_time": point.event_time,
-            "features_processed_at": datetime.now(timezone.utc),
-            **feature_values,
-        })
-        seen.add(point.event_id)
+        outputs.append(
+            {
+                "event_id": point.event_id,
+                "user_id": point.user_id,
+                "trip_id": point.trip_id,
+                "sequence": point.sequence,
+                "event_time": point.event_time,
+                "features_processed_at": datetime.now(timezone.utc),
+                **feature_values,
+            }
+        )
         last_sequence = point.sequence
         history = history[-MAX_RAW_POINTS:]
+        seen = {item.event_id for item in history}
+
     return outputs, history, seen, last_sequence
 
 
 class TripFeatureProcessor(_StatefulProcessor):
+    """Persist bounded native Spark state for one trip key."""
+
     def __init__(self, ttl_duration_ms: int, row_factory: Any = None) -> None:
         if ttl_duration_ms <= 0:
             raise ValueError("ttl_duration_ms must be positive")
-        self._state: Any = None
+        self._meta_state: Any = None
+        self._point_state: Any = None
         self._ttl_duration_ms = ttl_duration_ms
         self._row_factory = row_factory
 
     def init(self, handle: Any) -> None:
-        self._state = handle.getValueState(
-            "trip_feature_state",
-            STATE_SCHEMA,
+        self._meta_state = handle.getValueState(
+            "trip_feature_meta",
+            META_STATE_SCHEMA,
+            ttlDurationMs=self._ttl_duration_ms,
+        )
+        self._point_state = handle.getListState(
+            "trip_feature_points",
+            POINT_STATE_SCHEMA,
             ttlDurationMs=self._ttl_duration_ms,
         )
 
-    def handleInputRows(self, key: Any, rows: Iterator[Any], timerValues: Any = None) -> Iterator[Any]:
+    def handleInputRows(
+        self,
+        key: Any,
+        rows: Iterator[Any],
+        timerValues: Any = None,
+    ) -> Iterator[Any]:
         del timerValues
         trip_id = _trip_id(key)
-        points: list[GpsPoint] = []
-        seen: set[str] = set()
-        last_sequence = -1
-        if self._state.exists():
-            points, seen, last_sequence = _decode(self._state.get()[0])
-        outputs, points, seen, last_sequence = advance_trip(
-            trip_id, rows, points, seen, last_sequence
+
+        last_sequence = (
+            int(self._meta_state.get()[0])
+            if self._meta_state.exists()
+            else -1
         )
+        points = (
+            [_point_from_state(value) for value in self._point_state.get()]
+            if self._point_state.exists()
+            else []
+        )
+        seen = {point.event_id for point in points}
+
+        outputs, points, _seen, last_sequence = advance_trip(
+            trip_id,
+            rows,
+            points,
+            seen,
+            last_sequence,
+        )
+
         if outputs:
-            self._state.update((_encode(points, seen, last_sequence),))
+            self._meta_state.update((last_sequence,))
+            # A single bounded rewrite resets TTL consistently for all retained
+            # history rows and avoids per-point RocksDB writes.
+            self._point_state.put([_point_tuple(point) for point in points])
+
         for values in outputs:
             if self._row_factory is not None:
                 yield self._row_factory(**values)
             else:
                 from pyspark.sql import Row
+
                 yield Row(**values)
 
     def close(self) -> None:
