@@ -40,13 +40,22 @@ def _trip_id(key: Any) -> str:
     return str(key)
 
 
+def _normalize_event_time(value: datetime) -> datetime:
+    """Normalize Spark/Python timestamps to UTC-naive for stable arithmetic."""
+    if not isinstance(value, datetime):
+        raise TypeError(f"event_time must be datetime, got {type(value).__name__}")
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _point_tuple(point: GpsPoint) -> tuple[Any, ...]:
     return (
         point.event_id,
         point.user_id,
         point.trip_id,
         point.sequence,
-        point.event_time,
+        _normalize_event_time(point.event_time),
         point.lat,
         point.lon,
     )
@@ -58,7 +67,7 @@ def _point_from_state(value: Any) -> GpsPoint:
         user_id=str(value[1]),
         trip_id=str(value[2]),
         sequence=int(value[3]),
-        event_time=value[4],
+        event_time=_normalize_event_time(value[4]),
         lat=float(value[5]),
         lon=float(value[6]),
     )
@@ -70,7 +79,7 @@ def point_from_row(row: Any) -> GpsPoint:
         user_id=str(_value(row, "user_id")),
         trip_id=str(_value(row, "trip_id")),
         sequence=int(_value(row, "sequence")),
-        event_time=_value(row, "event_time"),
+        event_time=_normalize_event_time(_value(row, "event_time")),
         lat=float(_value(row, "lat")),
         lon=float(_value(row, "lon")),
     )
