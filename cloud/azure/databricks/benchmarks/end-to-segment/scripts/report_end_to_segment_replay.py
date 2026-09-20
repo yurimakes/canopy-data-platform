@@ -233,7 +233,7 @@ def main() -> None:
             .orderBy("batch_id")
             .collect()
         )
-        if any(r["status"] in ("append_attempted", "appended", "merged") for r in telemetry_rows):
+        if any(r["status"] in ("appended", "merged") for r in telemetry_rows):
             break
         time.sleep(args.poll_seconds)
     print(
