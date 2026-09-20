@@ -31,7 +31,10 @@ class PredictionPoint:
     predicted_at: datetime
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        values = asdict(self)
+        values["event_time"] = _utc_naive(self.event_time)
+        values["predicted_at"] = _utc_naive(self.predicted_at)
+        return values
 
     def fingerprint(self) -> str:
         return _fingerprint(self.as_dict())
@@ -48,7 +51,9 @@ class TripEnd:
     result_owner: str
 
     def fingerprint(self) -> str:
-        return _fingerprint(asdict(self))
+        values = asdict(self)
+        values["parsed_at"] = _utc_naive(self.parsed_at)
+        return _fingerprint(values)
 
 
 @dataclass(frozen=True)
@@ -104,13 +109,13 @@ class _SegmentAccumulator:
             mode=value.mode,
             start_sequence=point.sequence,
             end_sequence=point.sequence,
-            start_time=point.event_time,
-            end_time=point.event_time,
+            start_time=_utc_naive(point.event_time),
+            end_time=_utc_naive(point.event_time),
             point_count=1,
             distance_m=0.0,
             model_name=point.model_name,
             model_version=point.model_version,
-            latest_prediction_at=point.predicted_at,
+            latest_prediction_at=_utc_naive(point.predicted_at),
             last_lat=point.lat,
             last_lon=point.lon,
         )
@@ -124,7 +129,7 @@ class _SegmentAccumulator:
             point.lon,
         )
         self.end_sequence = point.sequence
-        self.end_time = point.event_time
+        self.end_time = _utc_naive(point.event_time)
         self.point_count += 1
         self.model_name = min(self.model_name, point.model_name)
         if point.model_version is not None:
@@ -134,8 +139,8 @@ class _SegmentAccumulator:
                 else min(self.model_version, point.model_version)
             )
         self.latest_prediction_at = max(
-            self.latest_prediction_at,
-            point.predicted_at,
+            _utc_naive(self.latest_prediction_at),
+            _utc_naive(point.predicted_at),
         )
         self.last_lat = point.lat
         self.last_lon = point.lon
@@ -171,6 +176,13 @@ def _mapping(value: Any) -> dict[str, Any]:
     if hasattr(value, "asDict"):
         return value.asDict(recursive=True)
     raise TypeError(f"state value must be mapping-like, got {type(value).__name__}")
+
+
+def _utc_naive(value: datetime) -> datetime:
+    """Normalize Spark/Pandas timestamps to naive UTC for stable state comparisons."""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _gap_seconds(left: PredictionPoint, right: PredictionPoint) -> float:
