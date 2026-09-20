@@ -50,6 +50,9 @@ TRIP_END_TABLE = f"{CATALOG}.{SCHEMA}.{_conf('input_trip_ended_table')}"
 OUTPUT_PREDICTIONS_TABLE = _conf("output_predictions_table")
 OUTPUT_ENRICHED_PREDICTIONS_TABLE = _conf("output_enriched_predictions_table")
 OUTPUT_SEGMENTS_TABLE = _conf("output_segments_table")
+OUTPUT_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_PREDICTIONS_TABLE}"
+OUTPUT_ENRICHED_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_ENRICHED_PREDICTIONS_TABLE}"
+OUTPUT_SEGMENTS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_SEGMENTS_TABLE}"
 MODEL_URI = _conf("transition_model_uri")
 MODEL_ARTIFACT_PATH = _conf("transition_model_artifact_path")
 STATE_TIMEOUT_MS = state_timeout_ms(_conf("state_timeout"))
@@ -58,13 +61,13 @@ STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 
 dp.create_streaming_table(
-    name=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
+    name=OUTPUT_ENRICHED_PREDICTIONS_FQN,
     schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Internal enriched point predictions shared by public output and segmentation.",
 )
 
 @dp.append_flow(
-    target=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
+    target=OUTPUT_ENRICHED_PREDICTIONS_FQN,
     name="enriched_mode_predictions_flow",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
@@ -80,24 +83,24 @@ def enriched_mode_predictions_flow():
 
 
 @dp.table(
-    name=OUTPUT_PREDICTIONS_TABLE,
+    name=OUTPUT_PREDICTIONS_FQN,
     schema=MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Integrated replay pointwise predictions; public compatibility contract.",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_predictions():
-    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_FQN)
     return public_predictions(enriched)
 
 
 @dp.table(
-    name=OUTPUT_SEGMENTS_TABLE,
+    name=OUTPUT_SEGMENTS_FQN,
     schema=SEGMENT_OUTPUT_SCHEMA_DDL,
     comment="Finalized mode segments from incremental native per-trip state.",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_segments():
-    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_FQN)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(predictions, trip_ends)
     return stateful_segment_rows(
