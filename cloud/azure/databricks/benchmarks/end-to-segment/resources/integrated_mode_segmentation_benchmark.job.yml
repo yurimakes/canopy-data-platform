@@ -47,6 +47,7 @@ resources:
               - --catalog=${var.catalog}
               - --schema=${var.schema}
               - --trip-ended-table=${var.replay_trip_ended_table}
+              - --arrival-table=${var.replay_arrival_table}
               - --segments-table=${var.integrated_segments_table}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
