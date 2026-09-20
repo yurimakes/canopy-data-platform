@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession
 
 def parse_args():
     p=argparse.ArgumentParser()
-    for name in ("catalog","schema","source-table","gps-table","prediction-table","trip-ended-table","source-trip-id","run-id"):
+    for name in ("catalog","schema","source-table","gps-table","prediction-table","trip-ended-table","marker-table","source-trip-id","run-id"):
         p.add_argument(f"--{name}", required=True)
     p.add_argument("--users", type=int, default=5)
     p.add_argument("--points-per-user", type=int, default=300)
@@ -28,6 +28,7 @@ def main():
     gps_name=f"{a.catalog}.{a.schema}.{a.gps_table}"
     pred_name=f"{a.catalog}.{a.schema}.{a.prediction_table}"
     end_name=f"{a.catalog}.{a.schema}.{a.trip_ended_table}"
+    marker_name=f"{a.catalog}.{a.schema}.{a.marker_table}"
 
     source_df=(spark.table(source_name).where(f"trip_id = '{a.source_trip_id}'")
                .orderBy("sequence").limit(a.points_per_user))
@@ -89,6 +90,9 @@ def main():
     spark.createDataFrame(rows,schema=end_schema).write.format("delta").mode("append").saveAsTable(end_name)
     trip_end_committed_at=now_utc_naive()
     trip_end_write_ms=(time.perf_counter()-trip_end_write_started)*1000.0
+    marker_schema="run_id string, trip_end_parsed_at timestamp, trip_end_write_started_at timestamp, trip_end_committed_at timestamp, trip_end_write_ms double"
+    marker_row=[(a.run_id,trip_end_at,trip_end_write_started_at,trip_end_committed_at,float(trip_end_write_ms))]
+    spark.createDataFrame(marker_row,marker_schema).write.format("delta").mode("append").option("mergeSchema","true").saveAsTable(marker_name)
     print("SEGMENT_ONLY_INPUT_READY",{"run_id":a.run_id,"users":a.users,"points_per_user":a.points_per_user,
           "trip_end_parsed_at":str(trip_end_at),
           "trip_end_write_started_at":str(trip_end_write_started_at),
