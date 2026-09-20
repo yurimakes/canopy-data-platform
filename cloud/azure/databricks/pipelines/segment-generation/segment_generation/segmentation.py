@@ -196,11 +196,13 @@ def stabilize_predictions(points: Any, max_gap_seconds: int) -> Any:
     )
 
 
-def build_segments(points: Any) -> Any:
+def build_segments(points: Any, plan_timings: dict[str, float] | None = None) -> Any:
     """Collapse stabilized point predictions into deterministic mode segments."""
+    import time
     from pyspark.sql import Window
     from pyspark.sql import functions as F
 
+    stage_started = time.perf_counter()
     order = Window.partitionBy("trip_id", "processing_generation").orderBy(
         "sequence", "event_time", "event_id"
     )
@@ -218,7 +220,12 @@ def build_segments(points: Any) -> Any:
         )
         .withColumn("segment_index", F.sum("segment_start").over(running))
     )
+    if plan_timings is not None:
+        plan_timings["segment_boundary_plan_ms"] = (
+            time.perf_counter() - stage_started
+        ) * 1000.0
 
+    stage_started = time.perf_counter()
     previous_lat = F.lag("lat").over(order)
     previous_lon = F.lag("lon").over(order)
     lat1 = F.radians(previous_lat)
@@ -242,9 +249,14 @@ def build_segments(points: Any) -> Any:
             edge_m,
         ).otherwise(F.lit(0.0)),
     )
+    if plan_timings is not None:
+        plan_timings["segment_distance_plan_ms"] = (
+            time.perf_counter() - stage_started
+        ) * 1000.0
 
+    stage_started = time.perf_counter()
     grain = ["trip_id", "processing_generation", "segment_index"]
-    return (
+    aggregated = (
         marked.groupBy(*grain)
         .agg(
             F.first("user_id", ignorenulls=True).alias("user_id"),
@@ -265,7 +277,15 @@ def build_segments(points: Any) -> Any:
             F.max("trip_end_parsed_at").alias("trip_end_parsed_at"),
             F.count(F.lit(1)).cast("long").alias("point_count"),
         )
-        .withColumn(
+    )
+    if plan_timings is not None:
+        plan_timings["segment_aggregate_plan_ms"] = (
+            time.perf_counter() - stage_started
+        ) * 1000.0
+
+    stage_started = time.perf_counter()
+    result = (
+        aggregated.withColumn(
             "segment_id",
             F.concat(
                 "trip_id",
@@ -299,3 +319,8 @@ def build_segments(points: Any) -> Any:
             "segmented_at",
         )
     )
+    if plan_timings is not None:
+        plan_timings["segment_output_plan_ms"] = (
+            time.perf_counter() - stage_started
+        ) * 1000.0
+    return result
