@@ -50,6 +50,9 @@ variables:
     default: 3
   timezone:
     default: UTC
+  integrated_continuous_pause_status:
+    description: Pause status for the development continuous job wrapper.
+    default: PAUSED
 
 targets:
   trial:
