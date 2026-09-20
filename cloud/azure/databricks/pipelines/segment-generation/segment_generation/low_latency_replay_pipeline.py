@@ -46,6 +46,7 @@ MAX_REPAIR_GAP_SECONDS = int(_conf("max_repair_gap_seconds"))
 _TELEMETRY_SCHEMA = T.StructType(
     [
         T.StructField("batch_id", T.LongType(), False),
+        T.StructField("affected_trip_ids", T.ArrayType(T.StringType(), False), False),
         T.StructField("batch_entered_at", T.TimestampType(), False),
         T.StructField("affected_probe_started_at", T.TimestampType(), False),
         T.StructField("affected_probe_finished_at", T.TimestampType(), False),
@@ -88,7 +89,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
 
     affected_probe_started_at = _utc_now()
     affected_probe_started = time.perf_counter()
-    affected_present = affected.limit(1).count() > 0
+    affected_trip_ids = [row["trip_id"] for row in affected.select("trip_id").collect()]
+    affected_present = len(affected_trip_ids) > 0
     affected_probe_finished_at = _utc_now()
     affected_probe_ms = (time.perf_counter() - affected_probe_started) * 1000.0
 
@@ -143,6 +145,7 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
             spark,
             {
                 "batch_id": int(batch_id),
+                "affected_trip_ids": affected_trip_ids,
                 "batch_entered_at": batch_entered_at,
                 "affected_probe_started_at": affected_probe_started_at,
                 "affected_probe_finished_at": affected_probe_finished_at,
