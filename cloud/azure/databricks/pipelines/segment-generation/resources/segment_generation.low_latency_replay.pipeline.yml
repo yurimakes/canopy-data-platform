@@ -18,4 +18,5 @@ resources:
         canopy.gps_observations_table: ${var.replay_gps_observations_table}
         canopy.mode_predictions_table: ${var.replay_mode_predictions_table}
         canopy.segments_table: ${var.replay_low_latency_segments_table}
+        canopy.telemetry_table: ${var.replay_low_latency_telemetry_table}
         canopy.max_repair_gap_seconds: ${var.max_repair_gap_seconds}
