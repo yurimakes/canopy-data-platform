@@ -1,17 +1,16 @@
-import ast
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_pipeline_reuses_inference_and_keeps_public_prediction_contract() -> None:
+def test_pipeline_reuses_inference_without_public_prediction_sink() -> None:
     text = (ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py").read_text()
     assert "stateful_feature_rows" in text
     assert "infer_enriched_predictions" in text
-    assert "public_predictions" in text
-    assert "MODE_PREDICTIONS_SCHEMA_DDL" in text
-    assert "ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL" in text
+    assert "public_predictions" not in text
+    assert "OUTPUT_PREDICTIONS_TABLE" not in text
+    assert "OUTPUT_ENRICHED_PREDICTIONS_TABLE" not in text
 
 
 def test_pipeline_uses_tagged_union_and_native_stateful_segment_output() -> None:
@@ -23,26 +22,16 @@ def test_pipeline_uses_tagged_union_and_native_stateful_segment_output() -> None
     assert ".join(" not in text
 
 
-def test_prediction_and_segment_tables_have_distinct_pipeline_owners() -> None:
+def test_pipeline_has_one_public_streaming_sink() -> None:
     text = (ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py").read_text()
-    assert "OUTPUT_PREDICTIONS_TABLE" in text
     assert "OUTPUT_SEGMENTS_TABLE" in text
-    assert "OUTPUT_ENRICHED_PREDICTIONS_TABLE" in text
-    assert text.count("@dp.table(") == 3
+    assert "OUTPUT_SEGMENTS_FQN" in text
+    assert text.count("@dp.table(") == 1
+    assert "silver_integrated_mode_segments" not in text
 
 
-def test_enriched_predictions_are_materialized_once_for_both_consumers() -> None:
-    path = ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py"
-    tree = ast.parse(path.read_text())
-    temporary_decorators = [
-        decorator
-        for node in tree.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        for decorator in node.decorator_list
-        if isinstance(decorator, ast.Call)
-        and isinstance(decorator.func, ast.Attribute)
-        and decorator.func.attr == "temporary_view"
-    ]
-    assert temporary_decorators == []
-    text = path.read_text()
-    assert text.count("readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)") == 2
+def test_inference_flows_directly_into_segmentation() -> None:
+    text = (ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py").read_text()
+    assert "predictions = infer_enriched_predictions(" in text
+    assert "events = unified_events(predictions, trip_ends)" in text
+    assert "return stateful_segment_rows(" in text
