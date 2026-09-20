@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--prediction-table", required=True)
     p.add_argument("--arrival-table", required=True)
     p.add_argument("--segments-table", required=True)
+    p.add_argument("--segment-telemetry-table", required=True)
     p.add_argument("--benchmark-table", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--users", type=int, required=True)
@@ -33,6 +34,7 @@ def main() -> None:
     predictions_name = f"{args.catalog}.{args.schema}.{args.prediction_table}"
     arrivals_name = f"{args.catalog}.{args.schema}.{args.arrival_table}"
     segments_name = f"{args.catalog}.{args.schema}.{args.segments_table}"
+    telemetry_name = f"{args.catalog}.{args.schema}.{args.segment_telemetry_table}"
     benchmark_name = f"{args.catalog}.{args.schema}.{args.benchmark_table}"
     prefix = f"replay:{args.run_id}:trip:"
 
@@ -196,6 +198,48 @@ def main() -> None:
             for r in final_sequence_stage
         },
     })
+
+
+    telemetry = (
+        spark.table(telemetry_name)
+        .where(
+            F.exists(
+                F.col("affected_trip_ids"),
+                lambda trip_id: trip_id.startswith(prefix),
+            )
+        )
+        .orderBy("batch_id")
+    )
+
+    telemetry_rows = telemetry.collect()
+    print(
+        "SEGMENT_STAGE_REPORT",
+        {
+            "run_id": args.run_id,
+            "batches": [
+                {
+                    "batch_id": int(r["batch_id"]),
+                    "affected_trip_ids": list(r["affected_trip_ids"]),
+                    "status": r["status"],
+                    "affected_probe_ms": float(r["affected_probe_ms"]),
+                    "segment_probe_ms": (
+                        float(r["segment_probe_ms"])
+                        if r["segment_probe_ms"] is not None
+                        else None
+                    ),
+                    "merge_ms": float(r["merge_ms"]) if r["merge_ms"] is not None else None,
+                    "batch_total_ms": float(r["batch_total_ms"]),
+                    "batch_entered_at": str(r["batch_entered_at"]),
+                    "segment_probe_started_at": str(r["segment_probe_started_at"]),
+                    "segment_probe_finished_at": str(r["segment_probe_finished_at"]),
+                    "merge_started_at": str(r["merge_started_at"]),
+                    "merge_finished_at": str(r["merge_finished_at"]),
+                    "batch_finished_at": str(r["batch_finished_at"]),
+                }
+                for r in telemetry_rows
+            ],
+        },
+    )
 
     rows = per_trip.collect()
     if len(rows) != args.users:
