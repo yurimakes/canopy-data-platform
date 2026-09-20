@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 
-from delta.tables import DeltaTable
 from pyspark import pipelines as dp
 from pyspark.sql import DataFrame, SparkSession, functions as F, types as T
 
@@ -121,41 +120,72 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
             if not has_trip_end:
                 status = "no_trip_end"
             else:
-                gps = spark.table(GPS_TABLE).join(affected, "trip_id", "semi")
-                predictions = spark.table(PREDICTIONS_TABLE).join(affected, "trip_id", "semi")
-
-                ready = build_ready_points(trip_ended, gps, predictions)
-                stabilized = stabilize_predictions(ready, MAX_REPAIR_GAP_SECONDS)
-                # The readiness probe and MERGE both consume the same segmentation
-                # plan. Cache its result so the MERGE does not recompute the full
-                # window/aggregation graph after the probe action.
-                segments = build_segments(stabilized).cache()
-
-                segment_probe_started_at = _utc_now()
-                segment_probe_started = time.perf_counter()
-                segments_ready = segments.limit(1).count() > 0
-                segment_probe_finished_at = _utc_now()
-                segment_probe_ms = (time.perf_counter() - segment_probe_started) * 1000.0
-
-                if segments_ready:
-                    merge_started_at = _utc_now()
-                    merge_started = time.perf_counter()
-                    (
-                        DeltaTable.forName(spark, SEGMENTS_TABLE)
-                        .alias("target")
-                        .merge(
-                            segments.alias("source"),
-                            "target.segment_id = source.segment_id",
-                        )
-                        .whenMatchedUpdateAll()
-                        .whenNotMatchedInsertAll()
-                        .execute()
+                finalized_generations = (
+                    spark.table(SEGMENTS_TABLE)
+                    .select("trip_id", "processing_generation")
+                    .distinct()
+                )
+                pending_trip_ended = (
+                    trip_ended.alias("t")
+                    .join(
+                        finalized_generations.alias("f"),
+                        (F.col("t.trip_id") == F.col("f.trip_id"))
+                        & (
+                            F.col("t.processing_generation")
+                            == F.col("f.processing_generation")
+                        ),
+                        "left_anti",
                     )
-                    merge_finished_at = _utc_now()
-                    merge_ms = (time.perf_counter() - merge_started) * 1000.0
-                    status = "merged"
+                    .cache()
+                )
+                has_pending_generation = pending_trip_ended.limit(1).count() > 0
+
+                if not has_pending_generation:
+                    status = "already_finalized"
                 else:
-                    status = "not_ready"
+                    pending_affected = pending_trip_ended.select("trip_id").distinct()
+                    gps = spark.table(GPS_TABLE).join(
+                        pending_affected, "trip_id", "semi"
+                    )
+                    predictions = spark.table(PREDICTIONS_TABLE).join(
+                        pending_affected, "trip_id", "semi"
+                    )
+
+                    ready = build_ready_points(
+                        pending_trip_ended, gps, predictions
+                    )
+                    stabilized = stabilize_predictions(
+                        ready, MAX_REPAIR_GAP_SECONDS
+                    )
+                    # Materialize once for the readiness action, then reuse the
+                    # cached finalized rows for the atomic append.
+                    segments = build_segments(stabilized).cache()
+
+                    segment_probe_started_at = _utc_now()
+                    segment_probe_started = time.perf_counter()
+                    segments_ready = segments.limit(1).count() > 0
+                    segment_probe_finished_at = _utc_now()
+                    segment_probe_ms = (
+                        time.perf_counter() - segment_probe_started
+                    ) * 1000.0
+
+                    if segments_ready:
+                        merge_started_at = _utc_now()
+                        merge_started = time.perf_counter()
+                        (
+                            segments.write.format("delta")
+                            .mode("append")
+                            .saveAsTable(SEGMENTS_TABLE)
+                        )
+                        merge_finished_at = _utc_now()
+                        merge_ms = (
+                            time.perf_counter() - merge_started
+                        ) * 1000.0
+                        status = "appended"
+                    else:
+                        status = "not_ready"
+
+                    pending_trip_ended.unpersist()
 
         batch_finished_at = _utc_now()
         batch_total_ms = (time.perf_counter() - batch_started) * 1000.0
