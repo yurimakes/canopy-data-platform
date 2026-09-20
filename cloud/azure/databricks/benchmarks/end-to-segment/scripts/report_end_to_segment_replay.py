@@ -256,6 +256,41 @@ def main() -> None:
                         if r["pending_probe_ms"] is not None
                         else None
                     ),
+                    "pending_projection_ms": (
+                        float(r["pending_projection_ms"])
+                        if r["pending_projection_ms"] is not None
+                        else None
+                    ),
+                    "gps_plan_ms": (
+                        float(r["gps_plan_ms"])
+                        if r["gps_plan_ms"] is not None
+                        else None
+                    ),
+                    "predictions_plan_ms": (
+                        float(r["predictions_plan_ms"])
+                        if r["predictions_plan_ms"] is not None
+                        else None
+                    ),
+                    "ready_plan_ms": (
+                        float(r["ready_plan_ms"])
+                        if r["ready_plan_ms"] is not None
+                        else None
+                    ),
+                    "stabilize_plan_ms": (
+                        float(r["stabilize_plan_ms"])
+                        if r["stabilize_plan_ms"] is not None
+                        else None
+                    ),
+                    "segments_plan_ms": (
+                        float(r["segments_plan_ms"])
+                        if r["segments_plan_ms"] is not None
+                        else None
+                    ),
+                    "pre_segment_plan_ms": (
+                        float(r["pre_segment_plan_ms"])
+                        if r["pre_segment_plan_ms"] is not None
+                        else None
+                    ),
                     "segment_probe_ms": (
                         float(r["segment_probe_ms"])
                         if r["segment_probe_ms"] is not None
