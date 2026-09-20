@@ -1,4 +1,4 @@
-"""Integrated replay pipeline: point inference plus incremental segmentation."""
+"""Integrated pipeline: point inference plus incremental segmentation."""
 
 from __future__ import annotations
 
