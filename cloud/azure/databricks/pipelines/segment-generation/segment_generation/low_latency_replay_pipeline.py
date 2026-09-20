@@ -65,6 +65,10 @@ _TELEMETRY_SCHEMA = T.StructType(
         T.StructField("ready_plan_ms", T.DoubleType(), True),
         T.StructField("stabilize_plan_ms", T.DoubleType(), True),
         T.StructField("segments_plan_ms", T.DoubleType(), True),
+        T.StructField("segment_boundary_plan_ms", T.DoubleType(), True),
+        T.StructField("segment_distance_plan_ms", T.DoubleType(), True),
+        T.StructField("segment_aggregate_plan_ms", T.DoubleType(), True),
+        T.StructField("segment_output_plan_ms", T.DoubleType(), True),
         T.StructField("pre_segment_plan_ms", T.DoubleType(), True),
         T.StructField("segment_probe_ms", T.DoubleType(), True),
         T.StructField("merge_ms", T.DoubleType(), True),
@@ -113,6 +117,10 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     ready_plan_ms = None
     stabilize_plan_ms = None
     segments_plan_ms = None
+    segment_boundary_plan_ms = None
+    segment_distance_plan_ms = None
+    segment_aggregate_plan_ms = None
+    segment_output_plan_ms = None
     pre_segment_plan_ms = None
     merge_started_at = None
     merge_finished_at = None
@@ -212,12 +220,27 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                     ) * 1000.0
 
                     stage_started = time.perf_counter()
+                    segment_plan_timings: dict[str, float] = {}
                     # Materialize once for the readiness action, then reuse the
                     # cached finalized rows for the atomic append.
-                    segments = build_segments(stabilized).cache()
+                    segments = build_segments(
+                        stabilized, plan_timings=segment_plan_timings
+                    ).cache()
                     segments_plan_ms = (
                         time.perf_counter() - stage_started
                     ) * 1000.0
+                    segment_boundary_plan_ms = segment_plan_timings.get(
+                        "segment_boundary_plan_ms"
+                    )
+                    segment_distance_plan_ms = segment_plan_timings.get(
+                        "segment_distance_plan_ms"
+                    )
+                    segment_aggregate_plan_ms = segment_plan_timings.get(
+                        "segment_aggregate_plan_ms"
+                    )
+                    segment_output_plan_ms = segment_plan_timings.get(
+                        "segment_output_plan_ms"
+                    )
 
                     pre_segment_plan_ms = (
                         time.perf_counter() - pre_segment_plan_started
@@ -273,6 +296,10 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 "ready_plan_ms": ready_plan_ms,
                 "stabilize_plan_ms": stabilize_plan_ms,
                 "segments_plan_ms": segments_plan_ms,
+                "segment_boundary_plan_ms": segment_boundary_plan_ms,
+                "segment_distance_plan_ms": segment_distance_plan_ms,
+                "segment_aggregate_plan_ms": segment_aggregate_plan_ms,
+                "segment_output_plan_ms": segment_output_plan_ms,
                 "pre_segment_plan_ms": pre_segment_plan_ms,
                 "segment_probe_ms": segment_probe_ms,
                 "merge_ms": merge_ms,
