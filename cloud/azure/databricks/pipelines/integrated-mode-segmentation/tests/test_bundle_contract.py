@@ -10,6 +10,7 @@ def test_bundle_is_trial_only_and_owns_separate_replay_tables() -> None:
     assert "CANOPY_TRIAL" in bundle
     assert "7405612422597045.5" in bundle
     assert "replay_integrated_mode_predictions" in bundle
+    assert "replay_integrated_enriched_mode_predictions" in bundle
     assert "replay_integrated_mode_segments" in bundle
     assert "silver_mode_predictions" not in bundle
     assert "silver_mode_segments" not in bundle

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import shutil
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
@@ -70,3 +72,28 @@ def test_processor_state_tuple_matches_declared_spark_schema(spark) -> None:
     row = spark.createDataFrame([_state_tuple(state)], schema).collect()[0]
     restored = TripSegmentationState.from_state_dict(row)
     assert restored.to_state_dict() == state.to_state_dict()
+
+
+def test_fractional_gap_behavior_matches_existing_spark_reference(spark) -> None:
+    segment_project = Path(__file__).resolve().parents[2] / "segment-generation"
+    sys.path.insert(0, str(segment_project))
+    try:
+        from segment_generation.segmentation import stabilize_predictions
+    finally:
+        sys.path.remove(str(segment_project))
+
+    rows = [
+        ("t1", 1, "p1", 1, datetime(2026, 9, 20, 0, 0, 0, 100_000), "car"),
+        ("t1", 1, "p2", 2, datetime(2026, 9, 20, 0, 0, 3, 900_000), "walk"),
+        ("t1", 1, "p3", 3, datetime(2026, 9, 20, 0, 0, 4, 900_000), "car"),
+    ]
+    points = spark.createDataFrame(
+        rows,
+        "trip_id string, processing_generation long, event_id string, sequence long, "
+        "event_time timestamp, predicted_mode string",
+    )
+    reference = [
+        row.stabilized_mode
+        for row in stabilize_predictions(points, 3).orderBy("sequence").collect()
+    ]
+    assert reference == ["car", "car", "car"]

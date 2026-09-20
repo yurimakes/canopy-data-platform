@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from integrated_mode_segmentation.processor import TripSegmentationProcessor
 from integrated_mode_segmentation.state_machine import PredictionPoint, TripEnd, TripSegmentationState
 
@@ -116,3 +118,33 @@ def test_processor_persists_typed_state_and_does_not_reemit_checkpoint_replay() 
         )
     )
     assert replay == []
+
+
+@pytest.mark.parametrize("owners", [("functions", "databricks"), ("databricks", "functions")])
+def test_owner_conflict_survives_separate_processor_invocations(owners) -> None:
+    handle = FakeHandle()
+    first_processor = TripSegmentationProcessor(
+        7_200_000, now=lambda: BASE, row_factory=lambda **v: v
+    )
+    first_processor.init(handle)
+    first_end = completion()
+    first_end = TripEnd(**{**first_end.__dict__, "event_id": "owner-first", "result_owner": owners[0]})
+    assert list(
+        first_processor.handleInputRows(
+            ("t1",), iter([union_row(prediction(1)), union_row(first_end)])
+        )
+    ) == []
+
+    second_processor = TripSegmentationProcessor(
+        7_200_000, now=lambda: BASE, row_factory=lambda **v: v
+    )
+    second_processor.init(handle)
+    second_end = completion()
+    second_end = TripEnd(
+        **{**second_end.__dict__, "event_id": "owner-second", "result_owner": owners[1]}
+    )
+    assert list(
+        second_processor.handleInputRows(
+            ("t1",), iter([union_row(prediction(2)), union_row(second_end)])
+        )
+    ) == []

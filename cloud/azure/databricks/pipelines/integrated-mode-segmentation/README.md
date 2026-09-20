@@ -9,14 +9,16 @@ tables owned by the existing inference and segment-generation bundles.
 ```text
 replay GPS stream
   -> TripFeatureProcessor
-  -> enriched point prediction temporary view
+  -> replay_integrated_enriched_mode_predictions (internal streaming table)
        -> public replay_integrated_mode_predictions
        -> PredictionEvent --+
                             +-> union -> TripSegmentationProcessor
 trip-ended stream ----------+              -> replay_integrated_mode_segments
 ```
 
-The enriched prediction path adds `lat` and `lon` only internally. The public
+The enriched prediction path adds `lat` and `lon` in an internal persisted
+streaming table shared by both downstream flows, so model inference runs once
+and both consumers observe the same `predicted_at`. The public
 prediction table retains the existing `MODE_PREDICTIONS_SCHEMA_DDL`. The
 segment output is a native streaming table; the critical path has no
 stream-stream join and no `foreachBatch` append.
@@ -75,6 +77,7 @@ Deployment is intentionally manual. The pipeline expects the replay GPS and
 trip-ended inputs configured in `databricks.yml` and owns:
 
 - `dbw_canopy_trial.sandbox.replay_integrated_mode_predictions`
+- `dbw_canopy_trial.sandbox.replay_integrated_enriched_mode_predictions` (internal)
 - `dbw_canopy_trial.sandbox.replay_integrated_mode_segments`
 
 ## Local verification

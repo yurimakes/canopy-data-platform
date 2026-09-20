@@ -6,7 +6,7 @@ import math
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -174,7 +174,13 @@ def _mapping(value: Any) -> dict[str, Any]:
 
 
 def _gap_seconds(left: PredictionPoint, right: PredictionPoint) -> float:
-    return (right.event_time - left.event_time).total_seconds()
+    def epoch_second(value: datetime) -> int:
+        normalized = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return math.floor(normalized.timestamp())
+
+    # The batch reference uses Spark unix_timestamp(), which compares whole
+    # epoch seconds rather than exact Python timedeltas.
+    return float(epoch_second(right.event_time) - epoch_second(left.event_time))
 
 
 def _within_gap(
@@ -309,8 +315,6 @@ class TripSegmentationState:
             return
         if event.trip_id != self.trip_id:
             raise ValueError("grouping key does not match trip-end trip_id")
-        if event.result_owner != "databricks":
-            return
         if event.processing_generation < 1 or not 1 <= event.expected_last_sequence <= MAX_SEQUENCE:
             self.conflicted = True
             return
@@ -322,6 +326,8 @@ class TripSegmentationState:
             return
 
         self._trip_ends[event.processing_generation] = event
+        if event.result_owner != "databricks":
+            return
         self._evaluate_readiness()
 
     def drain_outputs(self, segmented_at: datetime) -> list[SegmentRow]:
@@ -375,6 +381,8 @@ class TripSegmentationState:
             if generation in self._emitted_generations or generation in self._ready_generations:
                 continue
             event = self._trip_ends[generation]
+            if event.result_owner != "databricks":
+                continue
             expected = event.expected_last_sequence
             if self._sealed_at is not None:
                 if expected != self._sealed_at:

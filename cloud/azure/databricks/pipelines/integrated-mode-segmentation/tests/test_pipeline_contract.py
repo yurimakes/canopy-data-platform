@@ -11,6 +11,7 @@ def test_pipeline_reuses_inference_and_keeps_public_prediction_contract() -> Non
     assert "infer_enriched_predictions" in text
     assert "public_predictions" in text
     assert "MODE_PREDICTIONS_SCHEMA_DDL" in text
+    assert "ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL" in text
 
 
 def test_pipeline_uses_tagged_union_and_native_stateful_segment_output() -> None:
@@ -26,13 +27,14 @@ def test_prediction_and_segment_tables_have_distinct_pipeline_owners() -> None:
     text = (ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py").read_text()
     assert "OUTPUT_PREDICTIONS_TABLE" in text
     assert "OUTPUT_SEGMENTS_TABLE" in text
-    assert text.count("@dp.table(") == 2
+    assert "OUTPUT_ENRICHED_PREDICTIONS_TABLE" in text
+    assert text.count("@dp.table(") == 3
 
 
-def test_temporary_view_uses_only_supported_pyspark_decorator_arguments() -> None:
+def test_enriched_predictions_are_materialized_once_for_both_consumers() -> None:
     path = ROOT / "integrated_mode_segmentation" / "lakeflow_pipeline.py"
     tree = ast.parse(path.read_text())
-    decorators = [
+    temporary_decorators = [
         decorator
         for node in tree.body
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -41,9 +43,6 @@ def test_temporary_view_uses_only_supported_pyspark_decorator_arguments() -> Non
         and isinstance(decorator.func, ast.Attribute)
         and decorator.func.attr == "temporary_view"
     ]
-    assert len(decorators) == 1
-    assert {keyword.arg for keyword in decorators[0].keywords} <= {
-        "name",
-        "comment",
-        "spark_conf",
-    }
+    assert temporary_decorators == []
+    text = path.read_text()
+    assert text.count("readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)") == 2

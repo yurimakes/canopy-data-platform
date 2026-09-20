@@ -184,3 +184,39 @@ def test_gap_larger_than_policy_prevents_singleton_repair() -> None:
     state.accept_trip_end(trip_end(3))
 
     assert [r.mode for r in state.drain_outputs(BASE)] == ["car", "walk", "car"]
+
+
+def test_fractional_timestamp_gaps_match_spark_unix_timestamp_truncation() -> None:
+    state = TripSegmentationState("trip-1", max_gap_seconds=3)
+    timestamps = [
+        BASE + timedelta(milliseconds=100),
+        BASE + timedelta(seconds=3, milliseconds=900),
+        BASE + timedelta(seconds=4, milliseconds=900),
+    ]
+    for sequence, (mode, timestamp) in enumerate(
+        zip(["car", "walk", "car"], timestamps, strict=True), start=1
+    ):
+        source = point(sequence, mode)
+        state.accept_prediction(
+            PredictionPoint(**{**source.as_dict(), "event_time": timestamp})
+        )
+    state.accept_trip_end(trip_end(3))
+
+    assert [(row.mode, row.start_sequence, row.end_sequence) for row in state.drain_outputs(BASE)] == [
+        ("car", 1, 3)
+    ]
+
+
+@pytest.mark.parametrize("owners", [("databricks", "functions"), ("functions", "databricks")])
+def test_changing_trip_end_owner_is_a_conflict_before_finalization(owners) -> None:
+    state = TripSegmentationState("trip-1", max_gap_seconds=3)
+    state.accept_prediction(point(1))
+    for index, owner in enumerate(owners):
+        event = trip_end(2, event_id=f"owner-{index}")
+        state.accept_trip_end(
+            TripEnd(**{**event.__dict__, "result_owner": owner})
+        )
+    state.accept_prediction(point(2))
+
+    assert state.conflicted
+    assert state.drain_outputs(BASE) == []

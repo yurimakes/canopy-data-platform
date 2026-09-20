@@ -30,6 +30,8 @@ variables:
     default: replay_continuous_trip_ended_events
   replay_output_predictions_table:
     default: replay_integrated_mode_predictions
+  replay_output_enriched_predictions_table:
+    default: replay_integrated_enriched_mode_predictions
   replay_output_segments_table:
     default: replay_integrated_mode_segments
   transition_model_uri:
