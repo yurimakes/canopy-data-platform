@@ -103,6 +103,7 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     status = "no_affected_trips"
 
     trip_ended = None
+    pending_trip_ended = None
     segments = None
     try:
         if affected_present:
@@ -185,8 +186,6 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                     else:
                         status = "not_ready"
 
-                    pending_trip_ended.unpersist()
-
         batch_finished_at = _utc_now()
         batch_total_ms = (time.perf_counter() - batch_started) * 1000.0
         _write_telemetry(
@@ -214,6 +213,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     finally:
         if segments is not None:
             segments.unpersist()
+        if pending_trip_ended is not None:
+            pending_trip_ended.unpersist()
         if trip_ended is not None:
             trip_ended.unpersist()
         affected.unpersist()
