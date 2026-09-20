@@ -37,6 +37,9 @@ variables:
     default: canopy-trial
   event_hubs_secret_key:
     default: canopy-databricks-listen
+  ingestion_continuous_pause_status:
+    description: Pause status for the generic ingestion continuous job wrapper.
+    default: PAUSED
 
 targets:
   trial:
