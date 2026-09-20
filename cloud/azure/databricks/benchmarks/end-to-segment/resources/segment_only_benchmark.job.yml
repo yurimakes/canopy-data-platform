@@ -27,6 +27,7 @@ resources:
               - --gps-table=${var.replay_gps_table}
               - --prediction-table=${var.replay_predictions_table}
               - --trip-ended-table=${var.replay_trip_ended_table}
+              - --marker-table=${var.segment_only_marker_table}
               - --source-trip-id={{job.parameters.source_trip_id}}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
@@ -44,6 +45,7 @@ resources:
               - --trip-ended-table=${var.replay_trip_ended_table}
               - --segments-table=${var.replay_segments_table}
               - --segment-telemetry-table=${var.replay_segment_telemetry_table}
+              - --marker-table=${var.segment_only_marker_table}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
               - --timeout-seconds=180
