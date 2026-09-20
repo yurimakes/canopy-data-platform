@@ -7,7 +7,6 @@ from pyspark.sql import SparkSession
 
 from mode_inference.configuration import state_timeout_ms
 from mode_inference.contracts import (
-    ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
     MODE_PREDICTIONS_SCHEMA_DDL,
 )
 from mode_inference.model_inference import infer_enriched_predictions, public_predictions
@@ -59,7 +58,6 @@ STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 @dp.temporary_view(
     name=ENRICHED_PREDICTIONS_VIEW,
-    schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
 )
 def enriched_mode_predictions():
     observations = _spark().readStream.table(GPS_TABLE)
