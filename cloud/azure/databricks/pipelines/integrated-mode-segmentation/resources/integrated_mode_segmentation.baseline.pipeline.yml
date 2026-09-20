@@ -15,7 +15,7 @@ resources:
         dependencies:
           - ${workspace.file_path}/dist/canopy_integrated_mode_segmentation-0.1.0-py3-none-any.whl
       configuration:
-        pipelines.trigger.interval: "1 second"
+        pipelines.trigger.interval: ${var.baseline_trigger_interval}
         canopy.catalog: ${var.catalog}
         canopy.schema: ${var.schema}
         canopy.input_observations_table: ${var.baseline_input_observations_table}
