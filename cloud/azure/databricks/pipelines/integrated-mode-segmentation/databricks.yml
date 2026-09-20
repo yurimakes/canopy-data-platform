@@ -62,6 +62,9 @@ variables:
   baseline_continuous_pause_status:
     description: Pause status for the production-shaped baseline continuous job wrapper.
     default: PAUSED
+  baseline_trigger_interval:
+    description: Lakeflow trigger interval for the production-shaped integrated baseline pipeline.
+    default: 1 second
 
 targets:
   trial:
