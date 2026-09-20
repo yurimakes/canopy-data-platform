@@ -1,0 +1,29 @@
+resources:
+  pipelines:
+    integrated_mode_segmentation_baseline_pipeline:
+      name: canopy-integrated-mode-segmentation-baseline-${bundle.target}
+      catalog: ${var.catalog}
+      schema: ${var.schema}
+      serverless: true
+      channel: CURRENT
+      root_path: ${workspace.file_path}
+      libraries:
+        - file:
+            path: ${workspace.file_path}/integrated_mode_segmentation/lakeflow_pipeline.py
+      environment:
+        environment_version: "4"
+        dependencies:
+          - ${workspace.file_path}/dist/canopy_integrated_mode_segmentation-0.1.0-py3-none-any.whl
+      configuration:
+        pipelines.trigger.interval: "1 second"
+        canopy.catalog: ${var.catalog}
+        canopy.schema: ${var.schema}
+        canopy.input_observations_table: ${var.baseline_input_observations_table}
+        canopy.input_trip_ended_table: ${var.baseline_input_trip_ended_table}
+        canopy.output_segments_table: ${var.baseline_output_segments_table}
+        canopy.transition_model_uri: ${var.transition_model_uri}
+        canopy.transition_model_artifact_path: ${var.transition_model_artifact_path}
+        canopy.state_timeout: ${var.state_timeout}
+        canopy.state_store_partitions: ${var.state_store_partitions}
+        canopy.max_repair_gap_seconds: ${var.max_repair_gap_seconds}
+        spark.sql.session.timeZone: ${var.timezone}
