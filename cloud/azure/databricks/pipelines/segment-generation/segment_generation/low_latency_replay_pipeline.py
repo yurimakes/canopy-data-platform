@@ -57,6 +57,8 @@ _TELEMETRY_SCHEMA = T.StructType(
         T.StructField("affected_present", T.BooleanType(), False),
         T.StructField("segments_ready", T.BooleanType(), True),
         T.StructField("affected_probe_ms", T.DoubleType(), False),
+        T.StructField("trip_end_probe_ms", T.DoubleType(), True),
+        T.StructField("pending_probe_ms", T.DoubleType(), True),
         T.StructField("segment_probe_ms", T.DoubleType(), True),
         T.StructField("merge_ms", T.DoubleType(), True),
         T.StructField("batch_total_ms", T.DoubleType(), False),
@@ -95,6 +97,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
 
     segment_probe_started_at = None
     segment_probe_finished_at = None
+    trip_end_probe_ms = None
+    pending_probe_ms = None
     merge_started_at = None
     merge_finished_at = None
     segment_probe_ms = None
@@ -116,7 +120,11 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 .join(affected, "trip_id", "semi")
                 .cache()
             )
+            trip_end_probe_started = time.perf_counter()
             has_trip_end = trip_ended.limit(1).count() > 0
+            trip_end_probe_ms = (
+                time.perf_counter() - trip_end_probe_started
+            ) * 1000.0
 
             if not has_trip_end:
                 status = "no_trip_end"
@@ -139,7 +147,11 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                     )
                     .cache()
                 )
+                pending_probe_started = time.perf_counter()
                 has_pending_generation = pending_trip_ended.limit(1).count() > 0
+                pending_probe_ms = (
+                    time.perf_counter() - pending_probe_started
+                ) * 1000.0
 
                 if not has_pending_generation:
                     status = "already_finalized"
@@ -204,6 +216,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 "affected_present": bool(affected_present),
                 "segments_ready": segments_ready,
                 "affected_probe_ms": float(affected_probe_ms),
+                "trip_end_probe_ms": trip_end_probe_ms,
+                "pending_probe_ms": pending_probe_ms,
                 "segment_probe_ms": segment_probe_ms,
                 "merge_ms": merge_ms,
                 "batch_total_ms": float(batch_total_ms),
