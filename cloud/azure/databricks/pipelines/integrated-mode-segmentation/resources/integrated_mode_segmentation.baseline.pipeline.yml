@@ -3,7 +3,7 @@ resources:
     integrated_mode_segmentation_baseline_pipeline:
       name: canopy-integrated-mode-segmentation-baseline-${bundle.target}
       catalog: ${var.catalog}
-      schema: ${var.schema}
+      schema: ${var.silver_schema}
       serverless: true
       channel: CURRENT
       root_path: ${workspace.file_path}
@@ -17,7 +17,7 @@ resources:
       configuration:
         pipelines.trigger.interval: ${var.baseline_trigger_interval}
         canopy.catalog: ${var.catalog}
-        canopy.schema: ${var.schema}
+        canopy.schema: ${var.silver_schema}
         canopy.input_observations_table: ${var.baseline_input_observations_table}
         canopy.input_trip_ended_table: ${var.baseline_input_trip_ended_table}
         canopy.output_segments_table: ${var.baseline_output_segments_table}
