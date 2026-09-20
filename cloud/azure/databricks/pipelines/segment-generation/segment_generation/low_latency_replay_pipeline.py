@@ -69,6 +69,8 @@ _TELEMETRY_SCHEMA = T.StructType(
         T.StructField("segment_distance_plan_ms", T.DoubleType(), True),
         T.StructField("segment_aggregate_plan_ms", T.DoubleType(), True),
         T.StructField("segment_output_plan_ms", T.DoubleType(), True),
+        T.StructField("build_segments_transform_ms", T.DoubleType(), True),
+        T.StructField("segments_cache_registration_ms", T.DoubleType(), True),
         T.StructField("pre_segment_plan_ms", T.DoubleType(), True),
         T.StructField("segment_probe_ms", T.DoubleType(), True),
         T.StructField("merge_ms", T.DoubleType(), True),
@@ -121,6 +123,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     segment_distance_plan_ms = None
     segment_aggregate_plan_ms = None
     segment_output_plan_ms = None
+    build_segments_transform_ms = None
+    segments_cache_registration_ms = None
     pre_segment_plan_ms = None
     merge_started_at = None
     merge_finished_at = None
@@ -221,11 +225,23 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
 
                     stage_started = time.perf_counter()
                     segment_plan_timings: dict[str, float] = {}
-                    # Materialize once for the readiness action, then reuse the
-                    # cached finalized rows for the atomic append.
-                    segments = build_segments(
+
+                    build_segments_started = time.perf_counter()
+                    segment_rows = build_segments(
                         stabilized, plan_timings=segment_plan_timings
-                    ).cache()
+                    )
+                    build_segments_transform_ms = (
+                        time.perf_counter() - build_segments_started
+                    ) * 1000.0
+
+                    # Cache registration is intentionally measured separately
+                    # from the pure transformation-plan construction.
+                    cache_registration_started = time.perf_counter()
+                    segments = segment_rows.cache()
+                    segments_cache_registration_ms = (
+                        time.perf_counter() - cache_registration_started
+                    ) * 1000.0
+
                     segments_plan_ms = (
                         time.perf_counter() - stage_started
                     ) * 1000.0
@@ -300,6 +316,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 "segment_distance_plan_ms": segment_distance_plan_ms,
                 "segment_aggregate_plan_ms": segment_aggregate_plan_ms,
                 "segment_output_plan_ms": segment_output_plan_ms,
+                "build_segments_transform_ms": build_segments_transform_ms,
+                "segments_cache_registration_ms": segments_cache_registration_ms,
                 "pre_segment_plan_ms": pre_segment_plan_ms,
                 "segment_probe_ms": segment_probe_ms,
                 "merge_ms": merge_ms,
