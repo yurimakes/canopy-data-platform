@@ -40,7 +40,7 @@ variables:
   baseline_input_trip_ended_table:
     default: silver_trip_ended_events
   baseline_output_segments_table:
-    default: integrated_mode_segments
+    default: silver_integrated_mode_segments
   transition_model_uri:
     default: models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
   transition_model_artifact_path:
