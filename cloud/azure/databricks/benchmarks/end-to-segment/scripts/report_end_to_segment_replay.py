@@ -26,6 +26,10 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def now_utc_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def main() -> None:
     args = parse_args()
     spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
@@ -39,13 +43,23 @@ def main() -> None:
     prefix = f"replay:{args.run_id}:trip:"
 
     deadline = time.monotonic() + args.timeout_seconds
+    first_visible_at: dict[str, datetime] = {}
     segmented_trips = 0
     while time.monotonic() < deadline:
-        segmented_trips = (
-            spark.table(segments_name)
-            .where(F.col("trip_id").startswith(prefix))
-            .select("trip_id").distinct().count()
-        )
+        visible_trip_ids = [
+            row["trip_id"]
+            for row in (
+                spark.table(segments_name)
+                .where(F.col("trip_id").startswith(prefix))
+                .select("trip_id")
+                .distinct()
+                .collect()
+            )
+        ]
+        observed_at = now_utc_naive()
+        for trip_id in visible_trip_ids:
+            first_visible_at.setdefault(trip_id, observed_at)
+        segmented_trips = len(first_visible_at)
         if segmented_trips >= args.users:
             break
         print("SEGMENT_WAIT", {"segmented_trips": segmented_trips, "expected": args.users})
@@ -84,26 +98,31 @@ def main() -> None:
         .where(F.col("trip_id").startswith(prefix))
         .groupBy("trip_id")
         .agg(
-            F.max("segmented_at").alias("segments_ready_at"),
+            F.max("segmented_at").alias("segmented_at"),
             F.sum("point_count").alias("segment_point_coverage"),
             F.count("*").alias("segment_count"),
         )
+    )
+    visibility = spark.createDataFrame(
+        [(trip_id, observed_at) for trip_id, observed_at in first_visible_at.items()],
+        "trip_id string, segments_visible_at timestamp",
     )
 
     per_trip = (
         trip_ends.join(predictions, "trip_id", "inner")
         .join(segments, "trip_id", "inner")
+        .join(visibility, "trip_id", "inner")
         .withColumn(
             "trip_end_to_prediction_ms",
             (F.col("last_predicted_at").cast("double") - F.col("parsed_at").cast("double")) * 1000.0,
         )
         .withColumn(
             "prediction_to_segments_ms",
-            (F.col("segments_ready_at").cast("double") - F.col("last_predicted_at").cast("double")) * 1000.0,
+            (F.col("segments_visible_at").cast("double") - F.col("last_predicted_at").cast("double")) * 1000.0,
         )
         .withColumn(
             "trip_end_to_segments_ms",
-            (F.col("segments_ready_at").cast("double") - F.col("parsed_at").cast("double")) * 1000.0,
+            (F.col("segments_visible_at").cast("double") - F.col("parsed_at").cast("double")) * 1000.0,
         )
     )
 
