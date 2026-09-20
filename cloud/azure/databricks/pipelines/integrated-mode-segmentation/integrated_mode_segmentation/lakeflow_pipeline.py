@@ -50,6 +50,7 @@ TRIP_END_TABLE = f"{CATALOG}.{SCHEMA}.{_conf('input_trip_ended_table')}"
 OUTPUT_PREDICTIONS_TABLE = _conf("output_predictions_table")
 OUTPUT_ENRICHED_PREDICTIONS_TABLE = _conf("output_enriched_predictions_table")
 OUTPUT_SEGMENTS_TABLE = _conf("output_segments_table")
+ENRICHED_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_ENRICHED_PREDICTIONS_TABLE}"
 MODEL_URI = _conf("transition_model_uri")
 MODEL_ARTIFACT_PATH = _conf("transition_model_artifact_path")
 STATE_TIMEOUT_MS = state_timeout_ms(_conf("state_timeout"))
@@ -81,7 +82,7 @@ def enriched_mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_predictions():
-    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    enriched = _spark().readStream.table(ENRICHED_PREDICTIONS_FQN)
     return public_predictions(enriched)
 
 
@@ -92,7 +93,7 @@ def mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_segments():
-    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    predictions = _spark().readStream.table(ENRICHED_PREDICTIONS_FQN)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(predictions, trip_ends)
     return stateful_segment_rows(
