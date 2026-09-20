@@ -59,7 +59,7 @@ STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 
 @dp.table(
-    name=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
+    name=ENRICHED_PREDICTIONS_FQN,
     schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Internal enriched point predictions shared by public output and segmentation.",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
