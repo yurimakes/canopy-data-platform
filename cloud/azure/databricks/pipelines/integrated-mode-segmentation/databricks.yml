@@ -14,6 +14,7 @@ sync:
   include:
     - integrated_mode_segmentation/**
     - requirements.lakeflow.txt
+    - dist/*.whl
   exclude:
     - .venv/**
     - tests/**
