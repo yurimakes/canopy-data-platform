@@ -227,6 +227,16 @@ def main() -> None:
                     "affected_trip_ids": list(r["affected_trip_ids"]),
                     "status": r["status"],
                     "affected_probe_ms": float(r["affected_probe_ms"]),
+                    "trip_end_probe_ms": (
+                        float(r["trip_end_probe_ms"])
+                        if r["trip_end_probe_ms"] is not None
+                        else None
+                    ),
+                    "pending_probe_ms": (
+                        float(r["pending_probe_ms"])
+                        if r["pending_probe_ms"] is not None
+                        else None
+                    ),
                     "segment_probe_ms": (
                         float(r["segment_probe_ms"])
                         if r["segment_probe_ms"] is not None
