@@ -31,6 +31,8 @@ variables:
     default: replay_low_latency_mode_segments
   integrated_segments_table:
     default: replay_integrated_mode_segments
+  integrated_observation_table:
+    default: replay_integrated_segment_observations
   replay_segment_telemetry_table:
     default: replay_low_latency_segment_telemetry
   segment_only_marker_table:
