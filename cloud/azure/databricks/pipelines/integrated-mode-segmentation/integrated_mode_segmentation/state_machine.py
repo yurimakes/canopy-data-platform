@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any
@@ -31,8 +33,8 @@ class PredictionPoint:
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
 
-    def fingerprint(self) -> tuple[Any, ...]:
-        return tuple(self.as_dict().values())
+    def fingerprint(self) -> str:
+        return _fingerprint(self.as_dict())
 
 
 @dataclass(frozen=True)
@@ -45,8 +47,8 @@ class TripEnd:
     parsed_at: datetime
     result_owner: str
 
-    def fingerprint(self) -> tuple[Any, ...]:
-        return tuple(asdict(self).values())
+    def fingerprint(self) -> str:
+        return _fingerprint(asdict(self))
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,24 @@ def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2.0 * EARTH_RADIUS_M * math.asin(math.sqrt(min(1.0, value)))
 
 
+def _fingerprint(values: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        values,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=lambda value: value.isoformat() if isinstance(value, datetime) else str(value),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "asDict"):
+        return value.asDict(recursive=True)
+    raise TypeError(f"state value must be mapping-like, got {type(value).__name__}")
+
+
 def _gap_seconds(left: PredictionPoint, right: PredictionPoint) -> float:
     return (right.event_time - left.event_time).total_seconds()
 
@@ -173,7 +193,7 @@ class TripSegmentationState:
     max_gap_seconds: int
     _next_sequence: int = 1
     _pending: dict[int, PredictionPoint] = field(default_factory=dict)
-    _fingerprints: dict[int, tuple[Any, ...]] = field(default_factory=dict)
+    _fingerprints: dict[int, str] = field(default_factory=dict)
     _raw_window: list[PredictionPoint] = field(default_factory=list)
     _repaired_window: list[_ModePoint] = field(default_factory=list)
     _completed_segments: list[_SegmentAccumulator] = field(default_factory=list)
@@ -189,6 +209,72 @@ class TripSegmentationState:
             raise ValueError("trip_id must not be empty")
         if self.max_gap_seconds < 0:
             raise ValueError("max_gap_seconds must be non-negative")
+
+    def to_state_dict(self) -> dict[str, Any]:
+        return {
+            "trip_id": self.trip_id,
+            "max_gap_seconds": self.max_gap_seconds,
+            "next_sequence": self._next_sequence,
+            "pending": [point.as_dict() for _, point in sorted(self._pending.items())],
+            "fingerprints": dict(self._fingerprints),
+            "raw_window": [point.as_dict() for point in self._raw_window],
+            "repaired_window": [
+                {"point": value.point.as_dict(), "mode": value.mode}
+                for value in self._repaired_window
+            ],
+            "completed_segments": [asdict(value) for value in self._completed_segments],
+            "current_segment": (
+                None if self._current_segment is None else asdict(self._current_segment)
+            ),
+            "trip_ends": [asdict(value) for _, value in sorted(self._trip_ends.items())],
+            "ready_generations": list(self._ready_generations),
+            "emitted_generations": sorted(self._emitted_generations),
+            "sealed_at": self._sealed_at,
+            "conflicted": self.conflicted,
+        }
+
+    @classmethod
+    def from_state_dict(cls, value: Any) -> TripSegmentationState:
+        data = _mapping(value)
+        state = cls(
+            trip_id=str(data["trip_id"]),
+            max_gap_seconds=int(data["max_gap_seconds"]),
+        )
+        state._next_sequence = int(data["next_sequence"])
+        pending = [PredictionPoint(**_mapping(item)) for item in data.get("pending", [])]
+        state._pending = {point.sequence: point for point in pending}
+        state._fingerprints = {
+            int(sequence): str(digest)
+            for sequence, digest in dict(data.get("fingerprints", {})).items()
+        }
+        state._raw_window = [
+            PredictionPoint(**_mapping(item)) for item in data.get("raw_window", [])
+        ]
+        state._repaired_window = [
+            _ModePoint(
+                PredictionPoint(**_mapping(_mapping(item)["point"])),
+                str(_mapping(item)["mode"]),
+            )
+            for item in data.get("repaired_window", [])
+        ]
+        state._completed_segments = [
+            _SegmentAccumulator(**_mapping(item))
+            for item in data.get("completed_segments", [])
+        ]
+        current = data.get("current_segment")
+        state._current_segment = (
+            None if current is None else _SegmentAccumulator(**_mapping(current))
+        )
+        ends = [TripEnd(**_mapping(item)) for item in data.get("trip_ends", [])]
+        state._trip_ends = {item.processing_generation: item for item in ends}
+        state._ready_generations = [int(item) for item in data.get("ready_generations", [])]
+        state._emitted_generations = {
+            int(item) for item in data.get("emitted_generations", [])
+        }
+        sealed_at = data.get("sealed_at")
+        state._sealed_at = None if sealed_at is None else int(sealed_at)
+        state.conflicted = bool(data.get("conflicted", False))
+        return state
 
     def accept_prediction(self, point: PredictionPoint) -> None:
         if self.conflicted:
