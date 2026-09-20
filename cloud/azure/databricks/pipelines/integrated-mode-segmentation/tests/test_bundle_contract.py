@@ -4,38 +4,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_bundle_is_trial_only_and_owns_separate_replay_tables() -> None:
+def test_bundle_is_trial_baseline_only() -> None:
     bundle = (ROOT / "databricks.yml").read_text()
     assert "dbw_canopy_trial" in bundle
     assert "CANOPY_TRIAL" in bundle
     assert "7405612422597045.5" in bundle
-    assert "replay_integrated_mode_predictions" in bundle
-    assert "replay_integrated_enriched_mode_predictions" in bundle
-    assert "replay_integrated_mode_segments" in bundle
+    assert "silver_gps_observations" in bundle
+    assert "silver_trip_ended_events" in bundle
+    assert "silver_integrated_mode_segments" in bundle
+    assert "replay_" not in bundle
     assert "silver_mode_predictions" not in bundle
     assert "silver_mode_segments" not in bundle
 
 
-def test_pipeline_uses_one_second_trigger_and_expected_state_guards() -> None:
+def test_baseline_pipeline_uses_configurable_trigger_and_expected_state_guards() -> None:
     resource = (
-        ROOT / "resources" / "integrated_mode_segmentation.replay.pipeline.yml"
+        ROOT / "resources" / "integrated_mode_segmentation.baseline.pipeline.yml"
     ).read_text()
-    assert 'pipelines.trigger.interval: "1 second"' in resource
+    assert "pipelines.trigger.interval: ${var.baseline_trigger_interval}" in resource
     assert "canopy.state_timeout: ${var.state_timeout}" in resource
     assert "canopy.state_store_partitions: ${var.state_store_partitions}" in resource
     assert "canopy.max_repair_gap_seconds: ${var.max_repair_gap_seconds}" in resource
 
 
-def test_bundle_builds_shared_wheel_instead_of_copying_inference_source() -> None:
+def test_bundle_packages_internal_mode_inference_library() -> None:
     bundle = (ROOT / "databricks.yml").read_text()
     project = (ROOT / "pyproject.toml").read_text()
     resource = (
-        ROOT / "resources" / "integrated_mode_segmentation.replay.pipeline.yml"
+        ROOT / "resources" / "integrated_mode_segmentation.baseline.pipeline.yml"
     ).read_text()
     assert "artifacts:" in bundle and "type: whl" in bundle
-    assert '../inference/mode_inference' in project
-    assert "- whl:" in resource
-    assert not (ROOT / "integrated_mode_segmentation" / "mode_inference").exists()
+    assert 'packages = ["integrated_mode_segmentation", "mode_inference"]' in project
+    assert "../inference/mode_inference" not in project
+    assert (ROOT / "mode_inference" / "state.py").exists()
+    assert "canopy_integrated_mode_segmentation-0.1.0-py3-none-any.whl" in resource
 
 
 def test_critical_output_path_is_native_streaming() -> None:
