@@ -38,9 +38,24 @@ resources:
               - --trip-end-interval-ms={{job.parameters.trip_end_interval_ms}}
           environment_key: benchmark_env
 
+        - task_key: observe
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/observe_integrated_segments.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --segments-table=${var.integrated_segments_table}
+              - --observation-table=${var.integrated_observation_table}
+              - --run-id={{job.parameters.run_id}}
+              - --users={{job.parameters.users}}
+              - --timeout-seconds=300
+              - --poll-seconds=0.5
+          environment_key: benchmark_env
+
         - task_key: report
           depends_on:
             - task_key: produce
+            - task_key: observe
           spark_python_task:
             python_file: ${workspace.file_path}/scripts/report_integrated_mode_segmentation.py
             parameters:
@@ -49,6 +64,7 @@ resources:
               - --trip-ended-table=${var.replay_trip_ended_table}
               - --arrival-table=${var.replay_arrival_table}
               - --segments-table=${var.integrated_segments_table}
+              - --observation-table=${var.integrated_observation_table}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
               - --timeout-seconds=180
