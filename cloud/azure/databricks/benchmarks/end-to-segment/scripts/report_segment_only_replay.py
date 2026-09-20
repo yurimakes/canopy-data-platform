@@ -21,7 +21,10 @@ def compact(r):
          "batch_total_ms":float(r["batch_total_ms"]),"batch_entered_at":str(r["batch_entered_at"]),
          "batch_finished_at":str(r["batch_finished_at"])}
     for n in ("trip_end_probe_ms","pending_probe_ms","pending_projection_ms","gps_plan_ms","predictions_plan_ms",
-              "ready_plan_ms","stabilize_plan_ms","segments_plan_ms","pre_segment_plan_ms","segment_probe_ms","merge_ms"):
+              "ready_plan_ms","stabilize_plan_ms","segments_plan_ms",
+              "segment_boundary_plan_ms","segment_distance_plan_ms",
+              "segment_aggregate_plan_ms","segment_output_plan_ms",
+              "pre_segment_plan_ms","segment_probe_ms","merge_ms"):
         if r[n] is not None: out[n]=float(r[n])
     return out
 
