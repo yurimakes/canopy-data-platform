@@ -135,17 +135,13 @@ def stabilize_predictions(points: Any, max_gap_seconds: int) -> Any:
         "sequence", "event_time", "event_id"
     )
 
-    # Build independent window context in one projection. This preserves the
-    # expressions while avoiding one Python/JVM logical-plan mutation per column.
-    context = points.withColumns(
-        {
-            "m_lag2": F.lag("predicted_mode", 2).over(order),
-            "m_lag1": F.lag("predicted_mode", 1).over(order),
-            "m_lead1": F.lead("predicted_mode", 1).over(order),
-            "t_lag2": F.lag("event_time", 2).over(order),
-            "t_lag1": F.lag("event_time", 1).over(order),
-            "t_lead1": F.lead("event_time", 1).over(order),
-        }
+    context = (
+        points.withColumn("m_lag2", F.lag("predicted_mode", 2).over(order))
+        .withColumn("m_lag1", F.lag("predicted_mode", 1).over(order))
+        .withColumn("m_lead1", F.lead("predicted_mode", 1).over(order))
+        .withColumn("t_lag2", F.lag("event_time", 2).over(order))
+        .withColumn("t_lag1", F.lag("event_time", 1).over(order))
+        .withColumn("t_lead1", F.lead("event_time", 1).over(order))
     )
 
     gap_2_to_1 = F.unix_timestamp("t_lag1") - F.unix_timestamp("t_lag2")
@@ -166,13 +162,11 @@ def stabilize_predictions(points: Any, max_gap_seconds: int) -> Any:
         F.when(transition_lag, F.col("m_lag1")).otherwise(F.col("predicted_mode")),
     )
 
-    repaired = repaired.withColumns(
-        {
-            "r_lag1": F.lag("transition_mode", 1).over(order),
-            "r_lead1": F.lead("transition_mode", 1).over(order),
-            "r_t_lag1": F.lag("event_time", 1).over(order),
-            "r_t_lead1": F.lead("event_time", 1).over(order),
-        }
+    repaired = (
+        repaired.withColumn("r_lag1", F.lag("transition_mode", 1).over(order))
+        .withColumn("r_lead1", F.lead("transition_mode", 1).over(order))
+        .withColumn("r_t_lag1", F.lag("event_time", 1).over(order))
+        .withColumn("r_t_lead1", F.lead("event_time", 1).over(order))
     )
     left_gap = F.unix_timestamp("event_time") - F.unix_timestamp("r_t_lag1")
     right_gap = F.unix_timestamp("r_t_lead1") - F.unix_timestamp("event_time")
@@ -211,29 +205,26 @@ def build_segments(points: Any) -> Any:
         "sequence", "event_time", "event_id"
     )
     running = order.rowsBetween(Window.unboundedPreceding, Window.currentRow)
+    previous_mode = F.lag("stabilized_mode").over(order)
 
-    # Materialize shared lag expressions once. The original implementation
-    # embedded the same mode lag in multiple downstream expressions.
-    marked = points.withColumns(
-        {
-            "_previous_mode": F.lag("stabilized_mode").over(order),
-            "_previous_lat": F.lag("lat").over(order),
-            "_previous_lon": F.lag("lon").over(order),
-        }
+    marked = (
+        points.withColumn(
+            "segment_start",
+            F.when(
+                previous_mode.isNull()
+                | (previous_mode != F.col("stabilized_mode")),
+                1,
+            ).otherwise(0),
+        )
+        .withColumn("segment_index", F.sum("segment_start").over(running))
     )
-    marked = marked.withColumn(
-        "segment_start",
-        F.when(
-            F.col("_previous_mode").isNull()
-            | (F.col("_previous_mode") != F.col("stabilized_mode")),
-            1,
-        ).otherwise(0),
-    ).withColumn("segment_index", F.sum("segment_start").over(running))
 
-    lat1 = F.radians("_previous_lat")
+    previous_lat = F.lag("lat").over(order)
+    previous_lon = F.lag("lon").over(order)
+    lat1 = F.radians(previous_lat)
     lat2 = F.radians("lat")
     delta_lat = lat2 - lat1
-    delta_lon = F.radians(F.col("lon") - F.col("_previous_lon"))
+    delta_lon = F.radians(F.col("lon") - previous_lon)
     haversine_a = (
         F.pow(F.sin(delta_lat / 2.0), 2)
         + F.cos(lat1) * F.cos(lat2) * F.pow(F.sin(delta_lon / 2.0), 2)
@@ -247,12 +238,10 @@ def build_segments(points: Any) -> Any:
     marked = marked.withColumn(
         "internal_edge_m",
         F.when(
-            F.col("_previous_mode") == F.col("stabilized_mode"),
+            previous_mode == F.col("stabilized_mode"),
             edge_m,
         ).otherwise(F.lit(0.0)),
     )
-
-    marked = marked.drop("_previous_mode", "_previous_lat", "_previous_lon")
 
     grain = ["trip_id", "processing_generation", "segment_index"]
     return (
