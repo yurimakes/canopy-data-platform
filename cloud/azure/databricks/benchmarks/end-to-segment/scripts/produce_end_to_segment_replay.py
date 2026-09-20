@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--points-per-user", type=int, default=300)
     p.add_argument("--sequences-per-batch", type=int, default=10)
     p.add_argument("--batch-interval-ms", type=int, default=1000)
+    p.add_argument("--trip-end-interval-ms", type=int, default=0)
     return p.parse_args()
 
 
@@ -146,12 +147,13 @@ def main() -> None:
         T.StructField("parsed_at", T.TimestampType(), False),
     ])
 
-    trip_end_at = now_utc_naive()
-    trip_end_rows = []
     first_event_time = source_rows[0]["event_time"]
     last_event_time = source_rows[-1]["event_time"]
+    trip_end_times = {}
+
     for user_idx, (user_id, trip_id) in enumerate(identities):
-        trip_end_rows.append({
+        trip_end_at = now_utc_naive()
+        trip_end_row = {
             "event_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"canopy:{args.run_id}:trip_end:{user_idx}")),
             "event_type": "trip_ended",
             "schema_version": "trip-lifecycle-v1",
@@ -170,19 +172,30 @@ def main() -> None:
             "event_hub_enqueued_at": None,
             "bronze_ingested_at": trip_end_at,
             "parsed_at": trip_end_at,
+        }
+
+        (
+            spark.createDataFrame([trip_end_row], schema=trip_end_schema)
+            .write.format("delta").mode("append").saveAsTable(trip_end_name)
+        )
+        trip_end_times[trip_id] = str(trip_end_at)
+        print("TRIP_END_EMITTED", {
+            "run_id": args.run_id,
+            "trip_id": trip_id,
+            "user_id": user_id,
+            "trip_end_parsed_at": str(trip_end_at),
         })
 
-    (
-        spark.createDataFrame(trip_end_rows, schema=trip_end_schema)
-        .write.format("delta").mode("append").saveAsTable(trip_end_name)
-    )
+        if user_idx + 1 < len(identities) and args.trip_end_interval_ms > 0:
+            time.sleep(args.trip_end_interval_ms / 1000.0)
 
     print("CONTINUOUS_REPLAY_PRODUCED", {
         "run_id": args.run_id,
         "users": args.users,
         "points_per_user": args.points_per_user,
         "rows": total_written,
-        "trip_end_parsed_at": str(trip_end_at),
+        "trip_end_interval_ms": args.trip_end_interval_ms,
+        "trip_end_times": trip_end_times,
         "replay_table": replay_name,
         "trip_ended_table": trip_end_name,
     })
