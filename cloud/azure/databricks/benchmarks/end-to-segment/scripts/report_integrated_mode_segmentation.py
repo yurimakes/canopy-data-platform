@@ -14,6 +14,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--catalog", required=True)
     p.add_argument("--schema", required=True)
     p.add_argument("--trip-ended-table", required=True)
+    p.add_argument("--arrival-table", required=True)
     p.add_argument("--segments-table", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--users", type=int, required=True)
@@ -31,6 +32,7 @@ def main() -> None:
     spark = SparkSession.getActiveSession() or SparkSession.builder.getOrCreate()
 
     trip_end_name = f"{args.catalog}.{args.schema}.{args.trip_ended_table}"
+    arrival_name = f"{args.catalog}.{args.schema}.{args.arrival_table}"
     segments_name = f"{args.catalog}.{args.schema}.{args.segments_table}"
     prefix = f"replay:{args.run_id}:trip:"
 
@@ -79,6 +81,17 @@ def main() -> None:
                 "processing_generation",
                 F.col("parsed_at").alias("trip_end_parsed_at"),
             )
+            .collect()
+        )
+    }
+
+    arrivals = {
+        row["trip_id"]: row["final_gps_visible_at"]
+        for row in (
+            spark.table(arrival_name)
+            .where(F.col("run_id") == args.run_id)
+            .groupBy("trip_id")
+            .agg(F.max("replay_visible_at").alias("final_gps_visible_at"))
             .collect()
         )
     }
@@ -147,6 +160,10 @@ def main() -> None:
 
         parsed_at = trip_end["trip_end_parsed_at"]
         segmented_at = max(r["segmented_at"] for r in rows)
+        final_gps_visible_at = arrivals.get(trip_id)
+        if final_gps_visible_at is None:
+            raise AssertionError(f"missing replay arrival marker for {trip_id}")
+
         reports[trip_id] = {
             "segment_count": len(rows),
             "modes": [r["mode"] for r in rows],
@@ -155,9 +172,14 @@ def main() -> None:
             ],
             "point_count": point_count,
             "expected_last_sequence": expected_last,
+            "final_gps_visible_at": str(final_gps_visible_at),
             "trip_end_parsed_at": str(parsed_at),
             "segmented_at": str(segmented_at),
             "segments_visible_at": str(visible_at),
+            "final_gps_to_segmented_at_ms": (
+                segmented_at - final_gps_visible_at
+            ).total_seconds()
+            * 1000.0,
             "trip_end_to_segmented_at_ms": (
                 segmented_at - parsed_at
             ).total_seconds()
@@ -168,12 +190,36 @@ def main() -> None:
             * 1000.0,
         }
 
+    metric_names = (
+        "final_gps_to_segmented_at_ms",
+        "trip_end_to_segmented_at_ms",
+        "trip_end_to_visible_ms",
+    )
+    summary = {}
+    for metric in metric_names:
+        values = sorted(float(report[metric]) for report in reports.values())
+        count = len(values)
+        def percentile(p: float) -> float:
+            if count == 1:
+                return values[0]
+            index = round((count - 1) * p)
+            return values[index]
+        summary[metric] = {
+            "count": count,
+            "min": values[0],
+            "avg": sum(values) / count,
+            "p50": percentile(0.50),
+            "p95": percentile(0.95),
+            "max": values[-1],
+        }
+
     print(
         "INTEGRATED_CORRECTNESS_REPORT",
         {
             "run_id": args.run_id,
             "users": args.users,
             "status": "PASS",
+            "summary": summary,
             "trips": reports,
         },
     )
