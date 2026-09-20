@@ -6,7 +6,7 @@ from pyspark.sql import SparkSession, functions as F
 
 def parse_args():
     p=argparse.ArgumentParser()
-    for name in ("catalog","schema","trip-ended-table","segments-table","segment-telemetry-table","run-id"):
+    for name in ("catalog","schema","trip-ended-table","segments-table","segment-telemetry-table","marker-table","run-id"):
         p.add_argument(f"--{name}", required=True)
     p.add_argument("--users",type=int,required=True)
     p.add_argument("--timeout-seconds",type=int,default=180)
@@ -31,6 +31,7 @@ def main():
     end_name=f"{a.catalog}.{a.schema}.{a.trip_ended_table}"
     seg_name=f"{a.catalog}.{a.schema}.{a.segments_table}"
     tel_name=f"{a.catalog}.{a.schema}.{a.segment_telemetry_table}"
+    marker_name=f"{a.catalog}.{a.schema}.{a.marker_table}"
     prefix=f"segment-only:{a.run_id}:trip:"
 
     deadline=time.monotonic()+a.timeout_seconds
@@ -69,8 +70,16 @@ def main():
         time.sleep(a.poll_seconds)
 
     final_batches=[compact(r) for r in telemetry if r["status"]!="no_trip_end"]
+    marker=(spark.table(marker_name).where(F.col("run_id")==a.run_id).orderBy(F.col("trip_end_committed_at").desc()).limit(1).collect()[0])
     vals=[float(r["trip_end_to_segments_ms"]) for r in rows]
-    print("SEGMENT_ONLY_STAGE_REPORT",{"run_id":a.run_id,"batches":final_batches})
+    first_batch=next((r for r in telemetry if r["status"]!="no_trip_end"),None)
+    pickup_ms=None
+    if first_batch is not None:
+        pickup_ms=(first_batch["batch_entered_at"].timestamp()-marker["trip_end_committed_at"].timestamp())*1000.0
+    print("SEGMENT_ONLY_STAGE_REPORT",{"run_id":a.run_id,
+          "trip_end_write_ms":float(marker["trip_end_write_ms"]),
+          "trip_end_commit_to_batch_entry_ms":pickup_ms,
+          "batches":final_batches})
     print("SEGMENT_ONLY_REPORT",{"run_id":a.run_id,"users":a.users,
           "avg_trip_end_to_segments_ms":sum(vals)/len(vals),"max_trip_end_to_segments_ms":max(vals),
           "per_trip":{r["trip_id"]:{"expected_last_sequence":int(r["expected_last_sequence"]),
