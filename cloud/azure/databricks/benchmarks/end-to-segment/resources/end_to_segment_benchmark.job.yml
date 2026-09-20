@@ -16,6 +16,8 @@ resources:
           default: "10"
         - name: batch_interval_ms
           default: "1000"
+        - name: trip_end_interval_ms
+          default: "0"
       tasks:
         - task_key: produce
           spark_python_task:
@@ -33,11 +35,10 @@ resources:
               - --points-per-user={{job.parameters.points_per_user}}
               - --sequences-per-batch={{job.parameters.sequences_per_batch}}
               - --batch-interval-ms={{job.parameters.batch_interval_ms}}
+              - --trip-end-interval-ms={{job.parameters.trip_end_interval_ms}}
           environment_key: benchmark_env
 
         - task_key: report
-          depends_on:
-            - task_key: produce
           spark_python_task:
             python_file: ${workspace.file_path}/scripts/report_end_to_segment_replay.py
             parameters:
@@ -51,7 +52,7 @@ resources:
               - --benchmark-table=${var.benchmark_table}
               - --run-id={{job.parameters.run_id}}
               - --users={{job.parameters.users}}
-              - --timeout-seconds=180
+              - --timeout-seconds=300
               - --poll-seconds=1
           environment_key: benchmark_env
 
