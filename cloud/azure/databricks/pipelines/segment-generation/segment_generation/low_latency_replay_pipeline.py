@@ -71,6 +71,7 @@ def _write_telemetry(spark: SparkSession, row: dict[str, object]) -> None:
     (
         spark.createDataFrame([row], schema=_TELEMETRY_SCHEMA)
         .write.format("delta")
+        .option("mergeSchema", "true")
         .mode("append")
         .saveAsTable(TELEMETRY_TABLE)
     )
