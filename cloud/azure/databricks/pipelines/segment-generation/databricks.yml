@@ -41,6 +41,11 @@ targets:
   trial:
     default: true
     mode: development
+    presets:
+      tags:
+        environment: trial
+        lifecycle: development
+        component: segment-generation
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
