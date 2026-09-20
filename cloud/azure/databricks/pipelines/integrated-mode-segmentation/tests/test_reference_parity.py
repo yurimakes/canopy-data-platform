@@ -17,6 +17,12 @@ from integrated_mode_segmentation.state_machine import (
 BASE = datetime(2026, 9, 20, tzinfo=timezone.utc)
 
 
+def _utc_naive(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _within(left: PredictionPoint, right: PredictionPoint, maximum: int) -> bool:
     seconds = (right.event_time - left.event_time).total_seconds()
     return 0 <= seconds <= maximum
@@ -78,8 +84,8 @@ def _reference_segments(points: list[PredictionPoint], maximum: int):
                 "mode": group[0][1],
                 "start_sequence": values[0].sequence,
                 "end_sequence": values[-1].sequence,
-                "start_time": values[0].event_time,
-                "end_time": values[-1].event_time,
+                "start_time": _utc_naive(values[0].event_time),
+                "end_time": _utc_naive(values[-1].event_time),
                 "point_count": len(values),
                 "distance_m": sum(
                     _distance(left, right)
@@ -90,7 +96,7 @@ def _reference_segments(points: list[PredictionPoint], maximum: int):
                     (value.model_version for value in values if value.model_version is not None),
                     default=None,
                 ),
-                "latest_prediction_at": max(value.predicted_at for value in values),
+                "latest_prediction_at": _utc_naive(max(value.predicted_at for value in values)),
             }
         )
     return result
