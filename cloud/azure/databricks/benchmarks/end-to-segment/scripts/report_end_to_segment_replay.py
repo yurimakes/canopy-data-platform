@@ -236,77 +236,51 @@ def main() -> None:
         if any(r["status"] in ("appended", "merged") for r in telemetry_rows):
             break
         time.sleep(args.poll_seconds)
+    def compact_segment_batch(r) -> dict[str, object]:
+        batch = {
+            "batch_id": int(r["batch_id"]),
+            "affected_trip_ids": list(r["affected_trip_ids"]),
+            "status": r["status"],
+            "affected_probe_ms": float(r["affected_probe_ms"]),
+            "batch_total_ms": float(r["batch_total_ms"]),
+            "batch_entered_at": str(r["batch_entered_at"]),
+            "batch_finished_at": str(r["batch_finished_at"]),
+        }
+
+        optional_numeric_fields = (
+            "trip_end_probe_ms",
+            "pending_probe_ms",
+            "pending_projection_ms",
+            "gps_plan_ms",
+            "predictions_plan_ms",
+            "ready_plan_ms",
+            "stabilize_plan_ms",
+            "segments_plan_ms",
+            "pre_segment_plan_ms",
+            "segment_probe_ms",
+            "merge_ms",
+        )
+        for name in optional_numeric_fields:
+            if r[name] is not None:
+                batch[name] = float(r[name])
+
+        optional_timestamp_fields = (
+            "segment_probe_started_at",
+            "segment_probe_finished_at",
+            "merge_started_at",
+            "merge_finished_at",
+        )
+        for name in optional_timestamp_fields:
+            if r[name] is not None:
+                batch[name] = str(r[name])
+
+        return batch
+
     print(
         "SEGMENT_STAGE_REPORT",
         {
             "run_id": args.run_id,
-            "batches": [
-                {
-                    "batch_id": int(r["batch_id"]),
-                    "affected_trip_ids": list(r["affected_trip_ids"]),
-                    "status": r["status"],
-                    "affected_probe_ms": float(r["affected_probe_ms"]),
-                    "trip_end_probe_ms": (
-                        float(r["trip_end_probe_ms"])
-                        if r["trip_end_probe_ms"] is not None
-                        else None
-                    ),
-                    "pending_probe_ms": (
-                        float(r["pending_probe_ms"])
-                        if r["pending_probe_ms"] is not None
-                        else None
-                    ),
-                    "pending_projection_ms": (
-                        float(r["pending_projection_ms"])
-                        if r["pending_projection_ms"] is not None
-                        else None
-                    ),
-                    "gps_plan_ms": (
-                        float(r["gps_plan_ms"])
-                        if r["gps_plan_ms"] is not None
-                        else None
-                    ),
-                    "predictions_plan_ms": (
-                        float(r["predictions_plan_ms"])
-                        if r["predictions_plan_ms"] is not None
-                        else None
-                    ),
-                    "ready_plan_ms": (
-                        float(r["ready_plan_ms"])
-                        if r["ready_plan_ms"] is not None
-                        else None
-                    ),
-                    "stabilize_plan_ms": (
-                        float(r["stabilize_plan_ms"])
-                        if r["stabilize_plan_ms"] is not None
-                        else None
-                    ),
-                    "segments_plan_ms": (
-                        float(r["segments_plan_ms"])
-                        if r["segments_plan_ms"] is not None
-                        else None
-                    ),
-                    "pre_segment_plan_ms": (
-                        float(r["pre_segment_plan_ms"])
-                        if r["pre_segment_plan_ms"] is not None
-                        else None
-                    ),
-                    "segment_probe_ms": (
-                        float(r["segment_probe_ms"])
-                        if r["segment_probe_ms"] is not None
-                        else None
-                    ),
-                    "merge_ms": float(r["merge_ms"]) if r["merge_ms"] is not None else None,
-                    "batch_total_ms": float(r["batch_total_ms"]),
-                    "batch_entered_at": str(r["batch_entered_at"]),
-                    "segment_probe_started_at": str(r["segment_probe_started_at"]),
-                    "segment_probe_finished_at": str(r["segment_probe_finished_at"]),
-                    "merge_started_at": str(r["merge_started_at"]),
-                    "merge_finished_at": str(r["merge_finished_at"]),
-                    "batch_finished_at": str(r["batch_finished_at"]),
-                }
-                for r in telemetry_rows
-            ],
+            "batches": [compact_segment_batch(r) for r in telemetry_rows],
         },
     )
 
