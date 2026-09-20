@@ -84,9 +84,16 @@ def main():
                  occurred_at=trip_end_at,processing_generation=1,result_owner="databricks",
                  bronze_ingested_at=trip_end_at,parsed_at=trip_end_at)
         rows.append(r)
+    trip_end_write_started_at=now_utc_naive()
+    trip_end_write_started=time.perf_counter()
     spark.createDataFrame(rows,schema=end_schema).write.format("delta").mode("append").saveAsTable(end_name)
+    trip_end_committed_at=now_utc_naive()
+    trip_end_write_ms=(time.perf_counter()-trip_end_write_started)*1000.0
     print("SEGMENT_ONLY_INPUT_READY",{"run_id":a.run_id,"users":a.users,"points_per_user":a.points_per_user,
-          "trip_end_parsed_at":str(trip_end_at)})
+          "trip_end_parsed_at":str(trip_end_at),
+          "trip_end_write_started_at":str(trip_end_write_started_at),
+          "trip_end_committed_at":str(trip_end_committed_at),
+          "trip_end_write_ms":trip_end_write_ms})
 
 if __name__=="__main__":
     main()
