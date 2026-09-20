@@ -31,6 +31,8 @@ variables:
     default: replay_low_latency_mode_segments
   replay_segment_telemetry_table:
     default: replay_low_latency_segment_telemetry
+  segment_only_marker_table:
+    default: replay_segment_only_markers
   benchmark_table:
     default: replay_end_to_segment_benchmarks
   replay_inference_pipeline_id:
