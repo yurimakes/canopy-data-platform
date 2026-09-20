@@ -25,16 +25,6 @@ variables:
     default: dbw_canopy_trial
   schema:
     default: sandbox
-  replay_input_observations_table:
-    default: replay_continuous_gps_observations
-  replay_input_trip_ended_table:
-    default: replay_continuous_trip_ended_events
-  replay_output_predictions_table:
-    default: replay_integrated_mode_predictions
-  replay_output_enriched_predictions_table:
-    default: replay_integrated_enriched_mode_predictions
-  replay_output_segments_table:
-    default: replay_integrated_mode_segments
   baseline_input_observations_table:
     default: silver_gps_observations
   baseline_input_trip_ended_table:
@@ -56,9 +46,6 @@ variables:
     default: 3
   timezone:
     default: UTC
-  integrated_continuous_pause_status:
-    description: Pause status for the development replay continuous job wrapper.
-    default: PAUSED
   baseline_continuous_pause_status:
     description: Pause status for the production-shaped baseline continuous job wrapper.
     default: PAUSED
