@@ -29,6 +29,8 @@ variables:
     default: replay_continuous_arrivals
   replay_segments_table:
     default: replay_low_latency_mode_segments
+  integrated_segments_table:
+    default: replay_integrated_mode_segments
   replay_segment_telemetry_table:
     default: replay_low_latency_segment_telemetry
   segment_only_marker_table:
