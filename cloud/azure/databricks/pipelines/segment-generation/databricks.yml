@@ -36,6 +36,9 @@ variables:
   low_latency_replay_trigger_interval:
     description: Standard-mode low-latency segment replay trigger interval. Default to 0 seconds for latency testing.
     default: 0 seconds
+  segment_shuffle_partitions:
+    description: Spark SQL shuffle partitions for low-latency segmentation. Keep auto by default; override during controlled latency benchmarks.
+    default: auto
   max_repair_gap_seconds:
     description: Maximum adjacent event-time gap for one-point repair.
     default: 3
