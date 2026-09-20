@@ -51,7 +51,6 @@ OUTPUT_PREDICTIONS_TABLE = _conf("output_predictions_table")
 OUTPUT_ENRICHED_PREDICTIONS_TABLE = _conf("output_enriched_predictions_table")
 OUTPUT_SEGMENTS_TABLE = _conf("output_segments_table")
 OUTPUT_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_PREDICTIONS_TABLE}"
-OUTPUT_ENRICHED_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_ENRICHED_PREDICTIONS_TABLE}"
 OUTPUT_SEGMENTS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_SEGMENTS_TABLE}"
 MODEL_URI = _conf("transition_model_uri")
 MODEL_ARTIFACT_PATH = _conf("transition_model_artifact_path")
@@ -60,18 +59,11 @@ MAX_REPAIR_GAP_SECONDS = _positive_int_conf("max_repair_gap_seconds")
 STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 
-dp.create_streaming_table(
-    name=OUTPUT_ENRICHED_PREDICTIONS_FQN,
-    schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
+@dp.temporary_view(
+    name=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
     comment="Internal enriched point predictions shared by public output and segmentation.",
 )
-
-@dp.append_flow(
-    target=OUTPUT_ENRICHED_PREDICTIONS_FQN,
-    name="enriched_mode_predictions_flow",
-    spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
-)
-def enriched_mode_predictions_flow():
+def enriched_mode_predictions():
     observations = _spark().readStream.table(GPS_TABLE)
     features = stateful_feature_rows(observations, STATE_TIMEOUT_MS)
     return infer_enriched_predictions(
@@ -89,7 +81,7 @@ def enriched_mode_predictions_flow():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_predictions():
-    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_FQN)
+    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     return public_predictions(enriched)
 
 
@@ -100,7 +92,7 @@ def mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_segments():
-    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_FQN)
+    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(predictions, trip_ends)
     return stateful_segment_rows(
