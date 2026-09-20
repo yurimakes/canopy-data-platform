@@ -12,18 +12,23 @@ variables:
   catalog:
     default: dbw_canopy_trial
   schema:
-    default: sandbox
+    default: silver
   source_gps_table:
-    default: silver_gps_observations
+    default: gps_observations
   source_trip_ended_table:
-    default: silver_trip_ended_events
+    default: trip_ended_events
   baseline_integrated_segments_table:
-    default: silver_integrated_mode_segments
+    default: mode_segments
 
 targets:
   trial:
     default: true
     mode: development
+    presets:
+      tags:
+        environment: trial
+        lifecycle: benchmark
+        component: full-path-observer
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
