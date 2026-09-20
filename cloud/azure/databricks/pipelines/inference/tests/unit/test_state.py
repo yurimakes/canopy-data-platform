@@ -68,3 +68,11 @@ def test_point_state_delta_only_mutates_new_and_expired_window_entries():
     assert removals == set(range(10))
     assert len(additions) == 10
     assert len(removals) == 10
+
+
+def test_feature_rows_preserve_coordinates_for_internal_consumers():
+    source = trajectory(count=1)[0]
+    output, _, _, _ = advance_trip(source.trip_id, iter([row(source)]))
+
+    assert output[0]["lat"] == source.lat
+    assert output[0]["lon"] == source.lon

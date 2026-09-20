@@ -106,7 +106,7 @@ def _prediction_udf(model_uri: str, model_artifact_path: str) -> Any:
     return predict
 
 
-def infer_predictions(
+def infer_enriched_predictions(
     features: Any,
     spark: Any,
     model_uri: str,
@@ -136,7 +136,7 @@ def infer_predictions(
     )
 
     return predicted.select(
-        "event_id", "user_id", "trip_id", "sequence", "event_time",
+        "event_id", "user_id", "trip_id", "sequence", "event_time", "lat", "lon",
         F.col("predicted_class"),
         mode_map[F.col("predicted_class")].alias("predicted_mode"),
         F.lit(None).cast("double").alias("confidence"),
@@ -146,4 +146,26 @@ def infer_predictions(
         F.col("feature_compute_started_at"),
         F.col("features_processed_at"),
         F.col("_prediction.predicted_at").alias("predicted_at"),
+    )
+
+
+def public_predictions(enriched: Any) -> Any:
+    """Project the stable public table contract from internal enriched rows."""
+    return enriched.select(
+        "event_id", "user_id", "trip_id", "sequence", "event_time",
+        "predicted_class", "predicted_mode", "confidence", "model_name",
+        "model_version", "processor_entered_at", "feature_compute_started_at",
+        "features_processed_at", "predicted_at",
+    )
+
+
+def infer_predictions(
+    features: Any,
+    spark: Any,
+    model_uri: str,
+    model_artifact_path: str,
+) -> Any:
+    """Compatibility entry point preserving the public prediction schema."""
+    return public_predictions(
+        infer_enriched_predictions(features, spark, model_uri, model_artifact_path)
     )

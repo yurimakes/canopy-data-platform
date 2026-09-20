@@ -147,6 +147,8 @@ def advance_trip(
                 "processor_entered_at": processor_entered_at,
                 "feature_compute_started_at": feature_compute_started_at,
                 "features_processed_at": datetime.now(timezone.utc),
+                "lat": point.lat,
+                "lon": point.lon,
                 **feature_values,
             }
         )
