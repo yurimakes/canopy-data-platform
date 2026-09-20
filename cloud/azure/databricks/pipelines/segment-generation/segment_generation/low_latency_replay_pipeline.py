@@ -103,41 +103,59 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     segments_ready = None
     status = "no_affected_trips"
 
+    trip_ended = None
+    segments = None
     try:
         if affected_present:
-            trip_ended = spark.table(TRIP_ENDED_TABLE).join(affected, "trip_id", "semi")
-            gps = spark.table(GPS_TABLE).join(affected, "trip_id", "semi")
-            predictions = spark.table(PREDICTIONS_TABLE).join(affected, "trip_id", "semi")
+            # Prediction batches arrive throughout an active trip, but finalized-trip
+            # segmentation cannot succeed until a trip_ended row exists. Probe that
+            # cheap prerequisite first so pre-trip-end batches do not execute the
+            # full GPS/prediction/window plan.
+            trip_ended = (
+                spark.table(TRIP_ENDED_TABLE)
+                .join(affected, "trip_id", "semi")
+                .cache()
+            )
+            has_trip_end = trip_ended.limit(1).count() > 0
 
-            ready = build_ready_points(trip_ended, gps, predictions)
-            stabilized = stabilize_predictions(ready, MAX_REPAIR_GAP_SECONDS)
-            segments = build_segments(stabilized)
-
-            segment_probe_started_at = _utc_now()
-            segment_probe_started = time.perf_counter()
-            segments_ready = segments.limit(1).count() > 0
-            segment_probe_finished_at = _utc_now()
-            segment_probe_ms = (time.perf_counter() - segment_probe_started) * 1000.0
-
-            if segments_ready:
-                merge_started_at = _utc_now()
-                merge_started = time.perf_counter()
-                (
-                    DeltaTable.forName(spark, SEGMENTS_TABLE)
-                    .alias("target")
-                    .merge(
-                        segments.alias("source"),
-                        "target.segment_id = source.segment_id",
-                    )
-                    .whenMatchedUpdateAll()
-                    .whenNotMatchedInsertAll()
-                    .execute()
-                )
-                merge_finished_at = _utc_now()
-                merge_ms = (time.perf_counter() - merge_started) * 1000.0
-                status = "merged"
+            if not has_trip_end:
+                status = "no_trip_end"
             else:
-                status = "not_ready"
+                gps = spark.table(GPS_TABLE).join(affected, "trip_id", "semi")
+                predictions = spark.table(PREDICTIONS_TABLE).join(affected, "trip_id", "semi")
+
+                ready = build_ready_points(trip_ended, gps, predictions)
+                stabilized = stabilize_predictions(ready, MAX_REPAIR_GAP_SECONDS)
+                # The readiness probe and MERGE both consume the same segmentation
+                # plan. Cache its result so the MERGE does not recompute the full
+                # window/aggregation graph after the probe action.
+                segments = build_segments(stabilized).cache()
+
+                segment_probe_started_at = _utc_now()
+                segment_probe_started = time.perf_counter()
+                segments_ready = segments.limit(1).count() > 0
+                segment_probe_finished_at = _utc_now()
+                segment_probe_ms = (time.perf_counter() - segment_probe_started) * 1000.0
+
+                if segments_ready:
+                    merge_started_at = _utc_now()
+                    merge_started = time.perf_counter()
+                    (
+                        DeltaTable.forName(spark, SEGMENTS_TABLE)
+                        .alias("target")
+                        .merge(
+                            segments.alias("source"),
+                            "target.segment_id = source.segment_id",
+                        )
+                        .whenMatchedUpdateAll()
+                        .whenNotMatchedInsertAll()
+                        .execute()
+                    )
+                    merge_finished_at = _utc_now()
+                    merge_ms = (time.perf_counter() - merge_started) * 1000.0
+                    status = "merged"
+                else:
+                    status = "not_ready"
 
         batch_finished_at = _utc_now()
         batch_total_ms = (time.perf_counter() - batch_started) * 1000.0
@@ -164,6 +182,10 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
             },
         )
     finally:
+        if segments is not None:
+            segments.unpersist()
+        if trip_ended is not None:
+            trip_ended.unpersist()
         affected.unpersist()
 
 
