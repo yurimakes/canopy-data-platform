@@ -59,6 +59,13 @@ _TELEMETRY_SCHEMA = T.StructType(
         T.StructField("affected_probe_ms", T.DoubleType(), False),
         T.StructField("trip_end_probe_ms", T.DoubleType(), True),
         T.StructField("pending_probe_ms", T.DoubleType(), True),
+        T.StructField("pending_projection_ms", T.DoubleType(), True),
+        T.StructField("gps_plan_ms", T.DoubleType(), True),
+        T.StructField("predictions_plan_ms", T.DoubleType(), True),
+        T.StructField("ready_plan_ms", T.DoubleType(), True),
+        T.StructField("stabilize_plan_ms", T.DoubleType(), True),
+        T.StructField("segments_plan_ms", T.DoubleType(), True),
+        T.StructField("pre_segment_plan_ms", T.DoubleType(), True),
         T.StructField("segment_probe_ms", T.DoubleType(), True),
         T.StructField("merge_ms", T.DoubleType(), True),
         T.StructField("batch_total_ms", T.DoubleType(), False),
@@ -100,6 +107,13 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
     segment_probe_finished_at = None
     trip_end_probe_ms = None
     pending_probe_ms = None
+    pending_projection_ms = None
+    gps_plan_ms = None
+    predictions_plan_ms = None
+    ready_plan_ms = None
+    stabilize_plan_ms = None
+    segments_plan_ms = None
+    pre_segment_plan_ms = None
     merge_started_at = None
     merge_finished_at = None
     segment_probe_ms = None
@@ -157,23 +171,57 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 if not has_pending_generation:
                     status = "already_finalized"
                 else:
+                    pre_segment_plan_started = time.perf_counter()
+
+                    stage_started = time.perf_counter()
                     pending_affected = pending_trip_ended.select("trip_id").distinct()
+                    pending_projection_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
+
+                    stage_started = time.perf_counter()
                     gps = spark.table(GPS_TABLE).join(
                         pending_affected, "trip_id", "semi"
                     )
+                    gps_plan_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
+
+                    stage_started = time.perf_counter()
                     predictions = spark.table(PREDICTIONS_TABLE).join(
                         pending_affected, "trip_id", "semi"
                     )
+                    predictions_plan_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
 
+                    stage_started = time.perf_counter()
                     ready = build_ready_points(
                         pending_trip_ended, gps, predictions
                     )
+                    ready_plan_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
+
+                    stage_started = time.perf_counter()
                     stabilized = stabilize_predictions(
                         ready, MAX_REPAIR_GAP_SECONDS
                     )
+                    stabilize_plan_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
+
+                    stage_started = time.perf_counter()
                     # Materialize once for the readiness action, then reuse the
                     # cached finalized rows for the atomic append.
                     segments = build_segments(stabilized).cache()
+                    segments_plan_ms = (
+                        time.perf_counter() - stage_started
+                    ) * 1000.0
+
+                    pre_segment_plan_ms = (
+                        time.perf_counter() - pre_segment_plan_started
+                    ) * 1000.0
 
                     segment_probe_started_at = _utc_now()
                     segment_probe_started = time.perf_counter()
@@ -219,6 +267,13 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                 "affected_probe_ms": float(affected_probe_ms),
                 "trip_end_probe_ms": trip_end_probe_ms,
                 "pending_probe_ms": pending_probe_ms,
+                "pending_projection_ms": pending_projection_ms,
+                "gps_plan_ms": gps_plan_ms,
+                "predictions_plan_ms": predictions_plan_ms,
+                "ready_plan_ms": ready_plan_ms,
+                "stabilize_plan_ms": stabilize_plan_ms,
+                "segments_plan_ms": segments_plan_ms,
+                "pre_segment_plan_ms": pre_segment_plan_ms,
                 "segment_probe_ms": segment_probe_ms,
                 "merge_ms": merge_ms,
                 "batch_total_ms": float(batch_total_ms),
