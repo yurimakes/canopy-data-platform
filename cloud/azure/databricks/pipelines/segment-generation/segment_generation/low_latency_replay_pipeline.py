@@ -212,7 +212,9 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                     ) * 1000.0
 
                     stage_started = time.perf_counter()
-                    segments = build_segments(stabilized)
+                    # Materialize once for the readiness action, then reuse the
+                    # cached finalized rows for the atomic append.
+                    segments = build_segments(stabilized).cache()
                     segments_plan_ms = (
                         time.perf_counter() - stage_started
                     ) * 1000.0
@@ -221,21 +223,29 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                         time.perf_counter() - pre_segment_plan_started
                     ) * 1000.0
 
-                    # One action only: an empty segment DataFrame is safe to append.
-                    # With no rows written, the generation remains absent from
-                    # SEGMENTS_TABLE and a later trigger will retry it.
-                    merge_started_at = _utc_now()
-                    merge_started = time.perf_counter()
-                    (
-                        segments.write.format("delta")
-                        .mode("append")
-                        .saveAsTable(SEGMENTS_TABLE)
-                    )
-                    merge_finished_at = _utc_now()
-                    merge_ms = (
-                        time.perf_counter() - merge_started
+                    segment_probe_started_at = _utc_now()
+                    segment_probe_started = time.perf_counter()
+                    segments_ready = segments.limit(1).count() > 0
+                    segment_probe_finished_at = _utc_now()
+                    segment_probe_ms = (
+                        time.perf_counter() - segment_probe_started
                     ) * 1000.0
-                    status = "append_attempted"
+
+                    if segments_ready:
+                        merge_started_at = _utc_now()
+                        merge_started = time.perf_counter()
+                        (
+                            segments.write.format("delta")
+                            .mode("append")
+                            .saveAsTable(SEGMENTS_TABLE)
+                        )
+                        merge_finished_at = _utc_now()
+                        merge_ms = (
+                            time.perf_counter() - merge_started
+                        ) * 1000.0
+                        status = "appended"
+                    else:
+                        status = "not_ready"
 
         batch_finished_at = _utc_now()
         batch_total_ms = (time.perf_counter() - batch_started) * 1000.0
@@ -271,6 +281,8 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
             },
         )
     finally:
+        if segments is not None:
+            segments.unpersist()
         if pending_trip_ended is not None:
             pending_trip_ended.unpersist()
         if trip_ended is not None:
