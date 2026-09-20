@@ -10,9 +10,10 @@ resources:
       libraries:
         - file:
             path: ${workspace.file_path}/integrated_mode_segmentation/lakeflow_pipeline.py
-        - whl: ./dist/*.whl
       environment:
         environment_version: "4"
+        dependencies:
+          - ${workspace.file_path}/dist/canopy_integrated_mode_segmentation-0.1.0-py3-none-any.whl
       configuration:
         pipelines.trigger.interval: "1 second"
         canopy.catalog: ${var.catalog}
