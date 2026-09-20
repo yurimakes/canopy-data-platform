@@ -81,7 +81,7 @@ def enriched_mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_predictions():
-    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    enriched = _spark().read.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     return public_predictions(enriched)
 
 
@@ -92,7 +92,7 @@ def mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_segments():
-    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
+    predictions = _spark().read.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(predictions, trip_ends)
     return stateful_segment_rows(
