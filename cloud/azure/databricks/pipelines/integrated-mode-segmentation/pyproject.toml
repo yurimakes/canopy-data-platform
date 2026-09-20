@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "canopy-integrated-mode-segmentation"
 version = "0.1.0"
-description = "Integrated Lakeflow replay pipeline for point inference and incremental mode segmentation"
+description = "Integrated Lakeflow pipeline for point inference and incremental mode segmentation"
 requires-python = ">=3.11"
 dependencies = [
   "lightgbm>=4.5,<5",
@@ -22,9 +22,6 @@ spark = ["pyspark>=4.0,<5"]
 
 [tool.setuptools]
 packages = ["integrated_mode_segmentation", "mode_inference"]
-
-[tool.setuptools.package-dir]
-mode_inference = "../inference/mode_inference"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
