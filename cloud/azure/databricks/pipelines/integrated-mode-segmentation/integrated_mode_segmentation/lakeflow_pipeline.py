@@ -50,7 +50,6 @@ TRIP_END_TABLE = f"{CATALOG}.{SCHEMA}.{_conf('input_trip_ended_table')}"
 OUTPUT_PREDICTIONS_TABLE = _conf("output_predictions_table")
 OUTPUT_ENRICHED_PREDICTIONS_TABLE = _conf("output_enriched_predictions_table")
 OUTPUT_SEGMENTS_TABLE = _conf("output_segments_table")
-ENRICHED_PREDICTIONS_FQN = f"{CATALOG}.{SCHEMA}.{OUTPUT_ENRICHED_PREDICTIONS_TABLE}"
 MODEL_URI = _conf("transition_model_uri")
 MODEL_ARTIFACT_PATH = _conf("transition_model_artifact_path")
 STATE_TIMEOUT_MS = state_timeout_ms(_conf("state_timeout"))
@@ -59,7 +58,8 @@ STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 
 @dp.table(
-    name=ENRICHED_PREDICTIONS_FQN,
+    name=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
+    private=True,
     schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Internal enriched point predictions shared by public output and segmentation.",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
@@ -82,7 +82,7 @@ def enriched_mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_predictions():
-    enriched = _spark().readStream.table(ENRICHED_PREDICTIONS_FQN)
+    enriched = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     return public_predictions(enriched)
 
 
@@ -93,7 +93,7 @@ def mode_predictions():
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
 def mode_segments():
-    predictions = _spark().readStream.table(ENRICHED_PREDICTIONS_FQN)
+    predictions = _spark().readStream.table(OUTPUT_ENRICHED_PREDICTIONS_TABLE)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(predictions, trip_ends)
     return stateful_segment_rows(
