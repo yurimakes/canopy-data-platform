@@ -146,6 +146,7 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
             else:
                 finalized_generations = (
                     spark.table(SEGMENTS_TABLE)
+                    .join(affected, "trip_id", "semi")
                     .select("trip_id", "processing_generation")
                     .distinct()
                 )
