@@ -41,7 +41,8 @@ def _conf(name: str) -> str:
 
 TABLES = EventIngestionTableConfig(
     catalog=_conf("catalog"),
-    schema=_conf("schema"),
+    bronze_schema=_conf("bronze_schema"),
+    silver_schema=_conf("silver_schema"),
     bronze_events_name=_conf("bronze_events_table"),
     gps_observations_name=_conf("gps_observations_table"),
     gps_quarantine_name=_conf("gps_quarantine_table"),
