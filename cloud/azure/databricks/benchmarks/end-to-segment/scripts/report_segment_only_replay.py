@@ -24,6 +24,7 @@ def compact(r):
               "ready_plan_ms","stabilize_plan_ms","segments_plan_ms",
               "segment_boundary_plan_ms","segment_distance_plan_ms",
               "segment_aggregate_plan_ms","segment_output_plan_ms",
+              "build_segments_transform_ms","segments_cache_registration_ms",
               "pre_segment_plan_ms","segment_probe_ms","merge_ms"):
         if r[n] is not None: out[n]=float(r[n])
     return out
