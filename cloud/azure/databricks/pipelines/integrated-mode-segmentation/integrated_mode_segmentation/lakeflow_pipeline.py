@@ -57,14 +57,18 @@ MAX_REPAIR_GAP_SECONDS = _positive_int_conf("max_repair_gap_seconds")
 STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 
-@dp.table(
+dp.create_streaming_table(
     name=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
-    private=True,
     schema=ENRICHED_MODE_PREDICTIONS_SCHEMA_DDL,
     comment="Internal enriched point predictions shared by public output and segmentation.",
+)
+
+@dp.append_flow(
+    target=OUTPUT_ENRICHED_PREDICTIONS_TABLE,
+    name="enriched_mode_predictions_flow",
     spark_conf={"spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)},
 )
-def enriched_mode_predictions():
+def enriched_mode_predictions_flow():
     observations = _spark().readStream.table(GPS_TABLE)
     features = stateful_feature_rows(observations, STATE_TIMEOUT_MS)
     return infer_enriched_predictions(
