@@ -33,6 +33,8 @@ variables:
     default: replay_integrated_mode_segments
   integrated_observation_table:
     default: replay_integrated_segment_observations
+  baseline_integrated_segments_table:
+    default: silver_integrated_mode_segments
   replay_segment_telemetry_table:
     default: replay_low_latency_segment_telemetry
   segment_only_marker_table:
