@@ -66,4 +66,3 @@ def test_trip_end_union_row_converts_to_completion_event() -> None:
 def test_unknown_union_discriminator_is_rejected() -> None:
     with pytest.raises(ValueError, match="event_kind"):
         event_from_row({"event_kind": "mystery"})
-
