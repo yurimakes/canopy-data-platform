@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--trip-ended-table", required=True)
     p.add_argument("--arrival-table", required=True)
     p.add_argument("--segments-table", required=True)
+    p.add_argument("--observation-table", required=True)
     p.add_argument("--run-id", required=True)
     p.add_argument("--users", type=int, required=True)
     p.add_argument("--timeout-seconds", type=int, default=180)
@@ -34,38 +35,21 @@ def main() -> None:
     trip_end_name = f"{args.catalog}.{args.schema}.{args.trip_ended_table}"
     arrival_name = f"{args.catalog}.{args.schema}.{args.arrival_table}"
     segments_name = f"{args.catalog}.{args.schema}.{args.segments_table}"
+    observation_name = f"{args.catalog}.{args.schema}.{args.observation_table}"
     prefix = f"replay:{args.run_id}:trip:"
 
-    deadline = time.monotonic() + args.timeout_seconds
-    first_visible_at: dict[str, datetime] = {}
-
-    while time.monotonic() < deadline:
-        trip_ids = [
-            row["trip_id"]
-            for row in (
-                spark.table(segments_name)
-                .where(F.col("trip_id").startswith(prefix))
-                .select("trip_id")
-                .distinct()
-                .collect()
-            )
-        ]
-        observed_at = now_utc_naive()
-        for trip_id in trip_ids:
-            first_visible_at.setdefault(trip_id, observed_at)
-
-        if len(first_visible_at) >= args.users:
-            break
-
-        print(
-            "INTEGRATED_SEGMENT_WAIT",
-            {"visible_trips": len(first_visible_at), "expected": args.users},
+    first_visible_at = {
+        row["trip_id"]: row["segments_visible_at"]
+        for row in (
+            spark.table(observation_name)
+            .where(F.col("run_id") == args.run_id)
+            .select("trip_id", "segments_visible_at")
+            .collect()
         )
-        time.sleep(args.poll_seconds)
-
+    }
     if len(first_visible_at) < args.users:
-        raise TimeoutError(
-            f"timed out with {len(first_visible_at)}/{args.users} segmented trips "
+        raise AssertionError(
+            f"observer recorded {len(first_visible_at)}/{args.users} trips "
             f"for run_id={args.run_id}"
         )
 
