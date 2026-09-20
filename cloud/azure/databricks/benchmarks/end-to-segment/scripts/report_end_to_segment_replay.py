@@ -200,18 +200,23 @@ def main() -> None:
     })
 
 
-    telemetry = (
-        spark.table(telemetry_name)
-        .where(
-            F.exists(
-                F.col("affected_trip_ids"),
-                lambda trip_id: trip_id.startswith(prefix),
+    telemetry_deadline = time.monotonic() + min(args.timeout_seconds, 30)
+    telemetry_rows = []
+    while time.monotonic() < telemetry_deadline:
+        telemetry_rows = (
+            spark.table(telemetry_name)
+            .where(
+                F.exists(
+                    F.col("affected_trip_ids"),
+                    lambda trip_id: trip_id.startswith(prefix),
+                )
             )
+            .orderBy("batch_id")
+            .collect()
         )
-        .orderBy("batch_id")
-    )
-
-    telemetry_rows = telemetry.collect()
+        if any(r["status"] in ("appended", "merged") for r in telemetry_rows):
+            break
+        time.sleep(args.poll_seconds)
     print(
         "SEGMENT_STAGE_REPORT",
         {
