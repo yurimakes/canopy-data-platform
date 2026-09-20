@@ -215,7 +215,11 @@ def _finalize_affected_trips(trigger_batch: DataFrame, batch_id: int) -> None:
                     stage_started = time.perf_counter()
                     # Materialize once for the readiness action, then reuse the
                     # cached finalized rows for the atomic append.
-                    segments = build_segments(stabilized).cache()
+                    # Segmentation output is tiny (typically a handful of
+                    # rows per trip). Preserve upstream parallelism through all
+                    # window/aggregation work, then collapse only the final
+                    # output before cache/write to reduce Delta small-write overhead.
+                    segments = build_segments(stabilized).coalesce(1).cache()
                     segments_plan_ms = (
                         time.perf_counter() - stage_started
                     ) * 1000.0
