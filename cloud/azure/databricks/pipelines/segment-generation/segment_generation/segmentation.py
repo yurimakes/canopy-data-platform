@@ -98,8 +98,10 @@ def build_ready_points(trip_ended: Any, gps: Any, predictions: Any) -> Any:
         ),
     )
 
-    ready_generations = (
-        readiness.where(
+    assessed = points.drop("expected_last_sequence").join(readiness, keys, "inner")
+
+    return (
+        assessed.where(
             (F.col("observed_max_sequence") == F.col("expected_last_sequence"))
             & (
                 F.col("distinct_sequences")
@@ -111,15 +113,13 @@ def build_ready_points(trip_ended: Any, gps: Any, predictions: Any) -> Any:
             )
             & (F.col("missing_predictions") == 0)
         )
-        .select(*keys)
-    )
-
-    # Only the generation keys are needed downstream. A left-semi join avoids
-    # carrying readiness diagnostic columns into the stabilization/segmentation
-    # plan while preserving the exact completeness predicate above.
-    return (
-        points.join(ready_generations, keys, "left_semi")
-        .drop("expected_last_sequence")
+        .drop(
+            "observed_min_sequence",
+            "observed_max_sequence",
+            "expected_last_sequence",
+            "distinct_sequences",
+            "missing_predictions",
+        )
     )
 
 
