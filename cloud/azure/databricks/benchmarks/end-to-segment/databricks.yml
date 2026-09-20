@@ -17,33 +17,8 @@ variables:
     default: silver_gps_observations
   source_trip_ended_table:
     default: silver_trip_ended_events
-  source_segments_table:
-    default: silver_mode_segments
-  replay_gps_table:
-    default: replay_continuous_gps_observations
-  replay_predictions_table:
-    default: replay_continuous_mode_predictions
-  replay_trip_ended_table:
-    default: replay_continuous_trip_ended_events
-  replay_arrival_table:
-    default: replay_continuous_arrivals
-  replay_segments_table:
-    default: replay_low_latency_mode_segments
-  integrated_segments_table:
-    default: replay_integrated_mode_segments
-  integrated_observation_table:
-    default: replay_integrated_segment_observations
   baseline_integrated_segments_table:
     default: silver_integrated_mode_segments
-  replay_segment_telemetry_table:
-    default: replay_low_latency_segment_telemetry
-  segment_only_marker_table:
-    default: replay_segment_only_markers
-  benchmark_table:
-    default: replay_end_to_segment_benchmarks
-  replay_inference_pipeline_id:
-    description: Pipeline ID used to read stream_progress event-log metrics for the continuous replay inference benchmark.
-    default: eee266c3-c002-45ff-8c46-1f57e177838f
 
 targets:
   trial:
