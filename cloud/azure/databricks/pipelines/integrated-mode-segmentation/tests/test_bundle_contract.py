@@ -9,12 +9,12 @@ def test_bundle_is_trial_baseline_only() -> None:
     assert "dbw_canopy_trial" in bundle
     assert "CANOPY_TRIAL" in bundle
     assert "7405612422597045.5" in bundle
-    assert "silver_gps_observations" in bundle
-    assert "silver_trip_ended_events" in bundle
-    assert "silver_integrated_mode_segments" in bundle
+    assert "silver_schema" in bundle
+    assert "gps_observations" in bundle
+    assert "trip_ended_events" in bundle
+    assert "mode_segments" in bundle
     assert "replay_" not in bundle
     assert "silver_mode_predictions" not in bundle
-    assert "silver_mode_segments" not in bundle
 
 
 def test_baseline_pipeline_uses_configurable_trigger_and_expected_state_guards() -> None:
