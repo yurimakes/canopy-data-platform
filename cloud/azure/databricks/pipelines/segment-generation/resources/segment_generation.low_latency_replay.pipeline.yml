@@ -12,6 +12,7 @@ resources:
             path: ${workspace.file_path}/segment_generation/low_latency_replay_pipeline.py
       configuration:
         pipelines.trigger.interval: ${var.low_latency_replay_trigger_interval}
+        spark.sql.shuffle.partitions: ${var.segment_shuffle_partitions}
         canopy.catalog: ${var.catalog}
         canopy.schema: ${var.schema}
         canopy.trip_ended_table: ${var.replay_trip_ended_table}
