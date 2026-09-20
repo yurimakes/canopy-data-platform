@@ -151,9 +151,8 @@ def main() -> None:
     last_event_time = source_rows[-1]["event_time"]
     trip_end_times = {}
 
-    for user_idx, (user_id, trip_id) in enumerate(identities):
-        trip_end_at = now_utc_naive()
-        trip_end_row = {
+    def build_trip_end_row(user_idx, user_id, trip_id, trip_end_at):
+        return {
             "event_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"canopy:{args.run_id}:trip_end:{user_idx}")),
             "event_type": "trip_ended",
             "schema_version": "trip-lifecycle-v1",
@@ -174,20 +173,45 @@ def main() -> None:
             "parsed_at": trip_end_at,
         }
 
+    if args.trip_end_interval_ms <= 0:
+        # True simultaneous completion benchmark: one Delta append, one timestamp.
+        trip_end_at = now_utc_naive()
+        trip_end_rows = [
+            build_trip_end_row(user_idx, user_id, trip_id, trip_end_at)
+            for user_idx, (user_id, trip_id) in enumerate(identities)
+        ]
         (
-            spark.createDataFrame([trip_end_row], schema=trip_end_schema)
+            spark.createDataFrame(trip_end_rows, schema=trip_end_schema)
             .write.format("delta").mode("append").saveAsTable(trip_end_name)
         )
-        trip_end_times[trip_id] = str(trip_end_at)
-        print("TRIP_END_EMITTED", {
-            "run_id": args.run_id,
-            "trip_id": trip_id,
-            "user_id": user_id,
-            "trip_end_parsed_at": str(trip_end_at),
-        })
-
-        if user_idx + 1 < len(identities) and args.trip_end_interval_ms > 0:
-            time.sleep(args.trip_end_interval_ms / 1000.0)
+        for user_id, trip_id in identities:
+            trip_end_times[trip_id] = str(trip_end_at)
+            print("TRIP_END_EMITTED", {
+                "run_id": args.run_id,
+                "trip_id": trip_id,
+                "user_id": user_id,
+                "trip_end_parsed_at": str(trip_end_at),
+            })
+    else:
+        # Staggered completion benchmark: each trip_end is independently visible.
+        for user_idx, (user_id, trip_id) in enumerate(identities):
+            trip_end_at = now_utc_naive()
+            trip_end_row = build_trip_end_row(
+                user_idx, user_id, trip_id, trip_end_at
+            )
+            (
+                spark.createDataFrame([trip_end_row], schema=trip_end_schema)
+                .write.format("delta").mode("append").saveAsTable(trip_end_name)
+            )
+            trip_end_times[trip_id] = str(trip_end_at)
+            print("TRIP_END_EMITTED", {
+                "run_id": args.run_id,
+                "trip_id": trip_id,
+                "user_id": user_id,
+                "trip_end_parsed_at": str(trip_end_at),
+            })
+            if user_idx + 1 < len(identities):
+                time.sleep(args.trip_end_interval_ms / 1000.0)
 
     print("CONTINUOUS_REPLAY_PRODUCED", {
         "run_id": args.run_id,
