@@ -259,7 +259,8 @@ it('retries a lost stop response without losing the stored Trip or starting a ne
   await s.api.tick(true);expect((await s.api.result(id))?.error).toContain('response lost');
   const recovered=new TripApi(s.db,config,randomUUID,request);await recovered.tick(true);
   expect((await recovered.result(id))?.result?.trip_id).toBe(id);
-  expect(stopCount).toBe(2);expect(await s.db.list()).toHaveLength(1);
+  expect(stopCount).toBe(1);expect(await s.db.list()).toHaveLength(1);
+  expect((await recovered.result(id))?.error).toBeUndefined();
 });
 
 it('user screen collects unlabeled GPS and cannot switch to developer during a Trip',async()=>{
@@ -341,4 +342,20 @@ it('does not reuse a start request from another logged-in account',async()=>{
   const request=vi.fn();
   const other=new TripApi(db,()=>({...config(),userId:'bob'}),randomUUID,request);
   await expect(other.start(identity)).rejects.toThrow('이전 계정');expect(request).not.toHaveBeenCalled();
+});
+
+it('recovers a native cancelled Stop request that never reached the server',async()=>{
+  let cancel=true;
+  const request=(async(url,options)=>{
+    if(String(url).endsWith('/stop')&&cancel){cancel=false;throw Error('FetchRequestCanceledException: Fetch request has been canceled');}
+    return fetch(url,options);
+  }) as typeof fetch;
+  const s=await setup(':memory:',request);await s.collector.start();await s.collector.stop();
+  const id=s.collector.trip!.trip_id;await s.api.tick(true);
+  expect((await s.api.result(id))?.error).toContain('자동으로 다시 확인');
+  expect((await s.api.result(id))?.error).not.toContain('FetchRequestCanceledException');
+  await s.api.tick(true);
+  expect((await s.api.result(id))?.result?.status).not.toBe('collecting');
+  expect((await s.api.result(id))?.error).toBeUndefined();
+  expect(await s.db.list()).toHaveLength(1);
 });

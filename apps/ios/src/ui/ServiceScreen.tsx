@@ -8,7 +8,7 @@ import Constants from 'expo-constants';
 import {LivePrediction,LocalWeekly} from './LocalTools';
 import React,{useEffect,useRef,useState} from 'react';
 import {ActivityIndicator,Image,ImageBackground,Modal,Pressable,ScrollView,View} from 'react-native';
-import {SafeAreaView} from 'react-native-safe-area-context';
+import {SafeAreaView,SafeAreaProvider} from 'react-native-safe-area-context';
 import type {MeasurementProps} from './MeasurementScreen';
 import {MeasurementScreen} from './MeasurementScreen';
 import {TripResult} from './TripResult';
@@ -74,7 +74,7 @@ export function ServiceScreen(p:ServiceProps){
           {!stage.failed&&<ActivityIndicator color={C.green}/>}<Note>{stage.detail}</Note>
           {['위치 전송','서버 분석','결과 확인'].map((label,i)=><View key={label} style={S.row}><Icon name={i<stage.step?'checkmark-circle':i===stage.step?'radio-button-on':'ellipse-outline'} color={i<=stage.step?C.green:C.muted}/><Text style={S.label}>{label}</Text></View>)}
           {!!p.tripError&&<Note error>{p.tripError}</Note>}
-          {(stage.failed||!!p.tripError)&&<Button title="처리 다시 시도" onPress={()=>p.onRetryTrip?.()}/>}
+          {(stage.failed||!!p.tripError)&&<Button title={stage.failed?"처리 다시 시도":"결과 다시 확인"} onPress={()=>p.onRetryTrip?.()}/>}
           {!!p.pending&&<Button title="전송 재시도" quiet onPress={()=>p.onRetry?.()}/>}
         </Card>:<Card><Text style={S.heading}>먼저 여정을 선택해주세요</Text><Button title="지난 여정 보기" onPress={()=>setTab('history')}/></Card>}
         <Button title="홈으로 돌아가기" quiet onPress={()=>setTab('home')}/>
@@ -108,6 +108,6 @@ export function ServiceScreen(p:ServiceProps){
     </View>
     </SafeAreaView>
     <Modal visible={stopOpen||logout} transparent animationType="fade" onRequestClose={()=>{setStopOpen(false);setLogout(false);}}><View style={{flex:1,backgroundColor:'#102e2570',justifyContent:'center',padding:24}}><Card><Text style={S.heading}>{stopOpen?'여정을 종료할까요?':'로그아웃할까요?'}</Text><Note>{stopOpen?'GPS 기록을 멈추고 서버에서 결과를 처리합니다. 아직 보내지 못한 기록도 보관됩니다.':'저장한 프로필과 이동 기록은 이 기기에 남아 있습니다.'}</Note><Button title={stopOpen?'여정 종료':'로그아웃'} danger onPress={()=>{if(stopOpen){setStopOpen(false);p.onStop();}else{setLogout(false);p.onBack();}}}/><Button title="취소" quiet onPress={()=>{setStopOpen(false);setLogout(false);}}/></Card></View></Modal>
-    <Modal visible={edit} animationType="slide" onRequestClose={()=>setEdit(false)}><SafeAreaView style={S.root}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.scroll}><View style={S.between}><Text style={S.heading}>나의 프로필</Text><Button title="닫기" quiet onPress={()=>setEdit(false)}/></View><Field label="닉네임" value={draft.nickname} onChangeText={nickname=>setDraft({...draft,nickname})} maxLength={30}/><Field label="부서 (선택)" value={draft.department_name??''} onChangeText={department_name=>setDraft({...draft,department_name})} maxLength={50}/><Note>같은 캠페인에서 같은 부서명을 입력한 참여자는 부서 랭킹에 함께 표시돼요.</Note><PlacePicker title="집" value={draft.home} onPick={home=>setDraft({...draft,home})}/><PlacePicker title="직장" value={draft.work} onPick={work=>setDraft({...draft,work})}/><Note>출근은 집 → 직장, 퇴근은 직장 → 집으로 바꿔 검색할 수 있어요. 다른 목적지도 선택할 수 있습니다.</Note>{!!saveError&&<Note error>{saveError}</Note>}<Button title="저장하기" busy={saving} onPress={()=>void save()}/></ScrollView></SafeAreaView></Modal>
+    <Modal visible={edit} animationType="slide" onRequestClose={()=>setEdit(false)}><SafeAreaProvider><SafeAreaView style={S.root}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.scroll}><View style={S.between}><Text style={S.heading}>나의 프로필</Text><Button title="닫기" quiet onPress={()=>setEdit(false)}/></View><Field label="닉네임" value={draft.nickname} onChangeText={nickname=>setDraft({...draft,nickname})} maxLength={30}/><Field label="부서 (선택)" value={draft.department_name??''} onChangeText={department_name=>setDraft({...draft,department_name})} maxLength={50}/><Note>같은 캠페인에서 같은 부서명을 입력한 참여자는 부서 랭킹에 함께 표시돼요.</Note><PlacePicker title="집" value={draft.home} onPick={home=>setDraft({...draft,home})}/><PlacePicker title="직장" value={draft.work} onPick={work=>setDraft({...draft,work})}/><Note>출근은 집 → 직장, 퇴근은 직장 → 집으로 바꿔 검색할 수 있어요. 다른 목적지도 선택할 수 있습니다.</Note>{!!saveError&&<Note error>{saveError}</Note>}<Button title="저장하기" busy={saving} onPress={()=>void save()}/></ScrollView></SafeAreaView></SafeAreaProvider></Modal>
   </SafeAreaView>;
 }

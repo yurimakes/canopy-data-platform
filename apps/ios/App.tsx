@@ -69,15 +69,22 @@ function CanopyApp() {
   },[]);
   useEffect(()=>{
     if(!service)return;
-    let alive=true,refreshing=false;
+    let alive=true,refreshing=false,networkRefreshing=false;
+    async function syncNetwork(wake:boolean){
+      if(networkRefreshing)return;networkRefreshing=true;
+      try{
+        await (await getUploader()).tick();
+        const api=await getTripApi();await api.tick(wake);
+        if(profile&&screen==='user')try{await api.syncHistory();}catch{/* Retry history later without blocking the current result. */}
+      }catch(e){if(alive)setUploadError(String(e));}finally{networkRefreshing=false;}
+    }
     async function tick(wake=false){
       if(refreshing)return;refreshing=true;
       try {
         if(wake)await service!.db.wakeDelivery();
         await service!.collector.refresh();
-        const uploader=await getUploader(); await uploader.tick();
-        const tripApi=await getTripApi(); await tripApi.tick(wake);
-        if(profile&&screen==='user')try{await tripApi.syncHistory();}catch(e){if(alive)setTripError(String(e));}
+        const uploader=await getUploader();
+        const tripApi=await getTripApi();
         const list=await service!.db.list();
         const owned=list.filter(t=>t.user_id===profile?.id);
         const activeId=service!.collector.trip?.user_id===profile?.id?service!.collector.trip?.trip_id:undefined;
@@ -88,10 +95,12 @@ function CanopyApp() {
         const extra=id?await service!.db.eventPage(id,previous.at(-1)?.sequence??0,2000):[];
         const track=extra.length?[...previous,...extra]:previous;trackRef.current.events=track;
         if(alive){setTrips(list);setOwnedTrips(owned);setEvents(track);}
+        void syncNetwork(wake);
+
         const status=await service!.db.deliveryStatus(id??null);
         const proof=await service!.db.deliveryEvidence(id??null);
         const remote=id ? await tripApi.result(id) : null;
-        if(alive){setServerTrip(remote?.result);setFeedbackPending(remote?.feedback);setTripError(remote?.error??tripApi.error);}
+        if(alive){setServerTrip(remote?.result);setFeedbackPending(remote?.feedback);setTripError(remote?.error??'');}
         if(alive){setResultTrip(summary);setDelivery(status);setEvidence(proof);setUploadError(proof.head?.last_error || uploader.error);}
       }catch(e){if(alive)setError(String(e));}finally{refreshing=false;}
     }

@@ -22,3 +22,13 @@ Build 5 (eff4ae0b-f502-40bf-a6ab-9f1d90a3ee75) was canceled because its green ba
 Build 6: d6c66e85-0a28-4ef7-b5a1-e4a8ddd4bc58 — FINISHED.
 Submission 6: 265a8c20-6c8b-4644-9892-ca153c31b54d — FINISHED, no submission error.
 Apple upload completed. TestFlight availability depends on Apple processing; device installation and icon display remain device checks.
+
+## Build 7 — physical-phone findings
+
+Observed phone trip 9e897cce-fee1-5a54-a37d-7c3a31c1959a: 91 expected GPS points, four output segments. Ended 08:23:30.999 UTC; Cosmos ready/updated 08:23:48.938 UTC (17.939 seconds). Databricks completed; phone screenshot still showed processing and a native fetch cancellation. Exact network cancellation trigger is not proven by the screenshot.
+
+Changes: separate local UI refresh from serialized network work; recover lost Stop responses by reading server state before resubmitting; preserve current-trip errors separately from history errors; normalize native fetch cancellation and allow 20 seconds for requests. Keep durable retry and server idempotency. Each full-screen modal owns a SafeAreaProvider. Native map fills an explicitly bounded container so it cannot push the collapsible movement panel outside the screen. Panel remains below map with compact elapsed/distance/motion summary when folded. Long route endpoint labels and button labels can shrink/wrap.
+
+Movement indicator: provisional GPS speed indication, explicitly labeled estimate; no claim of live bus/car/rail ML classification. Existing final ML results unchanged. No new backend or teammate pipeline changes in this release.
+
+Validation: 84 app tests pass and TypeScript passes. Tests cover a Stop response lost after server acceptance and native cancellation before acceptance, recovering without creating another Trip. Native map bounds and modal insets require physical-device verification on the new binary; desktop tests do not establish every iPhone layout.

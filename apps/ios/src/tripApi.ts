@@ -56,7 +56,7 @@ export class TripApi {
   }
   private async call(path:string,method:string,body?:unknown,url?:string):Promise<ServerTrip> {
     const config=this.configuration(url), abort=new AbortController();
-    const timeout=setTimeout(()=>abort.abort(),10000);
+    const timeout=setTimeout(()=>abort.abort(),20000);
     try {
       const response=await this.request(config.url+path,{method,signal:abort.signal,redirect:'error',
         headers:{Authorization:'Bearer '+config.token,'Content-Type':'application/json',
@@ -67,6 +67,9 @@ export class TripApi {
       if(typeof result.trip_id!=='string' || typeof result.user_id!=='string' || !Number.isFinite(Date.parse(result.started_at)) ||
          !['collecting','processing','ready','failed'].includes(result.status) || !Array.isArray(result.segments)) throw new Error('Trip API 응답 형식이 다릅니다.');
       return result;
+    } catch(e) {
+      if(abort.signal.aborted || /FetchRequestCanceled|AbortError|Network request failed|fetch failed/i.test(String(e)))throw new Error('연결이 잠시 끊겼어요. 저장된 여정은 유지되며 자동으로 다시 확인합니다.');
+      throw e;
     } finally {clearTimeout(timeout);}
   }
   async start(identity:Identity):Promise<Pick<Trip,'trip_id'|'user_id'|'started_at'|'server'>> {
@@ -194,6 +197,8 @@ export class TripApi {
         try {
           if((await this.db.deliveryStatus(trip.trip_id)).pending>0)continue;
           let result=state.result;
+          // A lost Stop response may already have completed on the server. Read before resending.
+          if(!result && state.attempts) result=await this.call(`/trips/${trip.trip_id}`,'GET',undefined,trip.server.api_url);
           if(!result || result.status==='collecting' || state.retry_request_id) {
             const ended_at=trip.ended_at ?? trip.last_event_time ?? trip.recovered_at ?? trip.started_at;
             result=await this.call(`/trips/${trip.trip_id}/stop`,'POST',{

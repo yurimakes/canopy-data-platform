@@ -32,7 +32,7 @@ export const S=StyleSheet.create({
   card:{backgroundColor:C.surface,borderRadius:26,padding:20,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
   input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:48,borderRadius:28,backgroundColor:C.green,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
-  buttonText:{fontSize:15,fontWeight:'700',color:C.white},quiet:{backgroundColor:C.mint},
+  buttonText:{flexShrink:1,textAlign:'center',fontSize:15,fontWeight:'700',color:C.white},quiet:{backgroundColor:C.mint},
   pill:{color:C.green,backgroundColor:C.mint,paddingHorizontal:12,paddingVertical:6,borderRadius:12,fontSize:12,fontWeight:'600'},
   divider:{height:1,backgroundColor:C.line},link:{fontSize:14,color:C.green,fontWeight:'600'},
 });
