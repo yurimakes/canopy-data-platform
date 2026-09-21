@@ -2,6 +2,7 @@ import Text from './AppText';
 import {NotificationPanel,type NotificationView} from './NotificationPanel';
 import {HomeDashboard} from './HomeDashboard';
 import {ActiveJourney} from './ActiveJourney';
+import {JourneyInfoPanel} from './JourneyInfoPanel';
 import {JourneyComplete} from './RewardExperience';
 import {CanopyMascot} from './CanopyMascot';
 import Constants from 'expo-constants';
@@ -30,13 +31,13 @@ function JourneyRecovery({p}:{p:ServiceProps}){
 export function ServiceScreen(p:ServiceProps){
   const [tab,updateTab]=useState<Tab>(p.active?'journey':'home'),[tools,setTools]=useState(p.collectionMode==='developer'),[stopOpen,setStopOpen]=useState(false),[edit,setEdit]=useState(false),[logout,setLogout]=useState(false);
   const navigation=useRef<Tab[]>([]),currentTab=useRef<Tab>(tab);
-  function setTab(next:Tab){if(currentTab.current===next)return;navigation.current.push(currentTab.current);if(navigation.current.length>50)navigation.current.shift();currentTab.current=next;updateTab(next);}
-  function goBack(){const next=navigation.current.pop()??'home';currentTab.current=next;updateTab(next);}
+  function setTab(next:Tab){if(busy&&next!=='journey')return;if(currentTab.current===next)return;navigation.current.push(currentTab.current);if(navigation.current.length>50)navigation.current.shift();currentTab.current=next;updateTab(next);}
+  function goBack(){if(busy)return;const next=navigation.current.pop()??'home';currentTab.current=next;updateTab(next);}
   const [direction,setDirection]=useState<'outbound'|'return'>('outbound');
   const [draft,setDraft]=useState(p.profile),[saveError,setSaveError]=useState(''),[saving,setSaving]=useState(false);
   const wasActive=useRef(!!p.active);
   const busy=!!p.active||['starting','recording','stopping'].includes(p.phase);
-  useEffect(()=>{if(p.active)setTab('journey');if(wasActive.current&&!p.active&&p.phase!=='starting')setTab('result');wasActive.current=!!p.active;},[p.active,p.phase]);
+  useEffect(()=>{if(busy)setTab('journey');if(p.active)wasActive.current=true;if(wasActive.current&&!busy){setTab('result');wasActive.current=false;}},[p.active,busy]);
   const points=p.events.map(e=>({latitude:e.lat,longitude:e.lon,name:'GPS'}));
   const measured=gpsDistance(p.events);
   const stage=journeyStage(p.pending,p.serverTrip?.status,p.serverTrip?.error_message);
@@ -49,10 +50,10 @@ export function ServiceScreen(p:ServiceProps){
   if(tools&&p.profile.role==='developer')return <MeasurementScreen {...p} onBack={()=>{p.onCollectionMode('user');setTools(false);}}/>;
   return <SafeAreaView style={[S.root,{minHeight:0}]} edges={['top','left','right']}>
     <View style={[S.between,{flexShrink:0,paddingHorizontal:20,minHeight:58,backgroundColor:C.paper}]}>
-      <View style={S.row}>{tab==='home'?<Image accessibilityLabel="CANOPY" source={require('../../assets/canopy-ui/canopy-wordmark-v2.png')} resizeMode="contain" style={{width:145,height:46}}/>:navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}{tab!=='home'&&<Text style={S.heading}>{title[tab]}</Text>}</View>
-      <Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>
+      <View style={S.row}>{tab==='home'?<Image accessibilityLabel="CANOPY" source={require('../../assets/canopy-ui/canopy-wordmark-v2.png')} resizeMode="contain" style={{width:145,height:46}}/>:!busy&&navigation.current.length>0?<Pressable accessibilityRole="button" accessibilityLabel="뒤로" onPress={goBack} style={{padding:8}}><Icon name="arrow-back" size={21}/></Pressable>:null}{tab!=='home'&&<Text style={S.heading}>{title[tab]}</Text>}</View>
+      {!busy&&<Pressable accessibilityRole="button" accessibilityLabel={tab==='home'?'알림':'프로필 설정'} onPress={()=>{if(tab==='home')setTab('notifications');else{setDraft(p.profile);setEdit(true);}}} style={{padding:10}}><Icon name={tab==='home'?'notifications-outline':'settings-outline'} size={21} color={C.deep}/></Pressable>}
     </View>
-    {tab==='journey'&&busy?<View style={{flex:1,minHeight:0,paddingHorizontal:12,paddingTop:8}}><ActiveJourney p={p} direction={direction}/><ScrollView style={{flexGrow:0,flexShrink:1,maxHeight:76}}><JourneyRecovery p={p}/></ScrollView></View>:<ScrollView key={tab} style={{flex:1,minHeight:0}} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
+    {tab==='journey'&&busy?<View style={{flex:1,minHeight:0,paddingHorizontal:12,paddingTop:8}}><ActiveJourney p={p} direction={direction} showInfo={false}/><ScrollView style={{flexGrow:0,flexShrink:1,maxHeight:76}}><JourneyRecovery p={p}/></ScrollView></View>:<ScrollView key={tab} style={{flex:1,minHeight:0}} scrollEnabled={tab!=='journey'||!busy} keyboardShouldPersistTaps="handled" contentContainerStyle={tab==='home'?{flexGrow:1}:tab==='journey'?{padding:12,gap:12}:S.scroll} showsVerticalScrollIndicator={false}>
       {tab==='home'&&Constants.expoConfig?.extra?.localOnly===true&&<View style={{padding:12,backgroundColor:C.mint}}><Text style={S.note}>로컬 테스트 · PC에서 처리 · Azure 미사용</Text></View>}
       {!!p.weeklyStatus&&['home','baseline','missions','ranking'].includes(tab)&&<Note error>{p.weeklyStatus.message}</Note>}
       {['home','profile','route'].includes(tab)&&[p.profile.home,p.profile.work].some(place=>place?.address?.includes('행정동 중심점'))&&<Card><Note error>집·직장이 행정동 중심점으로 저장돼 있어요. 출퇴근을 정확히 확인하려면 프로필에서 실제 위치로 다시 설정해주세요.</Note><Button title="출퇴근 장소 수정" quiet onPress={()=>{setDraft(p.profile);setEdit(true);}}/></Card>}
@@ -100,13 +101,13 @@ export function ServiceScreen(p:ServiceProps){
       </>}
       </Fade>}
     </ScrollView>}
-    {tab==='journey'&&<View style={{flexShrink:0,paddingHorizontal:20,paddingVertical:10,backgroundColor:C.white}}><Button title={p.phase==='starting'?'위치를 준비하고 있어요':p.phase==='stopping'?'기록을 마무리하고 있어요':busy?'여정 종료':'여정 시작'} busy={p.phase==='starting'||p.phase==='stopping'} disabled={!p.ready||!!p.preview} onPress={()=>{if(busy)setStopOpen(true);else p.onStart(direction);}}/></View>}
+    {tab==='journey'&&<SafeAreaView edges={busy?['bottom']:[]} style={{flexShrink:0,backgroundColor:C.white}}>{busy&&<JourneyInfoPanel p={p}/>}<View style={{paddingHorizontal:20,paddingVertical:10}}><Button title={p.phase==='starting'?'위치를 준비하고 있어요':p.phase==='stopping'?'기록을 마무리하고 있어요':busy?'여정 종료':'여정 시작'} busy={p.phase==='starting'||p.phase==='stopping'} disabled={!p.ready||!!p.preview} onPress={()=>{if(busy)setStopOpen(true);else p.onStart(direction);}}/></View></SafeAreaView>}
     {busy&&tab!=='journey'&&<Pressable accessibilityRole="button" onPress={()=>setTab('journey')} style={{padding:14,backgroundColor:C.mint,alignItems:'center'}}><Text style={S.link}>진행 중인 여정으로 돌아가기</Text></Pressable>}
-    <SafeAreaView edges={['bottom']} style={{flexShrink:0,backgroundColor:C.deep,borderTopLeftRadius:26,borderTopRightRadius:26,boxShadow:'0 -4px 20px #193f3214'}}>
+    {!busy&&<SafeAreaView edges={['bottom']} style={{flexShrink:0,backgroundColor:C.deep,borderTopLeftRadius:26,borderTopRightRadius:26,boxShadow:'0 -4px 20px #193f3214'}}>
     <View style={{flexDirection:'row',paddingHorizontal:6,paddingTop:10,paddingBottom:6}}>
       {([['home','home-outline','홈'],['missions','checkmark-circle-outline','미션'],['rewards','gift-outline','리워드'],['ranking','trophy-outline','랭킹'],['profile','person-outline','마이페이지']] as const).map(([target,icon,label])=><Pressable key={target} accessibilityRole="tab" accessibilityState={{selected:tab===target}} accessibilityLabel={label} onPress={()=>setTab(target)} style={({pressed})=>({flex:1,minHeight:58,alignItems:'center',gap:4,paddingVertical:3,opacity:pressed?.72:1})}><View style={{width:46,height:32,borderRadius:16,alignItems:'center',justifyContent:'center',backgroundColor:tab===target?C.leaf:'transparent'}}><Icon name={icon} size={23} color={tab===target?C.deep:'#d7e5ce'}/></View><Text style={{fontSize:11,color:tab===target?C.leaf:'#d7e5ce',fontWeight:'600'}}>{label}</Text></Pressable>)}
     </View>
-    </SafeAreaView>
+    </SafeAreaView>}
     <Modal visible={stopOpen||logout} transparent animationType="fade" onRequestClose={()=>{setStopOpen(false);setLogout(false);}}><View style={{flex:1,backgroundColor:'#102e2570',justifyContent:'center',padding:24}}><Card><Text style={S.heading}>{stopOpen?'여정을 종료할까요?':'로그아웃할까요?'}</Text><Note>{stopOpen?'GPS 기록을 멈추고 서버에서 결과를 처리합니다. 아직 보내지 못한 기록도 보관됩니다.':'저장한 프로필과 이동 기록은 이 기기에 남아 있습니다.'}</Note><Button title={stopOpen?'여정 종료':'로그아웃'} danger onPress={()=>{if(stopOpen){setStopOpen(false);p.onStop();}else{setLogout(false);p.onBack();}}}/><Button title="취소" quiet onPress={()=>{setStopOpen(false);setLogout(false);}}/></Card></View></Modal>
     <Modal visible={edit} animationType="slide" onRequestClose={()=>setEdit(false)}><SafeAreaProvider><SafeAreaView style={S.root}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={S.scroll}><View style={S.between}><Text style={S.heading}>나의 프로필</Text><Button title="닫기" quiet onPress={()=>setEdit(false)}/></View><Field label="닉네임" value={draft.nickname} onChangeText={nickname=>setDraft({...draft,nickname})} maxLength={30}/><Field label="부서 (선택)" value={draft.department_name??''} onChangeText={department_name=>setDraft({...draft,department_name})} maxLength={50}/><Note>같은 캠페인에서 같은 부서명을 입력한 참여자는 부서 랭킹에 함께 표시돼요.</Note><PlacePicker title="집" value={draft.home} onPick={home=>setDraft({...draft,home})}/><PlacePicker title="직장" value={draft.work} onPick={work=>setDraft({...draft,work})}/><Note>출근은 집 → 직장, 퇴근은 직장 → 집으로 바꿔 검색할 수 있어요. 다른 목적지도 선택할 수 있습니다.</Note>{!!saveError&&<Note error>{saveError}</Note>}<Button title="저장하기" busy={saving} onPress={()=>void save()}/></ScrollView></SafeAreaView></SafeAreaProvider></Modal>
   </SafeAreaView>;
