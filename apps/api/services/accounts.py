@@ -79,7 +79,12 @@ class CampaignRegistry:
     @classmethod
     def from_env(cls):
         raw = os.environ.get("CANOPY_CAMPAIGNS_JSON")
-        return cls(os.environ["TRIP_CAMPAIGN_ID"], json.loads(raw) if raw else None)
+        # Only explicit local development may use the historical TEST default.
+        local = os.getenv("APP_ENV") == "development" and not os.getenv("WEBSITE_HOSTNAME")
+        entries = json.loads(raw) if raw else (None if local else {})
+        if entries is not None and not isinstance(entries, dict):
+            raise RuntimeError("Campaign registry must be an object")
+        return cls(os.environ["TRIP_CAMPAIGN_ID"], entries)
 
     def resolve(self, code, now):
         if not isinstance(code, str) or not 1 <= len(code.strip()) <= 32:

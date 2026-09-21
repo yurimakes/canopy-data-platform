@@ -47,7 +47,7 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
         <Field label={page==='login'?'이메일 또는 개발자 ID':'이메일'} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="canopy@example.com" maxLength={120}/>
         <Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder={page==='signup'?'12자 이상 입력':'비밀번호 입력'} autoCapitalize="none" maxLength={128}/>
         <Pressable accessibilityRole="button" onPress={()=>setVisible(!visible)}><Text style={S.link}>{visible?'비밀번호 가리기':'비밀번호 보기'}</Text></Pressable>
-        {page==='signup'&&<><Field label="캠페인 코드" value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="TEST" maxLength={20}/><Note>집과 직장 위치는 다음 화면에서 설정할 수 있어요.</Note>
+        {page==='signup'&&<><Field label="캠페인 코드" value={code} onChangeText={setCode} autoCapitalize="characters" placeholder="MSDS" maxLength={20}/><Note>집과 직장 위치는 다음 화면에서 설정할 수 있어요.</Note>
           <Pressable accessibilityRole="checkbox" aria-checked={agreed} accessibilityState={{checked:agreed}} onPress={()=>setAgreed(!agreed)} style={S.row}><Icon name={agreed?'checkbox':'square-outline'}/><Text style={[S.note,{flex:1}]}>계정, 캠페인 참여정보와 설정한 출퇴근 장소의 서버 저장에 동의합니다.</Text></Pressable></>}
         {!!(error||runtimeError)&&<Note error>{error||runtimeError}</Note>}
         <Button title={page==='signup'?'다음: 출퇴근 장소':'로그인'} busy={busy} disabled={!ready} onPress={()=>void submit()}/>
