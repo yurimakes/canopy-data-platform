@@ -56,6 +56,7 @@ TABLES = EventIngestionTableConfig(
 DEDUPLICATION_WATERMARK = _conf("deduplication_watermark")
 APPLY_DEDUPLICATION = _bool_conf("apply_deduplication", default=True)
 FUSE_GPS_PARSE_VALIDATION = _bool_conf("fuse_gps_parse_validation")
+DIRECT_EVENTHUB_FANOUT = _bool_conf("direct_eventhub_fanout")
 _GPS_PARSED_TABLE = "gps_events_parsed"
 
 
@@ -76,7 +77,7 @@ def _event_hubs_stream():
         _conf("event_hubs.sas_policy_name"),
         policy_key,
     )
-    return (
+    reader = (
         _spark()
         .readStream.format("kafka")
         .option("kafka.bootstrap.servers", f"{namespace}.servicebus.windows.net:9093")
@@ -84,16 +85,30 @@ def _event_hubs_stream():
         .option("kafka.security.protocol", "SASL_SSL")
         .option("kafka.sasl.mechanism", "PLAIN")
         .option("kafka.sasl.jaas.config", jaas_config(connection))
-        .option("kafka.group.id", _conf("event_hubs.consumer_group"))
         .option("startingOffsets", "latest")
         .option("failOnDataLoss", "true")
-        .load()
     )
+    if not DIRECT_EVENTHUB_FANOUT:
+        reader = reader.option(
+            "kafka.group.id",
+            _conf("event_hubs.consumer_group"),
+        )
+    return reader.load()
+
+
+def _bronze_rows_from_event_hubs():
+    return generic_bronze_rows(_event_hubs_stream())
 
 
 def _parsed_gps_from_bronze():
     bronze = _spark().readStream.table(TABLES.bronze_table)
     return parse_bronze_rows(gps_parser_input_rows(bronze))
+
+
+def _parsed_gps_direct_from_event_hubs():
+    return parse_bronze_rows(
+        gps_parser_input_rows(_bronze_rows_from_event_hubs())
+    )
 
 
 @dp.table(
@@ -103,7 +118,7 @@ def _parsed_gps_from_bronze():
 )
 @dp.expect_or_fail("raw_payload_is_not_null", "raw_payload IS NOT NULL")
 def bronze_events():
-    return generic_bronze_rows(_event_hubs_stream())
+    return _bronze_rows_from_event_hubs()
 
 
 if not FUSE_GPS_PARSE_VALIDATION:
@@ -123,9 +138,13 @@ if not FUSE_GPS_PARSE_VALIDATION:
 )
 def gps_observations():
     parsed = (
-        _parsed_gps_from_bronze()
-        if FUSE_GPS_PARSE_VALIDATION
-        else _spark().readStream.table(_GPS_PARSED_TABLE)
+        _parsed_gps_direct_from_event_hubs()
+        if DIRECT_EVENTHUB_FANOUT
+        else (
+            _parsed_gps_from_bronze()
+            if FUSE_GPS_PARSE_VALIDATION
+            else _spark().readStream.table(_GPS_PARSED_TABLE)
+        )
     )
     observations = valid_observation_rows(parsed)
     if APPLY_DEDUPLICATION:
@@ -153,7 +172,12 @@ def gps_quarantine():
     comment="Validated primitive trip_ended events with optional bounded event_id deduplication.",
 )
 def trip_ended_events():
-    events = trip_ended_rows(_spark().readStream.table(TABLES.bronze_table))
+    source = (
+        _bronze_rows_from_event_hubs()
+        if DIRECT_EVENTHUB_FANOUT
+        else _spark().readStream.table(TABLES.bronze_table)
+    )
+    events = trip_ended_rows(source)
     if APPLY_DEDUPLICATION:
         return deduplicate_event_ids(events, DEDUPLICATION_WATERMARK)
     return events
