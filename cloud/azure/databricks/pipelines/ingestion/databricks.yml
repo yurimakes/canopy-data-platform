@@ -69,6 +69,32 @@ targets:
       profile: CANOPY_TRIAL
       root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
 
+  trial_direct_fanout:
+    mode: development
+    variables:
+      ingestion_continuous_pause_status: PAUSED
+      ingestion_trigger_interval: 1 second
+      fuse_gps_parse_validation: "true"
+      apply_deduplication: "false"
+      direct_eventhub_fanout: "true"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production-candidate
+        component: ingestion
+    resources:
+      pipelines:
+        generic_event_ingestion_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.ingestion_trigger_interval}
+            canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
+            canopy.apply_deduplication: ${var.apply_deduplication}
+            canopy.direct_eventhub_fanout: ${var.direct_eventhub_fanout}
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+
   ingestion_latency:
     mode: development
     variables:
