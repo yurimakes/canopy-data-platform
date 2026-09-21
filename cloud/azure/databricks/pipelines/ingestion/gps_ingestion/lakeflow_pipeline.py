@@ -39,6 +39,11 @@ def _conf(name: str) -> str:
     return value.strip()
 
 
+def _bool_conf(name: str, default: bool = False) -> bool:
+    value = _spark().conf.get(f"canopy.{name}", str(default).lower())
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 TABLES = EventIngestionTableConfig(
     catalog=_conf("catalog"),
     bronze_schema=_conf("bronze_schema"),
@@ -49,6 +54,7 @@ TABLES = EventIngestionTableConfig(
     trip_ended_events_name=_conf("trip_ended_events_table"),
 )
 DEDUPLICATION_WATERMARK = _conf("deduplication_watermark")
+FUSE_GPS_PARSE_VALIDATION = _bool_conf("fuse_gps_parse_validation")
 _GPS_PARSED_TABLE = "gps_events_parsed"
 
 
@@ -84,6 +90,11 @@ def _event_hubs_stream():
     )
 
 
+def _parsed_gps_from_bronze():
+    bronze = _spark().readStream.table(TABLES.bronze_table)
+    return parse_bronze_rows(gps_parser_input_rows(bronze))
+
+
 @dp.table(
     name=TABLES.bronze_table,
     schema=GENERIC_BRONZE_SCHEMA_DDL,
@@ -94,14 +105,14 @@ def bronze_events():
     return generic_bronze_rows(_event_hubs_stream())
 
 
-@dp.table(
-    name=_GPS_PARSED_TABLE,
-    private=True,
-    comment="Private parsed and contract-validated GPS events.",
-)
-def gps_events_parsed():
-    bronze = _spark().readStream.table(TABLES.bronze_table)
-    return parse_bronze_rows(gps_parser_input_rows(bronze))
+if not FUSE_GPS_PARSE_VALIDATION:
+    @dp.table(
+        name=_GPS_PARSED_TABLE,
+        private=True,
+        comment="Private parsed and contract-validated GPS events.",
+    )
+    def gps_events_parsed():
+        return _parsed_gps_from_bronze()
 
 
 @dp.table(
@@ -110,9 +121,12 @@ def gps_events_parsed():
     comment="Validated GPS observations with bounded event_id deduplication.",
 )
 def gps_observations():
-    observations = valid_observation_rows(
-        _spark().readStream.table(_GPS_PARSED_TABLE)
+    parsed = (
+        _parsed_gps_from_bronze()
+        if FUSE_GPS_PARSE_VALIDATION
+        else _spark().readStream.table(_GPS_PARSED_TABLE)
     )
+    observations = valid_observation_rows(parsed)
     return deduplicate_observations(observations, DEDUPLICATION_WATERMARK)
 
 
@@ -122,7 +136,12 @@ def gps_observations():
     comment="Rejected GPS events with validation reasons and raw context.",
 )
 def gps_quarantine():
-    return quarantine_rows(_spark().readStream.table(_GPS_PARSED_TABLE))
+    parsed = (
+        _parsed_gps_from_bronze()
+        if FUSE_GPS_PARSE_VALIDATION
+        else _spark().readStream.table(_GPS_PARSED_TABLE)
+    )
+    return quarantine_rows(parsed)
 
 
 @dp.table(
