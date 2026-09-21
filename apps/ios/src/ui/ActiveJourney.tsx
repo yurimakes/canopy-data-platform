@@ -21,7 +21,7 @@ export function ActiveJourney({p,direction,replayDistance,replayMode,showInfo=tr
    <View style={S.between}><Text style={{fontSize:11,letterSpacing:1.3,fontWeight:'700',color:C.green}}>{direction==='return'?'집으로 가는 길':'오늘의 초록 여정'}</Text><Text style={S.pill}>{busy?'이동 중':'출발 준비'}</Text></View>
    <View style={{height: 64,marginHorizontal:18,justifyContent:'flex-end',paddingBottom:12}}>
     <View style={{height:5,backgroundColor:'#e6ede4',borderRadius:5}}><View style={{height:5,width:`${progress*100}%`,backgroundColor:C.green,borderRadius:5}}/></View>
-    <View style={{position:'absolute',left:`${progress*100}%`,bottom:4,width:58,height:58,marginLeft:-29}}><CanopyMascot pose={busy?'walk':'start'} height={58} animated={false}/></View>
+    <View style={{position:'absolute',left:`${progress*100}%`,bottom:4,width:58,height:58,marginLeft:-29}}><CanopyMascot pose={busy?'walk':'start'} height={58} animated/></View>
    </View>
    <View style={S.between}><View style={{maxWidth:'46%',flexDirection:'row',alignItems:'center',gap:6}}><Icon name={direction==='return'?'business-outline':'home-outline'} size={20}/><Text numberOfLines={1} style={[S.label,{flexShrink:1,fontSize:12}]}>{p.route?.from.name??'출발지'}</Text></View><View style={{maxWidth:'46%',flexDirection:'row',alignItems:'center',gap:6}}><Icon name={direction==='return'?'home-outline':'business-outline'} size={20}/><Text numberOfLines={1} style={[S.label,{flexShrink:1,fontSize:12}]}>{p.route?.to.name??'자유 여정'}</Text></View></View>
    <Text style={[S.note,{textAlign:'center',marginTop:10,fontSize:11}]}>{!p.route?'자유롭게 이동하세요':busy&&last?`목적지까지 직선거리 ${km(metersBetween(last,p.route.to))} · 약 ${Math.round(progress*100)}% 접근`:'출발 준비가 되었어요'}</Text>
