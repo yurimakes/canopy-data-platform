@@ -14,7 +14,7 @@
         ],
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "plugins": [
       "expo-sqlite",
@@ -41,6 +41,7 @@
         "projectId": "ff471472-f120-4d84-9835-62ce24c81ab8"
       }
     },
-    "owner": "haydens2hn"
+    "owner": "haydens2hn",
+    "icon": "./assets/canopy-app-icon.png"
   }
 }
