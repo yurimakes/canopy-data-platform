@@ -52,7 +52,9 @@ class TripEnd:
 
     def fingerprint(self) -> str:
         values = asdict(self)
-        values["parsed_at"] = _utc_naive(self.parsed_at)
+        # parsed_at is ingestion metadata, not part of the logical lifecycle event.
+        # Replays of the same event can legitimately receive a new parsed_at value.
+        values.pop("parsed_at", None)
         return _fingerprint(values)
 
 
