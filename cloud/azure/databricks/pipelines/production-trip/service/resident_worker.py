@@ -23,18 +23,16 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--config',required=True);a=json.loads(p.parse_args().config)
     from databricks.sdk.runtime import dbutils
     from pyspark.sql import SparkSession,functions as F
-    from azure.storage.blob import BlobServiceClient
     from services.cosmos_service import Conflict
-    from finalize_trip_pipeline import ProjectionStore,build_final_trip,save_gold,read_gold,publish_cosmos,canonical,publish_wait_failure
+    from finalize_trip_pipeline import ProjectionStore,build_final_trip,save_gold,publish_cosmos,canonical,publish_wait_failure
     from infer_trip_batch import wait_for_gps,infer
     from gps_reader import read_gps
     import trip_delta_store as storage
     worker=str(uuid4())
-    blob=BlobServiceClient(a['storage_url'],credential=dbutils.secrets.get(a['scope'],a['storage_key'])).get_container_client(a['container'])
     report={'worker_id':worker,'state':'initializing','stages':{},'trip_count':0}
     def status():
         report['updated_at']=datetime.now(timezone.utc).isoformat()
-        blob.upload_blob('performance/resident-status.json',json.dumps(report),overwrite=True)
+        print(json.dumps({'event':'production_trip_worker_status',**report},default=str),flush=True)
     def timed(name,fn,metrics):
         report['active_stage']=name;status();start=time.perf_counter()
         value=fn();metrics[name]=round(time.perf_counter()-start,3);status();return value
@@ -48,7 +46,12 @@ def main():
     model=timed('model_load',LocalModel,report['stages'])
     timed('transit_reference_load',runtime,report['stages'])
     timed('gps_read_warmup',lambda:spark.table(a['gps_table']).limit(1).collect(),report['stages'])
-    store=ProjectionStore(a['cosmos_endpoint'],a['database'],a['trips_container'],dbutils.secrets.get(a['scope'],a['cosmos_key']))
+    store=ProjectionStore(
+        a['cosmos_endpoint'],
+        a['database'],
+        a['trips_container'],
+        dbutils.secrets.get(a['cosmos_secret_scope'],a['cosmos_key']),
+    )
     from live_predictions import start_live_predictions
     start_live_predictions(spark,store,model,a['gps_table'])
     report['state']='ready';report['active_stage']='waiting';status();last_heartbeat=time.monotonic()
@@ -73,7 +76,7 @@ def main():
                     return json.loads(rows[0].document_json) if rows else None
                 document=timed('existing_gold',existing,metrics)
                 if document is None:
-                    points=timed('gps_read_and_wait',lambda:wait_for_gps(lambda:read_gps(spark,a['gps_table'],trip,a.get('gps_history_table')),trip,timeout=600,interval=1),metrics)
+                    points=timed('gps_read_and_wait',lambda:wait_for_gps(lambda:read_gps(spark,a['gps_table'],trip),trip,timeout=600,interval=1),metrics)
                     entry['gps_count']=len(points)
                     result,verified=timed('model_and_transit',lambda:infer(trip,points,model=model),metrics)
                     context={k:trip[k] for k in ('trip_id','user_id','campaign_id','started_at','ended_at','processing_generation')}
@@ -87,7 +90,7 @@ def main():
                 entry.update(state='failed',error=type(exc).__name__+': '+str(exc)[:1200])
                 publish_wait_failure(store,{**trip,'status':'failed','reason':'resident_execution_failed'})
             entry['worker_seconds']=round(time.perf_counter()-started,3);entry['completed_at']=datetime.now(timezone.utc).isoformat()
-            blob.upload_blob('performance/trips/'+trip['trip_id']+'.json',json.dumps(entry),overwrite=True)
+            print(json.dumps({'event':'production_trip_completed',**entry},default=str),flush=True)
             report.update(state='ready',active_stage='waiting',last_trip=entry,trip_count=report['trip_count']+1);status()
         if time.monotonic()-last_heartbeat>10:status();last_heartbeat=time.monotonic()
         time.sleep(1)

@@ -26,14 +26,8 @@ variables:
     default: canopy-db
   cosmos_container:
     default: trips
-  storage_url:
-    default: https://stcanopydev5dt.blob.core.windows.net
-  secret_scope:
-    default: canopy-personal-5dt024
-  storage_key:
-    default: storage-key
-  storage_container:
-    default: personal-5dt024
+  cosmos_secret_scope:
+    description: Databricks secret scope containing cosmos-key. This is credential storage, not the Cosmos database name.
   cosmos_key:
     default: cosmos-key
   production_trip_pause_status:
