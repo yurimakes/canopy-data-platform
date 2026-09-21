@@ -1,0 +1,20 @@
+resources:
+  jobs:
+    ingestion_pipeline_progress:
+      name: canopy-ingestion-pipeline-progress-${bundle.target}
+      max_concurrent_runs: 1
+      parameters:
+        - name: minutes
+          default: "30"
+      tasks:
+        - task_key: inspect_pipeline_progress
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/inspect_pipeline_progress.py
+            parameters:
+              - --pipeline-id=${var.ingestion_pipeline_id}
+              - --minutes={{job.parameters.minutes}}
+          environment_key: benchmark_env
+      environments:
+        - environment_key: benchmark_env
+          spec:
+            environment_version: "4"
