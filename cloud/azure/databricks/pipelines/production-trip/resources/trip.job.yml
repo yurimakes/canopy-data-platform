@@ -1,11 +1,11 @@
 resources:
   jobs:
     production_trip:
-      name: "[dev 5dt016] canopy-personal-trip-canonical-gps-test"
+      name: canopy-production-trip-${bundle.target}
 
       tags:
-        owner: "5dt024"
-        purpose: "personal-stack-app"
+        component: production-trip
+        environment: ${bundle.target}
 
       max_concurrent_runs: 1
 
@@ -13,7 +13,7 @@ resources:
         enabled: true
 
       continuous:
-        pause_status: PAUSED
+        pause_status: ${var.production_trip_pause_status}
 
       performance_target: PERFORMANCE_OPTIMIZED
 
@@ -43,15 +43,15 @@ resources:
             parameters:
               - --config
               - >-
-                {"storage_url":"https://stcanopydev5dt.blob.core.windows.net",
-                "scope":"canopy-personal-5dt024",
-                "storage_key":"storage-key",
-                "container":"personal-5dt024",
-                "cosmos_endpoint":"https://cosmos-canopy-dev.documents.azure.com",
-                "database":"canopy-db",
-                "trips_container":"trips",
-                "cosmos_key":"cosmos-key",
-                "gps_table":"dbw_canopy_trial.silver.gps_observations",
-                "gps_history_table":"dbw_canopy_trial.personal_silver_5dt024.gps_observations",
-                "gold_table":"dbw_canopy_trial.personal_app_gold_5dt024.final_trips"}
+                {"storage_url":"${var.storage_url}",
+                "scope":"${var.secret_scope}",
+                "storage_key":"${var.storage_key}",
+                "container":"${var.storage_container}",
+                "cosmos_endpoint":"${var.cosmos_endpoint}",
+                "database":"${var.cosmos_database}",
+                "trips_container":"${var.cosmos_container}",
+                "cosmos_key":"${var.cosmos_key}",
+                "gps_table":"${var.catalog}.${var.silver_schema}.${var.gps_observations_table}",
+                "gps_history_table":"${var.catalog}.${var.silver_schema}.${var.gps_observations_table}",
+                "gold_table":"${var.catalog}.${var.gold_schema}.${var.final_trips_table}"}
           timeout_seconds: 0
