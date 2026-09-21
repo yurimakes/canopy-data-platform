@@ -12,17 +12,17 @@
   --sub:#6b7280;
   --line:#dfe3e8;
   --line2:#eceff2;
-  --primary:#2f6f44;
-  --primary-dark:#245735;
-  --primary-soft:#eef6f0;
-  --nav:#25313f;
+  --primary:#2f6fa5;
+  --primary-dark:#245c8a;
+  --primary-soft:#e8f0f8;
+  --nav:#17365d;
   --blue:#3569d4;
   --danger:#c24141;
   --warning:#a66b00;
   font-family:Pretendard,"Noto Sans KR",-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
 }
 *{box-sizing:border-box}
-html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text)}
+html,body{margin:0;min-height:100%;background:#f2f4f7;color:var(--text);font-family:"Malgun Gothic","맑은 고딕",Pretendard,"Noto Sans KR",Arial,sans-serif}
 button,input,select{font:inherit}
 button{cursor:pointer}
 .topbar{
@@ -31,29 +31,29 @@ button{cursor:pointer}
   padding:0 22px;position:sticky;top:0;z-index:20
 }
 .brand{display:flex;align-items:center;gap:14px}
-.brand-name{font-size:19px;font-weight:800;letter-spacing:-.4px;color:#183225}
+.brand-name{font-size:22px;font-weight:800;letter-spacing:-1px;color:#17365d}
 .brand-divider{width:1px;height:18px;background:var(--line)}
 .brand-sub{font-size:13px;color:#4b5563;font-weight:600}
 .top-right{display:flex;align-items:center;gap:12px}
 .env-badge{font-size:11px;padding:4px 7px;border:1px solid #bfd7c5;background:#f4faf5;color:var(--primary);border-radius:3px;font-weight:700}
 .account{font-size:12px;color:#5b6470}
-.layout{display:grid;grid-template-columns:214px minmax(0,1fr);min-height:calc(100vh - 58px)}
-.sidebar{background:#fff;border-right:1px solid var(--line);padding:18px 0}
+.layout{display:grid;grid-template-columns:220px minmax(0,1fr);min-height:calc(100vh - 138px)}
+.sidebar{background:#f7f9fc;border-right:1px solid #cfd6df;padding:0}
 .menu-group{margin-bottom:22px}
 .menu-title{padding:0 18px 8px;font-size:11px;color:#9aa1aa;font-weight:700;letter-spacing:.04em}
 .nav{
   width:100%;border:0;background:transparent;color:#4c5561;text-align:left;
   padding:10px 18px;display:flex;align-items:center;gap:9px;font-size:13px
 }
-.nav:hover{background:#f7f8f9}
-.nav.active{background:var(--primary-soft);color:var(--primary);font-weight:700;border-right:3px solid var(--primary)}
+.nav:hover{background:#f2f6fb}
+.nav.active{background:#e8f0f8;color:#1f5f9f;font-weight:700;border-left:4px solid #1f5f9f;border-right:0;padding-left:14px}
 .nav-icon{width:16px;height:16px;border:1px solid #aab1b9;border-radius:2px;display:inline-grid;place-items:center;font-size:10px}
 .nav.active .nav-icon{border-color:#7aac87;background:#fff}
 .sidebar-foot{margin:28px 18px 0;padding-top:14px;border-top:1px solid var(--line2);font-size:11px;color:#8a919b;line-height:1.6}
-.content{padding:22px 28px 48px;min-width:0}
+.content{padding:18px 24px 44px;min-width:0}
 .breadcrumb{font-size:11px;color:#8a919b;margin-bottom:10px}
 .page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:16px}
-.page-head h1{margin:0;font-size:24px;letter-spacing:-.5px}
+.page-head h1{margin:0;font-size:22px;letter-spacing:-.5px}
 .page-head p{margin:6px 0 0;font-size:12px;color:var(--sub)}
 .role-box{display:flex;align-items:center;gap:8px}
 .role-box label{font-size:11px;color:var(--sub)}
@@ -66,20 +66,20 @@ select:focus,input:focus{border-color:#7aa58a;box-shadow:0 0 0 2px rgba(47,111,6
 .field span{display:block;font-size:11px;color:#6f7782;margin-bottom:5px}
 .field select{min-width:170px}
 .btn{height:34px;border-radius:3px;padding:0 13px;border:1px solid transparent;font-size:12px;font-weight:700}
-.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
-.btn-primary:hover{background:var(--primary-dark)}
+.btn-primary{background:#2f6fa5;color:#fff;border-color:#2a6495}
+.btn-primary:hover{background:#245c8a}
 .btn-line{background:#fff;color:#343b44;border-color:#cfd5dc}
 .btn-danger{background:#fff;color:var(--danger);border-color:#e2bcbc}
-.notice{font-size:11px;color:#6f7782;background:#fafafa;border:1px solid var(--line);padding:9px 11px;margin-bottom:14px}
+.notice{font-size:11px;color:#5f6873;background:#fffbe8;border:1px solid #e2d59c;padding:8px 10px;margin-bottom:12px}
 .view{display:none}.view.active{display:block}
 .summary-grid{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:10px;margin-bottom:14px}
-.summary-card{background:#fff;border:1px solid var(--line);min-height:104px;padding:15px 16px}
+.summary-card{background:#fff;border:1px solid #cdd6e0;min-height:92px;padding:12px 13px;border-radius:0}
 .summary-label{font-size:12px;color:#68717d;margin-bottom:15px}
 .summary-value{font-size:27px;font-weight:800;letter-spacing:-.8px}
-.summary-value.primary{color:var(--primary)}
+.summary-value.primary{color:#1f5f9f}
 .summary-foot{font-size:11px;color:#9aa1aa;margin-top:7px}
-.panel{background:#fff;border:1px solid var(--line);margin-bottom:14px}
-.panel-head{height:48px;padding:0 15px;border-bottom:1px solid var(--line2);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.panel{background:#fff;border:1px solid #cbd4de;margin-bottom:12px;border-radius:0}
+.panel-head{height:39px;padding:0 12px;border-bottom:1px solid #cbd4de;background:#f3f6f9;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .panel-title{font-size:14px;font-weight:800}
 .panel-sub{font-size:11px;color:#8a919b;margin-left:7px;font-weight:400}
 .panel-body{padding:16px}
@@ -99,8 +99,8 @@ select:focus,input:focus{border-color:#7aa58a;box-shadow:0 0 0 2px rgba(47,111,6
 .status-yellow{background:#fff5dc;color:#966400}
 .table-wrap{overflow:auto}
 table{width:100%;border-collapse:collapse;min-width:760px}
-th{background:#f7f8f9;color:#5f6873;font-size:11px;text-align:left;font-weight:700;border-bottom:1px solid var(--line);padding:10px 11px;white-space:nowrap}
-td{font-size:12px;color:#333a43;border-bottom:1px solid var(--line2);padding:10px 11px;white-space:nowrap}
+th{background:#edf2f7;color:#3f4b59;font-size:11px;text-align:left;font-weight:700;border:1px solid #cfd6df;padding:9px 8px;white-space:nowrap}
+td{font-size:12px;color:#333a43;border:1px solid #e0e5ea;padding:9px 9px;white-space:nowrap}
 tbody tr:hover{background:#fafcfa}
 .toolbar{display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap}
 .toolbar .field input{min-width:260px}
@@ -126,8 +126,8 @@ tbody tr:hover{background:#fafcfa}
 @media(max-width:820px){.layout{grid-template-columns:1fr}.sidebar{border-right:0;border-bottom:1px solid var(--line);padding:8px 0}.menu-group{display:flex;margin:0;overflow:auto}.menu-title,.sidebar-foot{display:none}.nav{width:auto;white-space:nowrap;padding:10px 14px}.content{padding:18px 14px 40px}.page-head{align-items:flex-start;flex-direction:column}.summary-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
-<body>
-<header class="topbar">
+<body>\n<div class="utility"><div class="links"><span>CANOPY 서비스</span><span>기업 지원</span><span>데이터 관리</span></div><div class="right"><span>시스템 문의</span><span class="badge">DEMO</span></div></div>
+<style>.utility{height:30px;background:#f7f8fa;border-bottom:1px solid #d8dee6;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:11px;color:#6b7280}.utility .links,.utility .right{display:flex;gap:16px;align-items:center}.utility .badge{padding:2px 6px;border:1px solid #a8b7c8;background:#fff;color:#284b70}.gnb{height:42px;background:#17365d;display:flex;align-items:stretch;padding-left:22px;border-bottom:3px solid #0f2744}.gnb-item{min-width:138px;border:0;border-right:1px solid rgba(255,255,255,.14);background:transparent;color:#fff;font-weight:700;font-size:13px;padding:0 18px}.gnb-item.active,.gnb-item:hover{background:#0f2b4c}.left-title{background:#2c5d8f;color:#fff;padding:16px 18px;font-size:16px;font-weight:800;border-bottom:1px solid #244f7a}</style>\n<header class="topbar">
   <div class="brand">
     <div class="brand-name">CANOPY</div>
     <div class="brand-divider"></div>
@@ -140,16 +140,16 @@ tbody tr:hover{background:#fafcfa}
 </header>
 
 <div class="layout">
-  <aside class="sidebar">
+  <aside class="sidebar">\n    <div class="left-title">통합관리</div>
     <div class="menu-group">
       <div class="menu-title">서비스 관리</div>
-      <button class="nav active" data-view="dashboard"><span class="nav-icon">D</span>대시보드</button>
-      <button class="nav" data-view="company"><span class="nav-icon">C</span>기업 선택지</button>
-      <button class="nav admin-only" data-view="selections"><span class="nav-icon">S</span>선택 현황</button>
+      <button class="nav active" data-view="dashboard"><span class="nav-icon">D</span>통합현황</button>
+      <button class="nav" data-view="company"><span class="nav-icon">C</span>기업 캠페인 설정</button>
+      <button class="nav admin-only" data-view="selections"><span class="nav-icon">S</span>기업 설정 현황</button>
     </div>
     <div class="menu-group">
       <div class="menu-title">데이터 관리</div>
-      <button class="nav" data-view="datasets"><span class="nav-icon">T</span>데이터셋 조회</button>
+      <button class="nav" data-view="datasets"><span class="nav-icon">T</span>데이터셋 관리</button>
     </div>
     <div class="sidebar-foot">
       기준 데이터: Power BI 2026-W39<br>
