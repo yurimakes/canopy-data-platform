@@ -135,6 +135,28 @@ def test_conflicting_payload_for_same_sequence_invalidates_trip() -> None:
     assert state.drain_outputs(BASE) == []
 
 
+
+def test_trip_end_replay_with_new_parsed_at_is_ignored() -> None:
+    state = TripSegmentationState("trip-1", max_gap_seconds=3)
+    state.accept_prediction(point(1))
+
+    first = trip_end(1)
+    replay = TripEnd(
+        **{
+            **first.__dict__,
+            "parsed_at": first.parsed_at + timedelta(seconds=30),
+        }
+    )
+
+    state.accept_trip_end(first)
+    rows = state.drain_outputs(BASE)
+    state.accept_trip_end(replay)
+
+    assert len(rows) == 1
+    assert state.drain_outputs(BASE + timedelta(seconds=30)) == []
+    assert not state.conflicted
+
+
 def test_conflicting_trip_end_for_generation_invalidates_trip() -> None:
     state = TripSegmentationState("trip-1", max_gap_seconds=3)
     state.accept_prediction(point(1))
