@@ -121,7 +121,7 @@ def settle(data,user,trip,points):
     q=bound.get('quote');context=bound.get('context') or freeze(data,user,trip['started_at'])
     if q and (q['user_id']!=user['user_id'] or q['campaign_id']!=user['campaign_id']):raise ApiError(403,'forbidden','다른 사용자의 여정')
     def stamp(v):return datetime.fromisoformat(v.replace('Z','+00:00'))
-    valid=sorted([p for p in points if stamp(trip['started_at'])<=stamp(p['event_time'])<=stamp(trip['ended_at'])],key=lambda p:stamp(p['event_time']))
+    valid=sorted([p for p in points if stamp(trip['started_at'])-timedelta(seconds=1)<=stamp(p['event_time'])<=stamp(trip['ended_at'])+timedelta(seconds=1)],key=lambda p:stamp(p['event_time']))
     confirmed=trip.get('confirmed_trip') or {}
     meters=confirmed.get('total_distance_m')
     actual=confirmed.get('total_carbon_kg')

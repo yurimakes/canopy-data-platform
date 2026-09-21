@@ -61,3 +61,10 @@ def test_legacy_weekly_payment_not_paid_twice(tmp_path):
     LedgerStore(tmp_path/'rewards.sqlite').create_item({**USER,'id':'old','week':week_of(trip['started_at']),'status':'paid','points':20})
     assert settle(tmp_path,USER,trip,gps)['status']=='legacy_weekly_paid'
     assert ledger(tmp_path).all()==[]
+
+
+@pytest.mark.parametrize('offset,expected',[(.109,'paid'),(1.001,'insufficient_gps')])
+def test_ktdb_endpoint_clock_skew_matches_finalizer(tmp_path,offset,expected):
+    trip,gps=prepared(tmp_path)
+    gps[0]['event_time']=(datetime.fromisoformat(trip['started_at'].replace('Z','+00:00'))-timedelta(seconds=offset)).isoformat()
+    assert settle(tmp_path,USER,trip,gps)['status']==expected
