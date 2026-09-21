@@ -93,7 +93,7 @@ def main():
         'TRIP_RESULT_OWNER': 'databricks', 'TRIP_END_EVENTS_ENABLED': 'true',
         'TRIP_DATABRICKS_ENABLED': 'true', 'TRIP_DATABRICKS_DISPATCH_MODE': 'resident',
         'TRIP_DATABRICKS_HOST': 'https://adb-7405612422597045.5.azuredatabricks.net',
-        'TRIP_DATABRICKS_JOB_ID': '1058296223350877',
+        'TRIP_DATABRICKS_JOB_ID': settings.get('TRIP_DATABRICKS_JOB_ID', '421770332247848'),
     }
     (out / 'settings-update.json').write_text(json.dumps(updates), encoding='utf-8')
     receipt = {'subscription': SUB, 'app': APP, 'functions': sorted(expected),
