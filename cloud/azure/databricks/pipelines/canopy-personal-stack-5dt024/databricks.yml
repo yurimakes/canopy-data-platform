@@ -20,7 +20,13 @@ variables:
   eventhub_namespace:
     default: evhns-canopy-dev
   eventhub_topic:
-    default: evh-personal-5dt024
+    default: evh-canopy-gps-dev
+  eventhub_secret_scope:
+    default: canopy-trial
+  eventhub_secret_key:
+    default: canopy-databricks-listen
+  eventhub_sas_policy:
+    default: canopy-databricks-listen
   storage_account:
     default: stcanopydev5dt
   report_container:

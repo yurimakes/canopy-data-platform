@@ -1,0 +1,194 @@
+{
+  "scope": "Main Azure phone/API acceptance after device-speed adapter, live prediction and four-partition direct GPS ingestion; synthetic walking, two warm trips",
+  "trips": [
+    {
+      "trip_id": "994501f4-9529-5cdb-9c26-934781e7ef34",
+      "baseline_source": "KTDB 모델 · 인근 행정동 중심점 / 출발·도착 직선거리 기준",
+      "expected_kg": 0.002098,
+      "live_observations": [
+        {
+          "mode": "walk",
+          "confidence": 0.9613797217600629,
+          "sequence": 13,
+          "observed_at": "2026-09-21T11:19:48.944136+00:00",
+          "updated_at": "2026-09-21T11:19:55.325827+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9613637388583322,
+          "sequence": 16,
+          "observed_at": "2026-09-21T11:19:55.284417+00:00",
+          "updated_at": "2026-09-21T11:20:02.391104+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.961366321938881,
+          "sequence": 20,
+          "observed_at": "2026-09-21T11:20:03.885737+00:00",
+          "updated_at": "2026-09-21T11:20:09.939794+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9614115144745228,
+          "sequence": 24,
+          "observed_at": "2026-09-21T11:20:12.423976+00:00",
+          "updated_at": "2026-09-21T11:20:20.947592+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        }
+      ],
+      "stop_request_seconds": 0.813,
+      "status": "ready",
+      "stop_to_result_seconds": 10.766,
+      "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+      "failed_step": null,
+      "modes": [
+        "walk"
+      ],
+      "reward_status": "no_reduction",
+      "reward_points": 0,
+      "worker_report": {
+        "worker_id": "b82df052-3c13-4f4c-9720-1178d537417c",
+        "trip_id": "994501f4-9529-5cdb-9c26-934781e7ef34",
+        "generation": 1,
+        "detected_at": "2026-09-21T11:20:29.482860+00:00",
+        "stages": {
+          "existing_gold": 0.325,
+          "gps_read_and_wait": 3.569,
+          "model_and_transit": 0.525,
+          "gold_write_and_verify": 4.091,
+          "cosmos_publish": 0.059
+        },
+        "gps_count": 31,
+        "publish_status": "published",
+        "state": "ready",
+        "worker_seconds": 8.777,
+        "completed_at": "2026-09-21T11:20:38.260117+00:00"
+      }
+    },
+    {
+      "trip_id": "85a3c2cc-bed7-5fbc-8316-654b83edc3f4",
+      "baseline_source": "KTDB 모델 · 인근 행정동 중심점 / 출발·도착 직선거리 기준",
+      "expected_kg": 0.002098,
+      "live_observations": [
+        {
+          "mode": "walk",
+          "confidence": 0.9611921811742932,
+          "sequence": 5,
+          "observed_at": "2026-09-21T11:20:50.026367+00:00",
+          "updated_at": "2026-09-21T11:20:55.951097+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9614266051940968,
+          "sequence": 8,
+          "observed_at": "2026-09-21T11:20:56.342355+00:00",
+          "updated_at": "2026-09-21T11:21:03.327873+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9614436802682629,
+          "sequence": 12,
+          "observed_at": "2026-09-21T11:21:04.811741+00:00",
+          "updated_at": "2026-09-21T11:21:10.700253+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9614019803555129,
+          "sequence": 17,
+          "observed_at": "2026-09-21T11:21:15.498768+00:00",
+          "updated_at": "2026-09-21T11:21:21.813907+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9613649204309801,
+          "sequence": 21,
+          "observed_at": "2026-09-21T11:21:23.896034+00:00",
+          "updated_at": "2026-09-21T11:21:29.189410+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        },
+        {
+          "mode": "walk",
+          "confidence": 0.9614115144745228,
+          "sequence": 25,
+          "observed_at": "2026-09-21T11:21:32.343138+00:00",
+          "updated_at": "2026-09-21T11:21:37.682572+00:00",
+          "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+          "provisional": true
+        }
+      ],
+      "stop_request_seconds": 0.734,
+      "status": "ready",
+      "stop_to_result_seconds": 13.922,
+      "model_version": "speedtransformer-phone-speed-v2-masked-v1-transit-v3",
+      "failed_step": null,
+      "modes": [
+        "walk"
+      ],
+      "reward_status": "no_reduction",
+      "reward_points": 0,
+      "worker_report": {
+        "worker_id": "b82df052-3c13-4f4c-9720-1178d537417c",
+        "trip_id": "85a3c2cc-bed7-5fbc-8316-654b83edc3f4",
+        "generation": 1,
+        "detected_at": "2026-09-21T11:21:46.588986+00:00",
+        "stages": {
+          "existing_gold": 0.351,
+          "gps_read_and_wait": 6.762,
+          "model_and_transit": 0.53,
+          "gold_write_and_verify": 4.174,
+          "cosmos_publish": 0.056
+        },
+        "gps_count": 31,
+        "publish_status": "published",
+        "state": "ready",
+        "worker_seconds": 12.116,
+        "completed_at": "2026-09-21T11:21:58.704565+00:00"
+      }
+    }
+  ],
+  "history_count": 2,
+  "community_status": "ok",
+  "status": "passed",
+  "ios": {
+    "build": 8,
+    "build_id": "17cb9fa1-cdd0-4409-90b8-4766c8b3762b",
+    "build_status": "FINISHED",
+    "submission_id": "be606596-0787-42e7-9ec2-535b4b011b74",
+    "submission_status": "FINISHED"
+  },
+  "before": {
+    "personal_original_stop_to_result_seconds": [
+      27.994,
+      22.796
+    ],
+    "main_after_retry_before_live_seconds": [
+      27.203,
+      27.265
+    ],
+    "live_default_state_seconds": [
+      30.375,
+      19.484
+    ],
+    "direct_branch_default_state_seconds": [
+      34.266,
+      24.906
+    ]
+  },
+  "source_snapshot_files_unchanged": 261
+}

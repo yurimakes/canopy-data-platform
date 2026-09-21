@@ -1,0 +1,57 @@
+resources:
+  jobs:
+    production_trip:
+      name: "[dev 5dt016] canopy-personal-trip-canonical-gps-test"
+
+      tags:
+        owner: "5dt024"
+        purpose: "personal-stack-app"
+
+      max_concurrent_runs: 1
+
+      queue:
+        enabled: true
+
+      continuous:
+        pause_status: PAUSED
+
+      performance_target: PERFORMANCE_OPTIMIZED
+
+      environments:
+        - environment_key: canopy_env
+          spec:
+            environment_version: "4"
+            dependencies:
+              - azure-cosmos==4.17.1
+              - azure-identity==1.25.3
+              - azure-storage-blob==12.30.2
+              - pandas==3.0.6
+              - pyarrow==25.0.1
+              - scikit-learn==1.6.1
+              - joblib==1.6.0
+              - catboost==1.2.10
+              - pyproj==3.7.2
+              - PyYAML==6.0.3
+              - torch==2.14.0
+
+      tasks:
+        - task_key: trip
+          environment_key: canopy_env
+          spark_python_task:
+            source: WORKSPACE
+            python_file: ${workspace.file_path}/service/resident_worker.py
+            parameters:
+              - --config
+              - >-
+                {"storage_url":"https://stcanopydev5dt.blob.core.windows.net",
+                "scope":"canopy-personal-5dt024",
+                "storage_key":"storage-key",
+                "container":"personal-5dt024",
+                "cosmos_endpoint":"https://cosmos-canopy-dev.documents.azure.com",
+                "database":"canopy-db",
+                "trips_container":"trips",
+                "cosmos_key":"cosmos-key",
+                "gps_table":"dbw_canopy_trial.silver.gps_observations",
+                "gps_history_table":"dbw_canopy_trial.personal_silver_5dt024.gps_observations",
+                "gold_table":"dbw_canopy_trial.personal_app_gold_5dt024.final_trips"}
+          timeout_seconds: 0

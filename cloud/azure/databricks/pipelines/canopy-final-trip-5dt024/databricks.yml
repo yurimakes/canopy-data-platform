@@ -28,7 +28,7 @@ variables:
 targets:
   trial:
     default: true
-    mode: development
+    mode: production
     presets:
       name_prefix: '[dev 5dt024] '
       tags:

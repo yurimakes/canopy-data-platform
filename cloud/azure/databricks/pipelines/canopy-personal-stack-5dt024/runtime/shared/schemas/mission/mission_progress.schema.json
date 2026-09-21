@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.mission-progress.v1",
+  "title": "Canopy Mission Progress",
+  "type": "object",
+  "required": ["campaign_id", "user_id", "bundle_id", "assignment_id", "week_start", "target_count", "progress_count", "achievement_rate", "completed", "status", "progress_version", "updated_at"],
+  "properties": {
+    "campaign_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "bundle_id": {"type": "string", "minLength": 1},
+    "assignment_id": {"type": "string", "minLength": 1},
+    "mission_template_id": {"type": "string"},
+    "category_id": {"enum": ["challenge", "habit", "easy_win", "explore"]},
+    "week_start": {"type": "string", "format": "date"},
+    "target_count": {"type": "integer", "minimum": 1},
+    "progress_count": {"type": "integer", "minimum": 0},
+    "achievement_rate": {"type": "number", "minimum": 0},
+    "completed": {"type": "boolean"},
+    "completed_at": {"type": ["string", "null"], "format": "date-time"},
+    "status": {"enum": ["active", "completed", "expired"]},
+    "qualified_trip_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "progress_version": {"type": "string", "minLength": 1},
+    "updated_at": {"type": "string", "format": "date-time"}
+  },
+  "additionalProperties": true
+}

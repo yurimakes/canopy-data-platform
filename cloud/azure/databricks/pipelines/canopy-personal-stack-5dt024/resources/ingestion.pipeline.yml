@@ -24,9 +24,9 @@ resources:
         canopy.event_hubs.consumer_group: personal-5dt024
         canopy.event_hubs.fast_consumer_group: personal-5dt024-fast
         canopy.event_hubs.namespace: ${var.eventhub_namespace}
-        canopy.event_hubs.sas_policy_name: personal-listen
-        canopy.event_hubs.secret_key: eventhub-listen-key
-        canopy.event_hubs.secret_scope: ${var.secret_scope}
+        canopy.event_hubs.sas_policy_name: ${var.eventhub_sas_policy}
+        canopy.event_hubs.secret_key: ${var.eventhub_secret_key}
+        canopy.event_hubs.secret_scope: ${var.eventhub_secret_scope}
         canopy.event_hubs.starting_offsets: earliest
         canopy.event_hubs.topic: ${var.eventhub_topic}
         canopy.observations_table: gps_observations
