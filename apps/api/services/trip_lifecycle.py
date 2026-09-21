@@ -21,10 +21,12 @@ class EventHubLifecyclePublisher:
     def publish(self, event):
         from azure.eventhub import EventData, EventHubProducerClient
         from azure.identity import DefaultAzureCredential
+        # Retry transient disconnects here before falling back to the minute-based outbox timer.
+        # Every retry keeps the same deterministic event_id; durable recovery remains unchanged.
         with DefaultAzureCredential() as credential:
             with EventHubProducerClient(fully_qualified_namespace=os.environ["EVENTHUB_FQDN"],
                     eventhub_name=os.environ["EVENTHUB_NAME"], credential=credential,
-                    retry_total=0,
+                    retry_total=2, retry_backoff_factor=0.2, retry_backoff_max=1,
                     auth_timeout=5, socket_timeout=5) as producer:
                 batch = producer.create_batch(partition_key=event["trip_id"])
                 batch.add(EventData(json.dumps(event, ensure_ascii=False, allow_nan=False)))
