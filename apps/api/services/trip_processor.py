@@ -1,5 +1,5 @@
 """Stable boundary for Mock and the future ML/Transit Context pipeline."""
-from datetime import datetime
+from datetime import datetime, timedelta
 from math import isfinite
 from typing import Protocol, TypedDict
 
@@ -66,10 +66,13 @@ def validate_result(trip: dict, result: ProcessorResult) -> None:
         endpoints=result.get('endpoint_observations')
         if endpoints is not None:
             if not isinstance(endpoints,list) or len(endpoints)!=2:raise ValueError('expected two endpoints')
-            previous=timestamp(trip['started_at'])
+            # GPS uses a device clock; lifecycle times use the API server clock.
+            # Keep raw timestamps intact and tolerate only sub-second boundary skew.
+            skew=timedelta(seconds=1)
+            previous=timestamp(trip['started_at'])-skew
             for point in endpoints:
                 at=timestamp(point['event_time'])
-                if not previous<=at<=timestamp(trip['ended_at']):raise ValueError('endpoint outside Trip')
+                if not previous<=at<=timestamp(trip['ended_at'])+skew:raise ValueError('endpoint outside Trip')
                 previous=at
                 for key,bound in (('lat',90),('lon',180)):
                     v=point[key]
@@ -77,8 +80,8 @@ def validate_result(trip: dict, result: ProcessorResult) -> None:
         if not isinstance(segments, list) or not segments or len(segments) > 1000:
             raise ValueError("expected 1..1000 segments")
         seen = set()
-        previous_end = timestamp(trip["started_at"])
-        stop = timestamp(trip["ended_at"])
+        previous_end = timestamp(trip["started_at"]) - timedelta(seconds=1)
+        stop = timestamp(trip["ended_at"]) + timedelta(seconds=1)
         for segment in segments:
             sid = segment["segment_id"]
             if not isinstance(sid, str) or not sid or sid in seen:
