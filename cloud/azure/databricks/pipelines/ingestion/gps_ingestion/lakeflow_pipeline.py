@@ -54,6 +54,7 @@ TABLES = EventIngestionTableConfig(
     trip_ended_events_name=_conf("trip_ended_events_table"),
 )
 DEDUPLICATION_WATERMARK = _conf("deduplication_watermark")
+APPLY_DEDUPLICATION = _bool_conf("apply_deduplication", default=True)
 FUSE_GPS_PARSE_VALIDATION = _bool_conf("fuse_gps_parse_validation")
 _GPS_PARSED_TABLE = "gps_events_parsed"
 
@@ -118,7 +119,7 @@ if not FUSE_GPS_PARSE_VALIDATION:
 @dp.table(
     name=TABLES.observations_table,
     schema=OBSERVATIONS_SCHEMA_DDL,
-    comment="Validated GPS observations with bounded event_id deduplication.",
+    comment="Validated GPS observations with optional bounded event_id deduplication.",
 )
 def gps_observations():
     parsed = (
@@ -127,7 +128,9 @@ def gps_observations():
         else _spark().readStream.table(_GPS_PARSED_TABLE)
     )
     observations = valid_observation_rows(parsed)
-    return deduplicate_observations(observations, DEDUPLICATION_WATERMARK)
+    if APPLY_DEDUPLICATION:
+        return deduplicate_observations(observations, DEDUPLICATION_WATERMARK)
+    return observations
 
 
 @dp.table(
@@ -147,8 +150,10 @@ def gps_quarantine():
 @dp.table(
     name=TABLES.trip_ended_events_table,
     schema=TRIP_ENDED_SCHEMA_DDL,
-    comment="Validated primitive trip_ended events for the finalization layer.",
+    comment="Validated primitive trip_ended events with optional bounded event_id deduplication.",
 )
 def trip_ended_events():
     events = trip_ended_rows(_spark().readStream.table(TABLES.bronze_table))
-    return deduplicate_event_ids(events, DEDUPLICATION_WATERMARK)
+    if APPLY_DEDUPLICATION:
+        return deduplicate_event_ids(events, DEDUPLICATION_WATERMARK)
+    return events
