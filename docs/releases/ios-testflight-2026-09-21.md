@@ -32,3 +32,7 @@ Changes: separate local UI refresh from serialized network work; recover lost St
 Movement indicator: provisional GPS speed indication, explicitly labeled estimate; no claim of live bus/car/rail ML classification. Existing final ML results unchanged. No new backend or teammate pipeline changes in this release.
 
 Validation: 84 app tests pass and TypeScript passes. Tests cover a Stop response lost after server acceptance and native cancellation before acceptance, recovering without creating another Trip. Native map bounds and modal insets require physical-device verification on the new binary; desktop tests do not establish every iPhone layout.
+
+Build 7 ecc7da69-e496-490f-a3aa-473ee2a15406: FINISHED.
+Submission 0416ddd7-dd46-49d8-95eb-749b8115d7e2: FINISHED, no error.
+Apple processing and installation remain separate from successful upload.
