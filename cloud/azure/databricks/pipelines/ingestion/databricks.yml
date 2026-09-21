@@ -45,6 +45,9 @@ variables:
   ingestion_trigger_interval:
     description: Trigger interval used only by the ingestion latency sandbox target.
     default: 1 second
+  fuse_gps_parse_validation:
+    description: Inline GPS parsing/validation into Silver outputs instead of materializing gps_events_parsed.
+    default: "false"
 
 targets:
   trial:
@@ -73,6 +76,7 @@ targets:
       event_hubs_consumer_group: canopy-ingestion-latency
       ingestion_continuous_pause_status: PAUSED
       ingestion_trigger_interval: 1 second
+      fuse_gps_parse_validation: "true"
     presets:
       tags:
         environment: trial
@@ -83,6 +87,7 @@ targets:
         generic_event_ingestion_pipeline:
           configuration:
             pipelines.trigger.interval: ${var.ingestion_trigger_interval}
+            canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
