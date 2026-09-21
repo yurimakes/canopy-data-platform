@@ -10,6 +10,7 @@ import * as Location from 'expo-location';
 import Constants from 'expo-constants';
 import {session} from '../accountSession';
 import {type Place,type Profile,type PlannedRoute,searchRoutes,searchPlaces,routeApiUrl,km,validPlace} from '../service';
+import {Disclosure,Eyebrow} from './DesignPrimitives';
 import {Button,Card,Field,Icon,Note,S,C} from './theme';
 import JourneyMap from './JourneyMap';
 function searchConfig(){const extra=Constants.expoConfig?.extra??{},saved=session();const token=saved?.api_url===extra.tripApiUrl?.replace(/\/+$/,'')?saved?.access_token:undefined,key=extra.tripFunctionKey||extra.gpsFunctionKey;return {url:routeApiUrl(extra),headers:{...(token?{Authorization:'Bearer '+token}:{}),...(key?{'x-functions-key':key}:{})} as Record<string,string>};}
@@ -37,9 +38,9 @@ export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;
         <View style={S.between}><Text style={S.heading}>{title} 검색</Text><Button title="닫기" quiet onPress={close}/></View>
         <Field label="장소 이름 또는 주소" value={query} onChangeText={text=>{requestId.current++;setBusy(false);setQuery(text);setResults([]);setError('');setSearched(false);}} placeholder={Constants.expoConfig?.extra?.localOnly?'예: 천안 신방동, 서울 역삼동':'예: 천안역, 일봉로 71'} returnKeyType="search" onSubmitEditing={()=>void search()}/>
         {Constants.expoConfig?.extra?.localOnly&&<Note>오프라인에서는 행정동 이름으로 검색합니다. 결과는 실제 건물 위치가 아닌 행정동 중심점입니다.</Note>}<Button title="검색" busy={busy} onPress={()=>void search()}/><Button title="현재 위치 사용" quiet disabled={busy} onPress={()=>void search(true)}/>
-        {(title==='집'||title==='직장')&&<><Note>출퇴근 확인에는 정확한 위치가 필요해요. 해당 장소에서 현재 위치를 사용하거나 지도에서 확인한 위도·경도를 입력해주세요.</Note>
+        {(title==='집'||title==='직장')&&<Disclosure title="좌표로 직접 지정"><Note>주소 검색 또는 현재 위치로 등록하세요.</Note>
           <Field label="위도" value={latitude} onChangeText={setLatitude} placeholder="예: 37.501"/><Field label="경도" value={longitude} onChangeText={setLongitude} placeholder="예: 127.039"/>
-          <Button title="입력한 좌표 사용" quiet onPress={()=>{const p={name:query.trim()||title,latitude:Number(latitude),longitude:Number(longitude),address:'직접 지정한 위치'};if(!latitude.trim()||!longitude.trim()||!validPlace(p)){setError('유효한 위도와 경도를 입력해주세요.');return;}onPick(p);close();}}/></>}
+          <Button title="입력한 좌표 사용" quiet onPress={()=>{const p={name:query.trim()||title,latitude:Number(latitude),longitude:Number(longitude),address:'직접 지정한 위치'};if(!latitude.trim()||!longitude.trim()||!validPlace(p)){setError('유효한 위도와 경도를 입력해주세요.');return;}onPick(p);close();}}/></Disclosure>}
         {!!error&&<Note error>{error}</Note>}
         {!!results.length&&<><Text style={S.note}>검색 결과 {results.length}곳 — 목록이나 지도 핀을 선택해주세요</Text><View style={{borderRadius:20,overflow:'hidden'}}><JourneyMap points={[]} places={results} selectedPlace={selected} onSelectPlace={setSelected} height={230}/></View></>}
         {searched&&!results.length&&<Card><Icon name="search-outline"/><Text style={S.label}>검색 결과가 없어요</Text><Note>지역명과 장소 이름을 함께 입력해보세요.</Note></Card>}
@@ -59,17 +60,17 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree,basel
     if(reference.status==='rejected')throw reference.reason;
     const quote=reference.value as PlannedRoute;
     if(routing.status==='fulfilled'&&routing.value.length){setRoutes(routing.value.map(route=>attachRouteQuote(route,quote)));}
-    else{setRoutes([attachRouteQuote(quote,quote)]);setError(routing.status==='rejected'?'길찾기는 불러오지 못했지만 KTDB 기준은 확인됐어요. 아래 직선거리 기준으로 기록할 수 있습니다.':'대중교통 경로가 없는 가까운 거리입니다. 아래 KTDB 기준으로 기록할 수 있습니다.');}
+    else{setRoutes([attachRouteQuote(quote,quote)]);setError(routing.status==='rejected'?'길 안내를 불러오지 못했어요. 보상 기준은 확인할 수 있어요.':'가까운 거리예요. 아래 보상 기준을 확인하고 출발하세요.');}
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   return <>
-    <Text style={S.title}>오늘의 이동,{ '\n'}더 가볍게.</Text><Note>출발 전에 보상 비교 기준을 확인하세요. 여정이 끝나면 실제 배출량과 비교합니다.</Note>
+    <Eyebrow>PLAN YOUR NEXT MOVE</Eyebrow><Text style={S.title}>오늘의 이동,{ '\n'}더 가볍게.</Text><Note>어디로 갈까요? 경로와 보상 기준을 함께 확인해요.</Note>
     <View pointerEvents={busy?"none":"auto"} style={{gap:8,opacity:busy?.6:1}}>
       <PlacePicker title="출발지" value={from} onPick={p=>change('from',p)}/>
       <View style={{alignItems:'center',marginVertical:-8,zIndex:1}}><Pressable accessibilityRole="button" accessibilityLabel="출발지와 도착지 바꾸기" onPress={()=>{setFrom(to);setTo(from);setRoutes(null);setSelected(null);}} style={{backgroundColor:C.white,borderRadius:24,padding:10,borderWidth:1,borderColor:C.line}}><Icon name="swap-vertical" size={18}/></Pressable></View>
       <PlacePicker title="도착지" value={to} onPick={p=>change('to',p)}/>
     </View>
-    <Button title={Constants.expoConfig?.extra?.localOnly?"출발·도착지 기준 탄소량 확인":"경로 찾기"} busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
-    {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><Icon name="navigate-circle-outline" size={56}/><Text style={S.heading}>지금 경로를 분석하고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
+    <Button title={Constants.expoConfig?.extra?.localOnly?"보상 기준 확인":"경로 찾기"} busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
+    {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><Icon name="navigate-circle-outline" size={56}/><Text style={S.heading}>가는 길을 찾고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
     {!!error&&<Card><Icon name="cloud-offline-outline" size={48}/><Text style={[S.heading,{textAlign:'center'}]}>경로 검색 안내</Text><Note error>{error}</Note><Button title="다시 시도하기" onPress={()=>void search()}/></Card>}
     {routes?.length===0&&<Card><Icon name="search-outline" size={48}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
     {!!routes?.length&&<Text style={S.note}>{Constants.expoConfig?.extra?.localOnly?'선택한 출발·도착지의 비교 기준':'추천 경로 - 지금 출발'}</Text>}
@@ -80,7 +81,7 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree,basel
       {r.provider==='local-test'&&<Note>직선거리 비교 기준 · 길 안내 경로가 아닙니다. 시간은 도보 참고값입니다.</Note>}
       <RouteStrip route={r}/><View style={S.between}><Text numberOfLines={1} style={[S.note,{flex:1}]}>{r.legs.filter(l=>l.mode!=='WALK').map(l=>l.name).join(' / ')||'도보'}</Text><Text style={S.pill}>경로 상세보기</Text></View>
     </Pressable>)}
-    <Button title="경로 없이 자유롭게 기록하기" quiet onPress={onFree}/>
+    <Button title="목적지 없이 출발" quiet onPress={onFree}/>
     <Modal visible={!!selected} animationType="slide" onRequestClose={()=>setSelected(null)}><SafeAreaProvider><SafeAreaView style={S.root}>
       <View style={[S.row,{padding:16}]}><Pressable accessibilityRole="button" accessibilityLabel="경로 목록으로" onPress={()=>setSelected(null)} style={{padding:8}}><Icon name="arrow-back"/></Pressable><Text style={S.heading}>경로 상세보기</Text></View>
       {selected&&<ScrollView contentContainerStyle={S.scroll}>{selected.expectedKg!==undefined&&<PopulationPreview route={selected} baseline={baseline}/>}<Card><Text style={[S.metric,{fontSize:28}]}>{selected.minutes}분</Text><Note>{km(selected.distance_m)} / {selected.fare==null?'요금 정보 없음':`${selected.fare.toLocaleString()}원`}</Note><RouteStrip route={selected}/></Card>
@@ -90,7 +91,7 @@ export function RoutePlanner({profile,direction='outbound',onChoose,onFree,basel
           {selected.legs.map((leg,i)=><View key={i} style={[S.row,{alignItems:'flex-start'}]}><View style={{alignItems:'center',width:28,gap:5}}><Icon color={leg.mode==='WALK'?C.muted:'#318cef'} name={leg.mode==='WALK'?'walk-outline':leg.mode==='BUS'?'bus-outline':'train-outline'}/><View style={{width:1,backgroundColor:C.line,minHeight:32}}/></View><View style={{flex:1,gap:4,paddingBottom:14}}><Text style={S.label}>{leg.name}</Text><Note>{leg.minutes}분 / {km(leg.distance_m)}</Note>{(leg.startName||leg.endName)&&<Note>{leg.startName??'출발'} → {leg.endName??'도착'}</Note>}</View></View>)}
           <View style={S.row}><Icon name="flag-outline"/><Text style={[S.label,{flex:1}]}>{selected.to.name} 도착</Text></View>
         </Card>
-        <Button title={selected.provider==='local-test'?"이 기준으로 여정 준비":"이 경로로 안내 시작"} onPress={()=>{const chosen=selected;setSelected(null);onChoose(chosen);}}/>
+        <Button title={selected.provider==='local-test'?"이 경로 선택":"이 경로 선택"} onPress={()=>{const chosen=selected;setSelected(null);onChoose(chosen);}}/>
         <Note>{selected.provider==='local-test'?'선택한 출발·도착지의 직선거리 비교 기준입니다. 실제 이동 시간과 거리는 GPS 기록으로 확정됩니다.':'TMAP 검색 결과입니다. 실제 이동 시간과 거리는 GPS 기록 후 확정됩니다.'}</Note>
       </ScrollView>}
     </SafeAreaView></SafeAreaProvider></Modal>

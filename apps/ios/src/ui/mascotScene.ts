@@ -4,7 +4,7 @@ import {robotRig} from './robotRig';
 export function mascotScene(pose:MascotPose){
  if(pose!=='coin'&&pose!=='trophy')return robotRig(pose==='walk'||pose==='run'||pose==='complete'||pose==='cycle'||pose==='garden'?pose:'start');
  const scene=new T.Scene(),camera=new T.PerspectiveCamera(32,1,.1,40);
- camera.position.set(0,1.22,6.35);camera.lookAt(0,1.05,0);
+ camera.position.set(0,.85,3.5);camera.lookAt(0,.85,0);
  scene.add(new T.HemisphereLight(0xffffff,0x557561,1.9));
  const key=new T.DirectionalLight(0xfff5de,3);key.position.set(-3,5,5);scene.add(key);
  const rim=new T.DirectionalLight(0xc4faff,2);rim.position.set(3,3,-2);scene.add(rim);
@@ -25,6 +25,7 @@ export function mascotScene(pose:MascotPose){
      const disc=new T.Mesh(new T.CylinderGeometry(.75,.75,.20,64),gold);disc.rotation.x=Math.PI/2;artifact.add(disc);
      const ring=new T.Mesh(new T.TorusGeometry(.61,.035,12,64),material('#fff0af',.45));ring.position.z=.115;artifact.add(ring);
      const inset=new T.Mesh(new T.CylinderGeometry(.57,.57,.025,64),material('#207e55',.32));inset.rotation.x=Math.PI/2;inset.position.z=.12;artifact.add(inset);emblem(artifact,1,0,0,.15,'#b7dd75');
+     const reverse=new T.Group();reverse.rotation.y=Math.PI;artifact.add(reverse);const reverseRing=ring.clone();reverseRing.geometry=ring.geometry.clone();reverse.add(reverseRing);const reverseInset=inset.clone();reverseInset.geometry=inset.geometry.clone();reverse.add(reverseInset);emblem(reverse,1,0,0,.15,'#b7dd75');
      for(let i=0;i<48;i++){const a=i*Math.PI/24;ball(artifact,'#f9d880',Math.cos(a)*.69,Math.sin(a)*.69,.105,.016,.016,.012);}
    }else{
      const cup=new T.Mesh(new T.CylinderGeometry(.58,.23,.64,48),gold);cup.position.y=.25;artifact.add(cup);
@@ -34,7 +35,7 @@ export function mascotScene(pose:MascotPose){
    }artifact.position.y=.85;
  }
  const shadow=new T.Mesh(new T.CircleGeometry(.6,48),new T.MeshBasicMaterial({color:0x265340,transparent:true,opacity:.09}));shadow.rotation.x=-Math.PI/2;shadow.position.y=-.48;shadow.scale.y=.7;scene.add(shadow);
- function update(t:number){artifact.rotation.y=Math.sin(t*.9)*.4;artifact.rotation.z=Math.sin(t*.7)*.07;}
+ function update(t:number){artifact.rotation.y=pose==='coin'?t*.9:Math.sin(t*.9)*.4;artifact.rotation.z=Math.sin(t*.7)*.07;}
  function dispose(){scene.traverse(o=>{if(o instanceof T.Mesh)o.geometry.dispose();});mats.forEach(m=>m.dispose());(shadow.material as T.Material).dispose();}
  update(0);return {scene,camera,update,dispose};
 }

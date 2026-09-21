@@ -9,10 +9,13 @@ vi.mock('react-native',()=>({View:'View',Pressable:'Pressable',ScrollView:'Scrol
 vi.mock('react-native-safe-area-context',()=>({SafeAreaView:'SafeAreaView',SafeAreaProvider:'SafeAreaProvider'}));
 vi.mock('expo-constants',()=>({default:{expoConfig:{extra:{localOnly:false}}}}));
 vi.mock('../communityClient',()=>({localAction:vi.fn(async()=>({}))}));
+vi.mock('./ProfileAvatar',()=>({ProfileAvatar:'ProfileAvatar',chooseProfilePhoto:vi.fn()}));
+vi.mock('./DesignPrimitives',()=>({Eyebrow:'Eyebrow'}));
 vi.mock('./AppText',()=>({default:'Text'}));
 vi.mock('./theme',()=>({C:{},S:{},Note:'Note',Icon:'Icon',Button:'Button',Card:'Card',Fade:'Fade',Field:'Field',Stat:'Stat'}));
 vi.mock('./ActiveJourney',()=>({ActiveJourney:'ActiveJourney'}));
 vi.mock('./NotificationPanel',()=>({NotificationPanel:'NotificationPanel'}));
+vi.mock('./JourneyHistory',()=>({JourneyHistory:'JourneyHistory'}));
 vi.mock('./HomeDashboard',()=>({HomeDashboard:'HomeDashboard'}));
 vi.mock('./RewardExperience',()=>({JourneyComplete:'JourneyComplete'}));
 vi.mock('./CanopyMascot',()=>({CanopyMascot:'CanopyMascot'}));

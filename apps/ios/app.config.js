@@ -23,7 +23,7 @@ module.exports = ({config}) => ({
   plugins: [...(config.plugins || []).filter(p => p !== 'expo-font'), 'expo-font'],
   ios: {...config.ios, bundleIdentifier: process.env.CANOPY_IOS_BUNDLE_IDENTIFIER || config.ios.bundleIdentifier},
   extra: {...config.extra,
-    localOnly:local,
+    localOnly:local,uiPreview:preview,
     routeApiUrl: preview ? '' : process.env.CANOPY_ROUTE_API_URL || '',
     gpsApiUrl: preview ? '' : process.env.CANOPY_GPS_API_URL || '',
     gpsFunctionKey: preview ? '' : process.env.CANOPY_GPS_FUNCTION_KEY || '',

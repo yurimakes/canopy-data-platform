@@ -135,6 +135,21 @@ class AccountTests(unittest.TestCase):
         with self.assertRaises(ApiError):
             self.api.update(signed['access_token'], {'work': {'name': 'x', 'latitude': float('nan'), 'longitude': 0}})
 
+    def test_profile_photo_persists_on_login_and_can_be_removed(self):
+        import base64, io
+        from PIL import Image
+        image=io.BytesIO();Image.new('RGB',(128,128),'green').save(image,format='JPEG')
+        uri='data:image/jpeg;base64,'+base64.b64encode(image.getvalue()).decode()
+        signed=self.api.signup(self.body)
+        changed=self.api.update(signed['access_token'],{'avatarDataUri':uri})
+        self.assertTrue(changed['avatarDataUri'].startswith('data:image/jpeg;base64,'))
+        logged=self.api.login({k:self.body[k] for k in ('email','password')})
+        self.assertEqual(logged['profile']['avatarDataUri'],changed['avatarDataUri'])
+        with self.assertRaises(ApiError):self.api.update(signed['access_token'],{'avatarDataUri':'https://invalid.example/photo'})
+        self.assertEqual(self.api.public(self.api.authenticated(signed['access_token']))['avatarDataUri'],changed['avatarDataUri'])
+        removed=self.api.update(signed['access_token'],{'avatarDataUri':None})
+        self.assertIsNone(removed['avatarDataUri'])
+
     def test_future_campaign_registration_window_and_trip_owner(self):
         self.api.campaigns = CampaignRegistry('ignored', {'TEAM': {'campaign_id': 'team_A', 'accepting_signups': True}, 'CLOSED': {'campaign_id': 'team_B', 'accepting_signups': False}})
         signed = self.api.signup(dict(self.body, campaign_code='team'))

@@ -5,3 +5,5 @@ PyJWT[crypto]>=2.10,<3
 python-dotenv>=1.0,<2
 PyYAML>=6.0,<7
 azure-storage-blob>=12.19,<13
+
+Pillow>=11.3,<13

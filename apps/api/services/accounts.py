@@ -133,7 +133,7 @@ class Accounts:
     @staticmethod
     def public(doc):
         return {"id": doc["user_id"], "nickname": doc.get("nickname", ""), "email": doc.get("email") or doc.get("login_name", ""),
-                "role": doc.get("role", "user"), "campaignCode": doc.get("campaign_code", "TEST"),
+                "avatarDataUri": doc.get("avatar_data_uri"), "role": doc.get("role", "user"), "campaignCode": doc.get("campaign_code", "TEST"),
                 "campaign_id": doc.get("campaign_id"), "created_at": doc["created_at"],
                 "department_id": doc.get("department_id"), "department_name": doc.get("department_name", ""), "campaign_joined_at": doc.get("campaign_joined_at"), "home": doc.get("home"), "work": doc.get("work")}
 
@@ -215,9 +215,12 @@ class Accounts:
 
     def update(self, token, body):
         doc = self.authenticated(token)
-        if set(body) - {"nickname", "home", "work", "department_name"}:
+        if set(body) - {"nickname", "home", "work", "department_name", "avatarDataUri"}:
             raise ApiError(400, "invalid_fields", "계정과 캠페인은 프로필 수정으로 변경할 수 없습니다.")
         changes = {}
+        if "avatarDataUri" in body:
+            from .profile_photo import validate_photo
+            changes["avatar_data_uri"] = validate_photo(body["avatarDataUri"])
         if "department_name" in body:
             name=body["department_name"]
             if not isinstance(name,str) or len(name.strip())>50:raise ApiError(400,"invalid_department","부서명은 50자 이내로 입력해주세요.")

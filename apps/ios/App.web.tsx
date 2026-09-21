@@ -1,3 +1,4 @@
+import DesignPreview from './src/ui/DesignPreview';
 import {FontGate} from './src/ui/FontGate';
 import {locationError} from './src/locationError';
 import React,{useEffect,useRef,useState} from 'react';
@@ -99,4 +100,4 @@ function CanopyApp(){
   }</SafeAreaProvider>;
 }
 
-export default function App(){return <FontGate><CanopyApp/></FontGate>;}
+export default function App(){return <FontGate>{(__DEV__&&(Constants.expoConfig?.extra?.uiPreview===true||new URLSearchParams(window.location.search).get('design-preview')==='1'))?<DesignPreview/>:<CanopyApp/>}</FontGate>;}

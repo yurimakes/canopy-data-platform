@@ -15,13 +15,13 @@ export default function ActorCanvas({pose,animated}:{pose:MascotPose;animated:bo
   stop.current();const width=gl.drawingBufferWidth,height=gl.drawingBufferHeight;
   const renderer=createNativeRenderer(gl as unknown as WebGL2RenderingContext);renderer.setSize(width,height,false);
   renderer.outputColorSpace=T.SRGBColorSpace;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
-  const actor=mascotScene(pose);actor.camera.aspect=width/height;actor.camera.updateProjectionMatrix();let frame=0,dead=false,elapsed=0,last:number|undefined;
-  function draw(){if(dead)return;try{const now=Date.now();if(AppState.currentState==='active'){if(last!==undefined&&animated&&!reduced.current)elapsed+=Math.min((now-last)/1000,.1);actor.update(animated&&!reduced.current?elapsed:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();last=now;}else{last=undefined;}frame=requestAnimationFrame(draw);}catch(e){fail(e);}}
+  const actor=mascotScene(pose);actor.camera.aspect=width/height;actor.camera.updateProjectionMatrix();let frame=0,dead=false,elapsed=0,last:number|undefined,renderedAt=0;
+  function draw(){if(dead)return;try{const now=Date.now();if(AppState.currentState==='active'&&now-renderedAt>=33){renderedAt=now;if(last!==undefined&&animated&&!reduced.current)elapsed+=Math.min((now-last)/1000,.1);actor.update(animated&&!reduced.current?elapsed:0);renderer.render(actor.scene,actor.camera);gl.endFrameEXP();last=now;}else if(AppState.currentState!=='active'){last=undefined;}frame=requestAnimationFrame(draw);}catch(e){fail(e);}}
   stop.current=()=>{dead=true;cancelAnimationFrame(frame);actor.dispose();renderer.dispose();};
   draw();
   }catch(e){fail(e);}
  }
  function fail(e:unknown){const message=e instanceof Error?e.message:String(e);console.warn('[Canopy 3D]',message);try{stop.current();}catch{}stop.current=()=>{};setError(message);}
- if(error)return <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:8,padding:8}}><Text style={{fontSize:12,textAlign:'center'}}>3D 표시 오류: {error}</Text><Pressable accessibilityRole="button" onPress={()=>{setError('');setAttempt(v=>v+1);}}><Text style={{color:'#108454',fontWeight:'700'}}>다시 불러오기</Text></Pressable></View>;
+ if(error)return <View style={{flex:1,justifyContent:'center',alignItems:'center',gap:8,padding:8}}><Text style={{fontSize:12,textAlign:'center'}}>모션을 불러오지 못했어요.</Text><Pressable accessibilityRole="button" onPress={()=>{setError('');setAttempt(v=>v+1);}}><Text style={{color:'#108454',fontWeight:'700'}}>다시 불러오기</Text></Pressable></View>;
  return <GLView key={`${pose}-${animated}-${attempt}`} style={{flex:1}} onContextCreate={create}/>;
 }

@@ -51,7 +51,7 @@ def community(data, user):
         week=max(r['week'] for r in rankings)
         def mapped(kind):
             return [{'id':r.get('user_id') or r.get('department_id'),'name':(people.get(r.get('user_id'),{}).get('nickname') or '참여자') if kind=='personal' else departments.get(r.get('department_id'),'등록 부서'),
-                'rank':r['rank'],'carbonKg':0,'points':r['reward_points'],'isMe':r.get('user_id')==user['user_id']}
+                'avatarDataUri':people.get(r.get('user_id'),{}).get('avatar_data_uri') if kind=='personal' else None,'rank':r['rank'],'carbonKg':0,'points':r['reward_points'],'isMe':r.get('user_id')==user['user_id']}
                 for r in rankings if r['week']==week and r['ranking_type']==kind]
         result['ranking']={'state':'ready','data':{'week':week,'updatedAt':now,'personal':mapped('personal'),'department':mapped('department'),'awards':extension_policy()['rank_awards']}}
     ledger_path=data/'inputs/reward_ledger_history.json'

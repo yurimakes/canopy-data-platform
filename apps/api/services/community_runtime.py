@@ -52,7 +52,7 @@ class HostedBackend:
         path=Path(path);name=path.name
         if path.parent.name=='inputs':
             if name=='trips.json':return self.api.store.for_user(self.user['user_id'])
-            if name=='users.json':return list(self.users.query_items(query='SELECT c.user_id,c.campaign_id,c.nickname,c.department_id,c.department_name FROM c WHERE c.campaign_id=@campaign',parameters=[{'name':'@campaign','value':self.user['campaign_id']}],enable_cross_partition_query=True))
+            if name=='users.json':return list(self.users.query_items(query='SELECT c.user_id,c.campaign_id,c.nickname,c.avatar_data_uri,c.department_id,c.department_name FROM c WHERE c.campaign_id=@campaign',parameters=[{'name':'@campaign','value':self.user['campaign_id']}],enable_cross_partition_query=True))
             if name=='reward_ledger_history.json':return self.documents('rewards').all()
             return default
         if path.parent.name=='weekly':

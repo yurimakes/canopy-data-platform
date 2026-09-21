@@ -36,10 +36,10 @@ export function TripResult({trip,pending,onFeedback}:{trip:ServerTrip;pending?:F
       <Text style={s.title}>이동수단별 거리</Text>
       {MODES.map(mode=>{const value=trip.confirmed_trip![`${mode.value}_distance_m`];
         return value>0?<Text key={mode.value}>{mode.title} {distance(value)}</Text>:null;})}
-      <Text style={s.note}>탄소 배출량은 kgCO₂e 기준입니다. 이동 기준과 비교한 감축량은 별도 분석 결과로 제공됩니다.</Text>
+      <Text style={s.note}>탄소량은 이동수단과 거리로 계산해요.</Text>
     </View>}
     <View style={s.feedback}>
-      <Text style={S.heading}>이동 결과는 어땠나요?</Text><Note>문제가 있었다면 알려주세요. 피드백은 검토에 전달되며 확정된 탄소량이나 토큰을 바로 변경하지 않습니다.</Note>
+      <Text style={S.heading}>이동 결과는 어땠나요?</Text><Note>다르게 기록됐다면 알려주세요. 확정된 보상은 바로 바뀌지 않아요.</Note>
       {answered?<Text style={s.note}>{trip.has_issue?'피드백을 보냈습니다. 검토에 참고하겠습니다.':'문제없음으로 응답했습니다.'}</Text>:<>
         <View style={s.buttons}>
           <Pressable accessibilityRole="button" accessibilityState={{selected:issue,disabled:locked}} disabled={locked}
@@ -63,6 +63,6 @@ export function TripResult({trip,pending,onFeedback}:{trip:ServerTrip;pending?:F
 }
 const s=StyleSheet.create({root:{gap:16},title:{fontSize:17,fontWeight:'600',color:'#174c39'},note:{color:'#66736e',lineHeight:20},
   segment:{gap:10,paddingVertical:12,borderBottomWidth:1,borderColor:'#d9e2dc'},feedback:{gap:10},buttons:{flexDirection:'row',flexWrap:'wrap',gap:8},
-  input:{minHeight:80,borderWidth:1,borderColor:'#9eb7a8',borderRadius:10,padding:12,textAlignVertical:'top'},
-  button:{minWidth:72,padding:14,borderWidth:1,borderColor:'#9eb7a8',borderRadius:10,alignItems:'center'},selected:{backgroundColor:'#087f5b'},
+  input:{minHeight:80,borderWidth:1,borderColor:'#9eb7a8',borderRadius:16,padding:12,textAlignVertical:'top'},
+  button:{minWidth:72,padding:14,borderWidth:1,borderColor:'#9eb7a8',borderRadius:16,alignItems:'center'},selected:{backgroundColor:C.deep},
   text:{color:'#174c39',fontWeight:'600'},white:{color:'#fff',fontWeight:'600'},error:{color:'#ad2929'},disabled:{opacity:.5}});

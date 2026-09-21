@@ -54,5 +54,5 @@ def cumulative_ranking(data,user,users):
         p=people.get(uid,{})
         if p.get('department_id'):
             key=p['department_id'];departments[key]=departments.get(key,0)+amount;labels[key]=p.get('department_name') or '등록 부서'
-    return {'label':'캠페인 누적','personal':rank(totals,{k:v.get('nickname') or '참여자' for k,v in people.items()}),
+    return {'label':'캠페인 누적','personal':[{**r,'avatarDataUri':people.get(r['id'],{}).get('avatar_data_uri')} for r in rank(totals,{k:v.get('nickname') or '참여자' for k,v in people.items()})],
             'department':rank(departments,labels),'rewardPolicy':'누적 순위에 대한 추가 보상은 없습니다.'}
