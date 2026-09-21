@@ -8,7 +8,7 @@ import requests
 from azure.storage.blob import BlobServiceClient
 from deploy_main_api import az,GROUP,APP,ROOT,SUB
 
-UPDATES={'EVENTHUB_NAME':'evh-personal-5dt024','TRIP_EVENTHUB_CONSUMER_GROUP':'canopy-trip-finalization','TRIP_DATABRICKS_JOB_ID':'421770332247848','TRIP_DATABRICKS_DISPATCH_MODE':'resident'}
+UPDATES={'EVENTHUB_NAME':'evh-canopy-gps-dev','TRIP_EVENTHUB_CONSUMER_GROUP':'canopy-trip-finalization','TRIP_DATABRICKS_JOB_ID':'421770332247848','TRIP_DATABRICKS_DISPATCH_MODE':'resident'}
 
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--apply',action='store_true');p.add_argument('--history-run-id',required=True,type=int);a=p.parse_args()
