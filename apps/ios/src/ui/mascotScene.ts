@@ -2,7 +2,7 @@ import * as T from 'three';
 import type {MascotPose} from './CanopyMascot';
 import {robotRig} from './robotRig';
 export function mascotScene(pose:MascotPose){
- if(pose!=='coin'&&pose!=='trophy')return robotRig(pose);
+ if(pose!=='coin'&&pose!=='trophy')return robotRig(pose==='walk'||pose==='run'||pose==='complete'||pose==='cycle'||pose==='garden'?pose:'start');
  const scene=new T.Scene(),camera=new T.PerspectiveCamera(32,1,.1,40);
  camera.position.set(0,1.22,6.35);camera.lookAt(0,1.05,0);
  scene.add(new T.HemisphereLight(0xffffff,0x557561,1.9));

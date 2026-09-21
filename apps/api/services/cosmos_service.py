@@ -11,6 +11,7 @@ class Conflict(Exception):
 
 
 class TripStore(Protocol):
+    def for_user(self, user_id: str) -> list[dict]: ...
     def read(self, trip_id: str, user_id: str) -> dict | None: ...
     def create(self, item: dict) -> dict: ...
     def replace(self, item: dict) -> dict: ...
@@ -29,6 +30,11 @@ class CosmosTripStore:
 
     def key(self, trip_id: str, user_id: str) -> str:
         return user_id
+
+    def for_user(self, user_id: str) -> list[dict]:
+        return list(self.container.query_items(
+            query="SELECT * FROM c WHERE c.type='trip' AND c.user_id=@user ORDER BY c.started_at DESC",
+            parameters=[{"name":"@user","value":user_id}],partition_key=user_id))
 
     def read(self, trip_id: str, user_id: str) -> dict | None:
         from azure.cosmos.exceptions import CosmosResourceNotFoundError
@@ -97,6 +103,12 @@ class SQLiteTripStore:
         if not row:
             return None
         return {**json.loads(row[1]), "_etag": str(row[0])}
+
+    def for_user(self, user_id: str) -> list[dict]:
+        with self.connect() as db:
+            rows=db.execute("SELECT payload FROM trips WHERE json_extract(payload,'$.type')='trip' "
+                "AND json_extract(payload,'$.user_id')=? ORDER BY json_extract(payload,'$.started_at') DESC",(user_id,)).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     def create(self, item: dict) -> dict:
         try:

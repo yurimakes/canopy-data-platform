@@ -11,7 +11,7 @@ export type MeasurementProps = {
   collectionMode?: "user" | "developer"; onBack(): void;
   mode: TransportMode | null; phase: string; ready: boolean; count: number; duration: string;
   accuracy: number | null; latestLabel?: GpsEvent['label']; tripId?: string; error: string;
-  onMode(mode: TransportMode): void; onStart(): void; onStop(): void;
+  onMode(mode: TransportMode): void; onStart(direction?:'outbound'|'return'):void; onStop(): void;
   onExport(): void; canExport: boolean; sharing: boolean;
   active?: boolean; backgroundRunning?: boolean; lastReceived?: string|null; sequence?: number;
   pending?: number; lastSuccess?: string|null; uploadError?: string;
@@ -96,7 +96,7 @@ export function MeasurementScreen(p: MeasurementProps) {
       </>}
     </ScrollView>
     <View style={s.footer}><Pressable accessibilityRole="button" disabled={!p.ready || switching || p.sharing || (!busy && developer && !p.mode)}
-      onPress={busy ? p.onStop : p.onStart} style={[s.action, busy && s.stop, (!p.ready || switching || p.sharing || (!busy && developer && !p.mode)) && s.disabled]}>
+      onPress={()=>busy?p.onStop():p.onStart()} style={[s.action, busy && s.stop, (!p.ready || switching || p.sharing || (!busy && developer && !p.mode)) && s.disabled]}>
       <Text style={s.actionText}>{p.phase === 'stopping' ? '저장 중…' : busy ? '측정 종료' : '측정 시작'}</Text>
     </Pressable></View>
   </SafeAreaView>;

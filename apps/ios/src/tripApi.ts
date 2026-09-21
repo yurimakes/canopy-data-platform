@@ -1,5 +1,6 @@
 import type { Identity, Trip, TransportMode } from './types';
 import type { Storage } from './storage';
+import {SCHEMA} from './types';
 
 export type FinalSegment = {
   segment_id:string; mode:TransportMode; start_time:string; end_time:string; distance_m:number; confidence:number|null;
@@ -19,6 +20,8 @@ export type FeedbackInput = {has_issue:boolean;feedback_text?:string|null};
 export type FeedbackIntent = FeedbackInput & {request_id:string;api_url:string};
 type ConfirmIntent = {request_id:string;expected_revision:number;segments:Confirmation[];api_url:string};
 export type ServerTrip = {
+  data_quality?:{status:'complete'|'partial';version:string;excluded_intervals:unknown[]}|null;
+  expected_last_sequence?:number;
   trip_id:string; user_id:string; device_id:string; started_at:string; ended_at:string|null;
   status:'collecting'|'processing'|'ready'|'failed'; model_version:string|null; is_mock:boolean;
   failed_step:string|null; error_message:string|null;
@@ -34,6 +37,7 @@ class TripHttpError extends Error {
 }
 
 export class TripApi {
+  private historyAt=0;
   private busy=false;
   private confirming=new Set<string>();
   error='';
@@ -83,6 +87,29 @@ export class TripApi {
       server:{api_url:intent.api_url,request_id:intent.request_id}};
   }
   result(id:string) {return this.db.syncValue<Sync>('trip:'+id);}
+  async syncHistory() {
+    const config=this.configuration();
+    if(!config.userId||this.now()<this.historyAt)return;
+    this.historyAt=this.now()+30000;
+    const abort=new AbortController(),timer=setTimeout(()=>abort.abort(),10000);
+    try{
+      const response=await this.request(config.url+'/trips',{signal:abort.signal,redirect:'error',headers:{Authorization:'Bearer '+config.token,...(config.functionKey?{'x-functions-key':config.functionKey}:{})}});
+      if(!response.ok)throw Error('이동 기록을 불러오지 못했어요. 잠시 후 다시 확인합니다.');
+      const body=await response.json();if(!Array.isArray(body.trips))throw Error('이동 기록 형식을 확인해주세요.');
+      const saved=new Set((await this.db.list()).map(t=>t.trip_id));
+      for(const r of body.trips as ServerTrip[]){
+        if(r.user_id!==config.userId||saved.has(r.trip_id)||!r.ended_at||!['ready','failed','processing'].includes(r.status))continue;
+        if(typeof r.trip_id!=='string'||!Number.isFinite(Date.parse(r.started_at))||!Number.isFinite(Date.parse(r.ended_at))||!Array.isArray(r.segments))continue;
+        const trip:Trip={trip_id:r.trip_id,user_id:r.user_id,device_id:r.device_id,schema_version:SCHEMA,started_at:r.started_at,ended_at:r.ended_at,
+          status:'completed',interruption_reason:null,recovered_at:null,foreground_only:true,collection_mode:r.is_mock?'developer':'user',
+          collection_settings:{},environment:{restored_from_server:true},server:{api_url:config.url,request_id:r.trip_id}};
+        // Persist result first: an interrupted restore must never send a zero-GPS stop.
+        await this.db.saveSync('trip:'+r.trip_id,{result:r});
+        await this.db.saveTrip(trip);
+        await this.db.saveSync('ui:trip:'+r.trip_id,{profile_id:r.user_id,route:null});
+      }
+    }finally{clearTimeout(timer);}
+  }
   async refresh(id:string):Promise<ServerTrip> {
     const trip=(await this.db.list()).find(t=>t.trip_id===id);
     if(!trip?.server)throw Error('저장된 서버 Trip이 없습니다.');

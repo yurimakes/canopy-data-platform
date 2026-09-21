@@ -28,7 +28,7 @@ export async function restoreProfile():Promise<Profile|null>{
 export async function updateProfile(profile:Profile){
   const saved=session();if(!saved||saved.profile.id!==profile.id)throw Error('다시 로그인해주세요.');
   const result=checkedProfile(await accountRequest(accountConfig(),'me','PATCH',{
-    nickname:profile.nickname,home:profile.home,work:profile.work,
+    nickname:profile.nickname,home:profile.home,work:profile.work,department_name:profile.department_name??'',
   },saved.access_token));
   await saveSession({...saved,profile:result});return result;
 }

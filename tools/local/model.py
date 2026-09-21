@@ -3,12 +3,16 @@ import hashlib
 import importlib.util
 import json
 import math
+import sys
+import os
 from pathlib import Path
 from datetime import datetime
 
 ROOT=Path(__file__).resolve().parents[2]
-ARTIFACT=ROOT/'ml/models/speedtransformer/artifacts/playground_v1'
-VERSION='local-speedtransformer-playground-v1-edgepad-v1'
+if str(ROOT) not in sys.path:sys.path.insert(0,str(ROOT))
+from services.gps_quality import transition_issue,QUALITY_VERSION
+ARTIFACT=Path(os.getenv('CANOPY_SPEED_MODEL_ROOT',str(ROOT/'ml/models/speedtransformer/artifacts/playground_v1')))
+VERSION='local-speedtransformer-playground-v1-transit-v3-quality-v1'
 
 
 def stamp(value):return datetime.fromisoformat(value.replace('Z','+00:00'))
@@ -65,7 +69,8 @@ class LocalModel:
             label=str(self.labels.inverse_transform([int(prob.argmax())])[0])
             mode={'train':'rail'}.get(label,label)
             if mode not in ('walk','bike','car','bus','rail'):raise ValueError('알 수 없는 모델 클래스: '+mode)
-            rows.append({'begin':begin,'end':end,'mode':mode,'confidence':float(prob.max())});begin=end
+            probabilities={('rail' if str(label)=='train' else str(label)):float(p) for label,p in zip(self.labels.classes_,prob)}
+            rows.append({'begin':begin,'end':end,'mode':mode,'confidence':float(prob.max()),'probabilities':probabilities});begin=end
         return rows
 
     def result(self,trip,points):
@@ -78,16 +83,38 @@ class LocalModel:
             if (start is None or at>=start) and (end is None or at<=end):
                 unique.setdefault(at,point)
         points=[unique[at] for at in sorted(unique)]
-        rows=self.predict(points)
+        runs=[];run=[];issues=[]
+        for a,b in zip(points,points[1:]):
+            seconds=(stamp(b['event_time'])-stamp(a['event_time'])).total_seconds()
+            issue=transition_issue(a.get('accuracy'),b.get('accuracy'),seconds,distance(a,b)/seconds*3.6)
+            if issue:
+                if len(run)>1:runs.append(run)
+                run=[];issues.append({'start_time':a['event_time'],'end_time':b['event_time'],'reason':issue})
+            else:
+                if not run:run=[a]
+                run.append(b)
+        if len(run)>1:runs.append(run)
+        rows=[]
+        for index,run in enumerate(runs):
+            rows.extend({**r,'points':run,'run':index} for r in self.predict(run))
         if not rows:raise ValueError('서로 다른 시각의 GPS가 최소 2개 필요합니다')
-        segments=[]
+        segments=[];evidence=[];station_history=[]
+        from transit_fusion import fuse
         for row in rows:
-            group=points[row['begin']:row['end']+1]
+            group=row['points'][row['begin']:row['end']+1]
+            decision,context,reference=fuse(row.get('probabilities') or {row['mode']:row['confidence']},group,station_history)
+            for sid in context.get('subway_current_observed_station_ids',[]):
+                item=(str(sid),str(context.get('matched_subway_line')))
+                if item not in station_history:station_history.append(item)
+            evidence.append({'start_time':group[0]['event_time'],'end_time':group[-1]['event_time'],'decision':decision,'context':context,'reference':reference})
+            row={**row,'mode':decision['final_mode'],'confidence':decision['decision_confidence']}
             segment={'mode':row['mode'],'start_time':group[0]['event_time'],'end_time':group[-1]['event_time'],
                      'distance_m':sum(distance(a,b) for a,b in zip(group,group[1:])), 'confidence':row['confidence']}
-            if segments and segments[-1]['mode']==segment['mode']:
+            if segments and segments[-1]['mode']==segment['mode'] and segments[-1]['end_time']==segment['start_time']:
                 segments[-1]['end_time']=segment['end_time'];segments[-1]['distance_m']+=segment['distance_m']
                 segments[-1]['confidence']=min(segments[-1]['confidence'],segment['confidence'])
             else:segments.append(segment)
         for i,s in enumerate(segments):s['segment_id']=trip['trip_id']+':segment:'+str(i+1)
-        return {'trip_id':trip['trip_id'],'model_version':VERSION,'segments':segments}
+        return {'trip_id':trip['trip_id'],'model_version':VERSION,'segments':segments,'transit_evidence':evidence,
+            'endpoint_observations':[{k:p.get(k) for k in ('event_time','lat','lon','accuracy')} for p in (points[0],points[-1])],
+            'data_quality':{'version':QUALITY_VERSION,'status':'partial' if issues else 'complete','excluded_intervals':issues}}

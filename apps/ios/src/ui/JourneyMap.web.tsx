@@ -6,9 +6,9 @@ import type {MapProps} from './JourneyMap';
 import type {Place} from '../service';
 import {C,S,Icon,Note} from './theme';
 
-export default function JourneyMap({points,route,height=310,places=[],selectedPlace=0,onSelectPlace}:MapProps){
+export default function JourneyMap({points,route,height=310,fill=false,places=[],selectedPlace=0,onSelectPlace}:MapProps){
   const all=[...points,...places,...(route?[route.from,route.to]:[])];
-  if(!all.length)return <View style={{height,backgroundColor:C.mint,justifyContent:'center',alignItems:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 이동 궤적이 표시됩니다.</Note></View>;
+  if(!all.length)return <View style={{height:fill?'100%':height,backgroundColor:C.mint,justifyContent:'center',alignItems:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 이동 궤적이 표시됩니다.</Note></View>;
   const xs=all.map(p=>p.longitude),ys=all.map(p=>p.latitude);
   const midX=(Math.min(...xs)+Math.max(...xs))/2,midY=(Math.min(...ys)+Math.max(...ys))/2;
   const cosine=Math.cos(midY*Math.PI/180),range=Math.max((Math.max(...xs)-Math.min(...xs))*cosine/480,(Math.max(...ys)-Math.min(...ys))/240,.00001);
@@ -20,7 +20,7 @@ export default function JourneyMap({points,route,height=310,places=[],selectedPl
       <text x={x} y={y-30} textAnchor="middle" fontSize={14} fontWeight={700} fill={C.deep}>{label}</text>
     </g>;
   };
-  return <View style={{height,backgroundColor:'#edf5ef',overflow:'hidden'}}>
+  return <View style={{height:fill?'100%':height,backgroundColor:'#edf5ef',overflow:'hidden'}}>
     <svg viewBox="0 0 600 350" width="100%" height="100%" aria-label="오프라인 위치와 GPS 궤적 미리보기">
       {Array.from({length:12},(_,i)=><line key={'x'+i} x1={i*60} y1={0} x2={i*60} y2={350} stroke="#dce9e0"/>)}
       {Array.from({length:7},(_,i)=><line key={'y'+i} x1={0} y1={i*60} x2={600} y2={i*60} stroke="#dce9e0"/>)}

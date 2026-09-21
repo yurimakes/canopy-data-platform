@@ -7,6 +7,11 @@ from azure.cosmos.exceptions import CosmosResourceExistsError, CosmosResourceNot
 
 
 class LocalDocuments:
+    def __new__(cls,path):
+        from .domain_context import backend
+        provider=backend.get()
+        if provider is not None:return provider.documents(Path(path).stem)
+        return super().__new__(cls)
     def __init__(self, path):
         self.path = str(path)
         Path(path).parent.mkdir(parents=True, exist_ok=True)

@@ -66,6 +66,8 @@ def place(value):
     for key in ("address", "id"):
         if key in value and (not isinstance(value[key], str) or len(value[key]) > 300):
             raise ApiError(400, "invalid_place", "장소 정보를 확인해주세요.")
+    if '행정동 중심점' in value.get('address',''):
+        raise ApiError(400,'imprecise_place','집·직장은 현재 위치 또는 정확한 좌표로 설정해주세요.')
     return dict(value)
 
 
@@ -128,7 +130,7 @@ class Accounts:
         return {"id": doc["user_id"], "nickname": doc.get("nickname", ""), "email": doc.get("email") or doc.get("login_name", ""),
                 "role": doc.get("role", "user"), "campaignCode": doc.get("campaign_code", "TEST"),
                 "campaign_id": doc.get("campaign_id"), "created_at": doc["created_at"],
-                "campaign_joined_at": doc.get("campaign_joined_at"), "home": doc.get("home"), "work": doc.get("work")}
+                "department_id": doc.get("department_id"), "department_name": doc.get("department_name", ""), "campaign_joined_at": doc.get("campaign_joined_at"), "home": doc.get("home"), "work": doc.get("work")}
 
     def signup(self, body, *, developer=False):
         if set(body) - {"email", "password", "nickname", "campaign_code", "home", "work"}:
@@ -208,9 +210,15 @@ class Accounts:
 
     def update(self, token, body):
         doc = self.authenticated(token)
-        if set(body) - {"nickname", "home", "work"}:
+        if set(body) - {"nickname", "home", "work", "department_name"}:
             raise ApiError(400, "invalid_fields", "계정과 캠페인은 프로필 수정으로 변경할 수 없습니다.")
         changes = {}
+        if "department_name" in body:
+            name=body["department_name"]
+            if not isinstance(name,str) or len(name.strip())>50:raise ApiError(400,"invalid_department","부서명은 50자 이내로 입력해주세요.")
+            name=name.strip()
+            changes["department_name"]=name
+            changes["department_id"]=hashlib.sha256((doc["campaign_id"]+":"+name).encode()).hexdigest()[:24] if name else None
         if "nickname" in body:
             name = body["nickname"]
             if not isinstance(name, str) or not 1 <= len(name.strip()) <= 30:

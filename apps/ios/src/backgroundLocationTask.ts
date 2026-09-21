@@ -22,7 +22,13 @@ export function apiConfig(): ApiConfig | null {
   return extra?.gpsApiUrl && extra?.gpsFunctionKey ? {url:extra.gpsApiUrl,functionKey:extra.gpsFunctionKey,allowLocalHttp:__DEV__&&extra.localOnly===true} : null;
 }
 let uploader: Uploader | undefined;
-export async function getUploader() {return uploader ??= new Uploader(await getStorage(),apiConfig,Crypto.randomUUID);}
+export async function getUploader() {return uploader ??= new Uploader(await getStorage(),apiConfig,Crypto.randomUUID,Date.now,fetch,async(event,url)=>{
+  await loadSession();
+  const saved=session(), configured=Constants.expoConfig?.extra?.tripApiUrl?.replace(/\/+$/,'');
+  if(!saved||saved.api_url!==configured||saved.profile.id!==event.user_id||new URL(saved.api_url).origin!==new URL(url).origin)
+    throw new Error('GPS를 기록한 계정으로 로그인하면 전송을 재개합니다.');
+  return saved.access_token;
+});}
 let tripApi: TripApi | undefined;
 export function tripConfig():TripConfig|null {
   const extra=Constants.expoConfig?.extra;

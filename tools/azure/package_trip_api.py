@@ -8,10 +8,17 @@ import zipfile
 REQUIRED_FUNCTIONS = {
     "health", "GpsIngest", "gps_smoke", "carbon_smoke", "cosmos_smoke",
     "keyvault_smoke", "mission_get", "ranking_get", "account_auth",
-    "user_register", "trip_start", "trip_stop", "trip_get", "trip_confirm",
+    "user_register", "trip_start", "trip_stop", "trip_get", "trip_list", "trip_confirm",
     "trip_feedback", "place_search", "transit_route_search", "trip_worker",
     "trip_end_received",
+    "community_get", "notification_read", "journey_action", "mission_action", "trip_comparison",
 }
+
+DOMAIN_FILES=[
+    *['tools/local/'+name+'.py' for name in ('business','community_service','projections','rewards','reward_baselines','journey_rewards','activity','flow_recovery','weekly_publication','population','model','commute')],
+    'cloud/azure/functions/func_canopy_dev/mission_policy.yaml',
+    'shared/configs/local_reward_extensions.json',
+]
 
 
 def validate_package(target: Path):
@@ -60,7 +67,7 @@ def patch_deployed(source: Path, output: Path, root: Path):
     return output
 
 
-def package(root: Path):
+def package(root: Path,include_runtime=False):
     source = root / "cloud/azure/functions/func_canopy_dev"
     api = root / "apps/api"
     target = (api / "build/func_canopy_dev").resolve()
@@ -80,12 +87,33 @@ def package(root: Path):
     shutil.copy2(api / "trip_routes.py", target / "trip_routes.py")
     shutil.copytree(api / "services", target / "services", dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for name in DOMAIN_FILES:
+        destination=target/name;destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(root/name,destination)
     dependencies = (source / "requirements.txt").read_text() + "\n" + (api / "requirements.txt").read_text()
     (target / "requirements.txt").write_text(dependencies, encoding="utf-8")
+    if include_runtime:
+        from package_runtime_assets import package as bundle_assets
+        import json,hashlib
+        bundle=root/'.local-data/release/runtime-assets.zip'
+        bundle_assets(root,bundle)
+        with zipfile.ZipFile(bundle) as archive:
+            manifest=json.loads(archive.read('manifest.json'))
+            for name,digest in manifest.items():
+                destination=(target/'runtime-assets'/name).resolve()
+                if not destination.is_relative_to((target/'runtime-assets').resolve()):raise ValueError('unsafe asset path')
+                payload=archive.read(name)
+                if hashlib.sha256(payload).hexdigest()!=digest:raise ValueError('asset checksum mismatch')
+                destination.parent.mkdir(parents=True,exist_ok=True);destination.write_bytes(payload)
+        with (target/'requirements.txt').open('a',encoding='utf-8') as file:
+            file.write('\ncatboost>=1.2,<2\npandas>=2.2,<3\npyproj>=3.6,<4\n')
     validate_package(target)
     print(target)
     return target
 
 
 if __name__ == "__main__":
-    package(Path(__file__).resolve().parents[2])
+    import argparse
+    parser=argparse.ArgumentParser();parser.add_argument('--with-runtime-assets',action='store_true')
+    args=parser.parse_args()
+    package(Path(__file__).resolve().parents[2],include_runtime=args.with_runtime_assets)

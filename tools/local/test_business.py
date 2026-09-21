@@ -37,7 +37,7 @@ def test_final_projection_scopes_user_and_week():
 def test_real_model_distance_and_labels():
     from model import LocalModel,distance
     model=LocalModel();now=datetime.now(timezone.utc)
-    points=[{'event_time':(now+timedelta(seconds=i)).isoformat(),'lat':37.5+i*.00001,'lon':127,'label':'car'} for i in range(42)]
+    points=[{'event_time':(now+timedelta(seconds=i)).isoformat(),'lat':37.5+i*.00001,'lon':127,'accuracy':5,'label':'car'} for i in range(42)]
     result=model.result({'trip_id':'distance-check'},points)
     assert result['model_version'].startswith('local-speedtransformer')
     assert sum(s['distance_m'] for s in result['segments'])==pytest.approx(sum(distance(a,b) for a,b in zip(points,points[1:])))

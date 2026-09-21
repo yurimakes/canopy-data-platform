@@ -2,7 +2,7 @@ import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,ActivityIndicator,Platform,Pressable,StyleSheet,TextInput,View,type TextInputProps} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-export const C={green:'#108454',deep:'#124b40',ink:'#173c42',muted:'#5f7871',mint:'#e9f7f0',paper:'#f4faf7',line:'#e3eee8',white:'#fff',red:'#b13c3c'};
+export const C={green:'#24764f',deep:'#193f32',ink:'#263f33',muted:'#617561',mint:'#e7f0d9',paper:'#f1f5e9',line:'#dae5ce',white:'#fff',surface:'#fbfcf5',leaf:'#d5ed9c',red:'#b13c3c'};
 export function Icon({name,size=22,color=C.green}:{name:React.ComponentProps<typeof Ionicons>['name'];size?:number;color?:string}){return <Ionicons name={name} size={size} color={color}/>;}
 export function Button({title,onPress,disabled=false,quiet=false,danger=false,busy=false}:{title:string;onPress:()=>void;disabled?:boolean;quiet?:boolean;danger?:boolean;busy?:boolean}){return <Pressable accessibilityRole="button" accessibilityState={{disabled:disabled||busy,busy}} disabled={disabled||busy} onPress={onPress} style={({pressed})=>[S.button,quiet&&S.quiet,danger&&{backgroundColor:C.red},(pressed||disabled||busy)&&{opacity:.5}]}>{busy&&<ActivityIndicator color={quiet?C.green:'white'}/>}<Text style={[S.buttonText,quiet&&{color:C.green}]}>{title}</Text></Pressable>;}
 export function Field({label,...props}:TextInputProps&{label:string}){return <View style={{gap:8}}><Text style={S.label}>{label}</Text><TextInput {...props} accessibilityLabel={label} placeholderTextColor="#8a9790" style={[S.input,props.style]}/></View>;}
@@ -29,7 +29,7 @@ export const S=StyleSheet.create({
   row:{flexDirection:'row',alignItems:'center',gap:12},between:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
   title:{fontSize:26,lineHeight:35,fontWeight:'800',letterSpacing:-1,color:C.deep},heading:{fontSize:18,lineHeight:25,fontWeight:'700',color:C.ink},
   label:{fontSize:14,fontWeight:'600',color:C.ink},note:{fontSize:13,lineHeight:21,color:C.muted},metric:{fontSize:22,fontWeight:'700',color:C.deep},
-  card:{backgroundColor:C.white,borderRadius:26,padding:20,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
+  card:{backgroundColor:C.surface,borderRadius:26,padding:20,gap:16,borderWidth:1,borderColor:C.line,boxShadow:'0 6px 24px #173c4206'},
   input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:48,borderRadius:28,backgroundColor:C.green,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
   buttonText:{fontSize:15,fontWeight:'700',color:C.white},quiet:{backgroundColor:C.mint},

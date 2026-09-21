@@ -5,10 +5,11 @@ from datetime import datetime, timezone
 import hashlib
 import sys
 import math
+import os
 
 ROOT = Path(__file__).resolve().parents[2]
-REFERENCE = ROOT / '.local-data/reference-model'
-MODEL = ROOT / '.local-data/models/ktdb_population_baseline.pkl'
+REFERENCE = Path(os.getenv('CANOPY_KTDB_REFERENCE_ROOT',str(ROOT / '.local-data/reference-model')))
+MODEL = Path(os.getenv('CANOPY_KTDB_MODEL_PATH',str(ROOT / '.local-data/models/ktdb_population_baseline.pkl')))
 SHA256 = '790a9177f5dff5bcada6330fac7d65a2b2e2da3294e2e70351c36a78e08f523b'
 
 
@@ -23,6 +24,9 @@ def model():
 
 
 def estimate(route, direction='outbound', at=None):
+    from services.domain_context import backend
+    provider=backend.get()
+    if provider is not None:return provider.estimate(route,direction,at)
     if direction not in ('outbound', 'return'):
         raise ValueError('출퇴근 방향 확인 필요')
     if str(REFERENCE) not in sys.path:

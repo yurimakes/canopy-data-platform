@@ -59,7 +59,7 @@ it('updates only profile fields and keeps campaign assignment server-owned',asyn
   const api=await import('../src/profileStore');
   vi.mocked(fetch).mockResolvedValueOnce(reply(signed()));await api.loginProfile('u@example.com','password');
   vi.mocked(fetch).mockResolvedValueOnce(reply({...profile,nickname:'수정'}));
-  await api.updateProfile({...profile,role:'developer',campaignCode:'FAKE',nickname:'수정'});
+  await api.updateProfile({...profile,role:'developer',campaignCode:'FAKE',nickname:'수정',department_name:'개발팀'});
   const body=JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body));
-  expect(body).toEqual({nickname:'수정',home:null,work:null});
+  expect(body).toEqual({nickname:'수정',home:null,work:null,department_name:'개발팀'});
 });

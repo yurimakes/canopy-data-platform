@@ -56,6 +56,14 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             from services.transit_routes import search_places
             return 200, search_places(user_id, body)
         api = trip_service or service()
+        domain_paths={'/api/community','/api/notifications/read','/api/journey/prepare','/api/journey/quote','/api/missions/events','/api/missions/acknowledge'}
+        if path in domain_paths or path.startswith('/api/comparison/'):
+            doc=(account_api or accounts()).authenticated(headers.get('authorization','').removeprefix('Bearer '))
+            if not doc.get('campaign_id') or doc.get('campaign_left_at'):raise ApiError(403,'campaign_required','참여 중인 캠페인이 필요합니다.')
+            from services.community_runtime import dispatch_domain
+            return dispatch_domain(method,path,body,doc,api)
+        if method == "GET" and path == "/api/trips":
+            return 200,{"trips":[public(t) for t in api.store.for_user(user_id) if t.get('user_id')==user_id]}
         if method == "POST" and path == "/api/trips/start":
             if headers.get("authorization", "").startswith("Bearer canopy1."):
                 doc = (account_api or accounts()).authenticated(headers["authorization"][7:])
@@ -63,6 +71,9 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
                     raise ApiError(403, "campaign_required", "참여 중인 캠페인이 필요합니다.")
                 if "campaign_id" in body and body["campaign_id"] != doc["campaign_id"]:
                     raise ApiError(403, "campaign_mismatch", "가입한 캠페인으로만 여정을 시작할 수 있습니다.")
+                if os.getenv('CANOPY_COMMUNITY_ENABLED','false').lower()=='true':
+                    from services.community_runtime import dispatch_domain
+                    return dispatch_domain(method,path,body,doc,api)
                 trip, created = api.start(user_id, body, campaign_id=doc["campaign_id"])
             else:
                 trip, created = api.start(user_id, body)
@@ -117,6 +128,36 @@ def trip_start(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
 
 
+@bp.route(route="trips", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+def trip_list(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="community",methods=["GET"],auth_level=func.AuthLevel.FUNCTION)
+def community_get(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="notifications/read",methods=["POST"],auth_level=func.AuthLevel.FUNCTION)
+def notification_read(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="journey/{action}",methods=["POST"],auth_level=func.AuthLevel.FUNCTION)
+def journey_action(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="missions/{action}",methods=["POST"],auth_level=func.AuthLevel.FUNCTION)
+def mission_action(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
+@bp.route(route="comparison/{trip_id}",methods=["GET"],auth_level=func.AuthLevel.FUNCTION)
+def trip_comparison(req: func.HttpRequest) -> func.HttpResponse:
+    return response(req)
+
+
 @bp.route(route="routes/places", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 def place_search(req: func.HttpRequest) -> func.HttpResponse:
     return response(req)
@@ -151,6 +192,10 @@ def trip_feedback(req: func.HttpRequest) -> func.HttpResponse:
 def trip_worker(timer: func.TimerRequest) -> None:
     # Cosmos processing documents are the outbox: stop + scheduling is a single CAS write.
     service().process_pending()
+    if os.getenv('CANOPY_COMMUNITY_ENABLED','false').lower()=='true':
+        from services.community_runtime import recover_settlements
+        try:recover_settlements(service())
+        except Exception as exc:logging.error('reward_recovery_failed error_type=%s',type(exc).__name__)
     if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
         from services.trip_dispatch import recover
         recover(service().store)

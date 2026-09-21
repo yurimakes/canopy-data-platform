@@ -147,7 +147,7 @@ def _container():
 @bp.route(
     route="users/me/ranking",
     methods=["GET"],
-    auth_level=func.AuthLevel.FUNCTION,
+    auth_level=func.AuthLevel.ADMIN if os.getenv('CANOPY_COMMUNITY_ENABLED','false').lower()=='true' else func.AuthLevel.FUNCTION,
 )
 def ranking_get(req: func.HttpRequest) -> func.HttpResponse:
     try:

@@ -166,6 +166,6 @@ def _get(req: func.HttpRequest) -> func.HttpResponse:
         return _response({"status": "error", "code": "service_unavailable", "message": "미션 서비스를 사용할 수 없습니다."}, 503)
 
 
-@bp.route(route="users/me/missions", methods=["GET"], auth_level=func.AuthLevel.FUNCTION)
+@bp.route(route="users/me/missions", methods=["GET"], auth_level=func.AuthLevel.ADMIN if os.getenv('CANOPY_COMMUNITY_ENABLED','false').lower()=='true' else func.AuthLevel.FUNCTION)
 def mission_get(req: func.HttpRequest) -> func.HttpResponse:
     return _get(req)

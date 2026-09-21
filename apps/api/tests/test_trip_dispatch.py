@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import os
+from unittest.mock import patch
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from services.cosmos_service import SQLiteTripStore
@@ -65,6 +67,17 @@ class DispatchTests(unittest.TestCase):
         job = Job()
         recover(self.store, job, self.now)
         self.assertEqual(job.sent, [])
+
+    def test_resident_mode_preserves_outbox_without_starting_per_trip_jobs(self):
+        job=Job()
+        with patch.dict(os.environ,{'TRIP_DATABRICKS_DISPATCH_MODE':'resident'}):
+            receive(self.store,self.event,self.now)
+            recover(self.store,job,self.now)
+            self.assertEqual(job.sent,[])
+            self.assertEqual(self.current()['status'],'processing')
+            self.assertEqual(self.current()['trip_end_outbox']['status'],'published')
+            recover(self.store,job,self.now+timedelta(seconds=1801))
+            self.assertEqual(self.current()['failed_step'],'databricks_timeout')
 
     def test_lost_submission_retries_same_id_after_restart(self):
         job = Job(); job.failure = True

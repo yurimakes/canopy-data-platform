@@ -35,7 +35,7 @@ def public(item: dict) -> dict:
     fields = ("trip_id", "user_id", "device_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at",
               "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon",
               "original_segments", "confirmed_segments", "revision", "confirmed_at", "confirmed_trip",
-              "confirmation_source",
+              "confirmation_source", "data_quality", "expected_last_sequence",
               "feedback_status", "has_issue", "feedback_id", "feedback_updated_at")
     return {**{key: item.get(key) for key in fields}, "review_required": item.get("review_required", False)}
 
@@ -77,7 +77,7 @@ class TripService:
             raise ApiError(403, "forbidden", "cannot access another user's trip")
         return item
 
-    def start(self, user_id: str, body: dict, *, campaign_id=None) -> tuple[dict, bool]:
+    def start(self, user_id: str, body: dict, *, campaign_id=None, start_context=None) -> tuple[dict, bool]:
         request_id, device_id = required(body, "request_id"), required(body, "device_id")
         if "user_id" in body and body["user_id"] != user_id:
             raise ApiError(403, "forbidden", "user_id differs from authenticated user")
@@ -87,7 +87,7 @@ class TripService:
         now = iso(self.clock())
         item = {"id": trip_id, "type": "trip", "trip_id": trip_id, "user_id": user_id, "device_id": device_id,
                 "campaign_id": campaign_id or self.campaign_id, "planned_route": None,
-                "start_request_id": request_id, "start_fingerprint": fingerprint,
+                "start_request_id": request_id, "start_fingerprint": fingerprint, "start_context": start_context,
                 "status": "collecting", "started_at": now, "ended_at": None, "created_at": now, "updated_at": now,
                 "segments": [], "model_version": None, "failed_step": None, "error_message": None,
                 "is_mock": False, "confirmation_status": "pending", "carbon": None,
@@ -168,7 +168,7 @@ class TripService:
                              "started_at": segment["start_time"], "ended_at": segment["end_time"],
                              "duration_min": (timestamp(segment["end_time"]) - timestamp(segment["start_time"])).total_seconds() / 60}
                             for segment in result["segments"]]
-                claimed.update(segments=segments, model_version=result["model_version"],
+                claimed.update(segments=segments, model_version=result["model_version"],data_quality=result.get('data_quality'),endpoint_observations=result.get('endpoint_observations'),
                                is_mock=result["model_version"] == "mock_v1", status="ready")
                 from .trip_carbon import finalize_result
                 try:

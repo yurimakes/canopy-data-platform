@@ -20,7 +20,7 @@ def prepared(tmp_path):
     prepare(tmp_path,USER,quote['quoteId']);bind(tmp_path,USER,'trip')
     now=datetime.now(timezone.utc)
     trip={**USER,'trip_id':'trip','status':'ready','started_at':now.isoformat(),
-          'ended_at':(now+timedelta(minutes=25)).isoformat(),'confirmed_trip':{'total_carbon_kg':0.01}}
+          'ended_at':(now+timedelta(minutes=25)).isoformat(),'confirmed_trip':{'total_carbon_kg':0.01,'total_distance_m':2000}}
     points=[{'lat':37.5,'lon':127,'event_time':trip['started_at']},
             {'lat':37.518,'lon':127,'event_time':trip['ended_at']}]
     return trip,points
@@ -37,12 +37,21 @@ def test_trip_reward_concurrent_retry_and_timezone(tmp_path):
     assert bonus_wallet(tmp_path,{'user_id':'other','campaign_id':'test'},{'state':'empty'})['data']['balance']==0
 
 
-def test_trip_endpoint_and_no_route(tmp_path):
+def test_free_trip_uses_ktdb_and_actual_distance(tmp_path,monkeypatch):
+    import population
+    calls=[]
+    def estimate(route,**kwargs):
+        calls.append(route)
+        return {'expected_kg':.2,'source':'KTDB test adapter','model_version':'test-model'}
+    monkeypatch.setattr(population,'estimate',estimate)
     trip,points=prepared(tmp_path)
-    points[-1]['lat']=37.501
-    assert settle(tmp_path,USER,trip,points)['status']=='route_incomplete'
-    assert ledger(tmp_path).all()==[]
-    assert settle(tmp_path,USER,{**trip,'trip_id':'free'},points)['status']=='no_route'
+    free={**trip,'trip_id':'free'}
+    result=settle(tmp_path,USER,free,points)
+    assert result['status']=='paid' and result['points']==19
+    assert result['classification']=='population'
+    assert calls[0]['distance_m']==2000
+    assert settle(tmp_path,USER,free,points)['id']==result['id']
+    assert len(calls)==1
 
 
 def test_quote_ownership_expiry_and_snapshot(tmp_path):
@@ -63,9 +72,9 @@ def test_zero_negative_and_small_savings():
 
 
 def test_mission_claim_requires_completion_and_is_once(tmp_path,monkeypatch):
-    import rewards
+    import business
     mission={'assignment_id':'a','mission_name':'걷기','completed':False}
-    monkeypatch.setattr(rewards,'current_missions',lambda *args:{'missions':[mission],'week_start':'2026-09-14'})
+    monkeypatch.setattr(business,'owned_missions',lambda *args:[{'missions':[mission],'week_start':'2026-09-14'}])
     with pytest.raises(ApiError):acknowledge_mission(tmp_path,USER,'a',[])
     with pytest.raises(ApiError):acknowledge_mission(tmp_path,USER,'unknown',[])
     mission['completed']=True

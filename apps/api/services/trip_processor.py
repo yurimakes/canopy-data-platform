@@ -58,6 +58,22 @@ def validate_result(trip: dict, result: ProcessorResult) -> None:
         if result["trip_id"] != trip["trip_id"] or not isinstance(result["model_version"], str) or not result["model_version"].strip():
             raise ValueError("result identity/model_version mismatch")
         segments = result["segments"]
+        quality=result.get('data_quality')
+        if quality is not None:
+            if not isinstance(quality,dict) or quality.get('status') not in ('complete','partial') or not isinstance(quality.get('version'),str) or not isinstance(quality.get('excluded_intervals'),list):
+                raise ValueError('invalid data quality')
+            if bool(quality['excluded_intervals'])!=(quality['status']=='partial'):raise ValueError('inconsistent data quality')
+        endpoints=result.get('endpoint_observations')
+        if endpoints is not None:
+            if not isinstance(endpoints,list) or len(endpoints)!=2:raise ValueError('expected two endpoints')
+            previous=timestamp(trip['started_at'])
+            for point in endpoints:
+                at=timestamp(point['event_time'])
+                if not previous<=at<=timestamp(trip['ended_at']):raise ValueError('endpoint outside Trip')
+                previous=at
+                for key,bound in (('lat',90),('lon',180)):
+                    v=point[key]
+                    if isinstance(v,bool) or not isinstance(v,(int,float)) or not isfinite(v) or abs(v)>bound:raise ValueError('invalid endpoint')
         if not isinstance(segments, list) or not segments or len(segments) > 1000:
             raise ValueError("expected 1..1000 segments")
         seen = set()

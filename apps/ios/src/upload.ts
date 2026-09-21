@@ -14,7 +14,8 @@ export class Uploader {
   private busy = false;
   error = '';
   constructor(private db: Storage, private config: () => ApiConfig | null,
-    private uuid: () => string, private now = Date.now, private request: typeof fetch = fetch) {}
+    private uuid: () => string, private now = Date.now, private request: typeof fetch = fetch,
+    private authorize?: (event: GpsEvent, url: string) => Promise<string>) {}
   async tick(limit=20) {
     if (this.busy) return;
     this.busy=true;
@@ -27,10 +28,11 @@ export class Uploader {
         const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),5000);
         let blocked=false;
         try {
+          const token=this.authorize?await this.authorize(event,config.url):undefined;
           const response=await this.request(config.url,{method:'POST',redirect:'error',signal:controller.signal,
-            headers:{'Content-Type':'application/json','x-functions-key':config.functionKey},body:job.payload});
+            headers:{'Content-Type':'application/json','x-functions-key':config.functionKey,...(token?{Authorization:'Bearer '+token}:{})},body:job.payload});
           if(response.status!==202) {
-            blocked=response.status!==408 && response.status!==429 && response.status<500;
+            blocked=response.status!==401 && response.status!==408 && response.status!==429 && response.status<500;
             throw new Error('GPS API HTTP '+response.status);
           }
           let ack: {status?:string;event_id?:string;trip_id?:string};

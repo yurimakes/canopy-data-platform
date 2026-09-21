@@ -59,6 +59,17 @@ function database(path=':memory:') {
   return {db:new Storage(adapter),native};
 }
 function config():TripConfig{return {url:base,token,allowLocalHttp:true};}
+it('restores only completed owned server history without uploading GPS or stopping a remote recording',async()=>{
+  const {db}=database();await db.init(randomUUID,new Date().toISOString());
+  const row={trip_id:'remote-trip',user_id:'alice',device_id:'other-phone',started_at:'2026-09-19T00:00:00Z',ended_at:'2026-09-19T00:20:00Z',status:'ready',segments:[],is_mock:false};
+  const request=vi.fn(async()=>new Response(JSON.stringify({trips:[row,{...row,trip_id:'other-user',user_id:'bob'},{...row,trip_id:'active',status:'collecting',ended_at:null}]}),{status:200}));
+  const api=new TripApi(db,()=>({...config(),userId:'alice'}),randomUUID,request);
+  await api.syncHistory();
+  expect((await db.list()).map(t=>t.trip_id)).toEqual(['remote-trip']);
+  expect((await api.result('remote-trip'))?.result?.status).toBe('ready');
+  expect((await db.deliveryStatus('remote-trip')).pending).toBe(0);
+  await api.tick(true);expect(request).toHaveBeenCalledTimes(1);
+});
 async function finish(s:Awaited<ReturnType<typeof setup>>) {
   await s.collector.start();s.emit();await s.collector.stop();await acceptGps(s.db);
   await vi.waitFor(async()=>{await s.api.tick(true);expect((await s.api.result(s.collector.trip!.trip_id))?.result?.status).toBe('ready');},

@@ -77,6 +77,7 @@ function CanopyApp() {
         await service!.collector.refresh();
         const uploader=await getUploader(); await uploader.tick();
         const tripApi=await getTripApi(); await tripApi.tick(wake);
+        if(profile&&screen==='user')try{await tripApi.syncHistory();}catch(e){if(alive)setTripError(String(e));}
         const list=await service!.db.list();
         const owned=list.filter(t=>t.user_id===profile?.id);
         const activeId=service!.collector.trip?.user_id===profile?.id?service!.collector.trip?.trip_id:undefined;
@@ -99,7 +100,7 @@ function CanopyApp() {
     const app=AppState.addEventListener('change',state=>{if(state==='active')void tick(true);});
     const network=Network.addNetworkStateListener(state=>{if(state.isConnected && state.isInternetReachable!==false)void tick(true);});
     return ()=>{alive=false;clearInterval(timer);app.remove();network.remove();};
-  },[service,selectedTrip,profile?.id]);
+  },[service,selectedTrip,profile?.id,screen]);
   useEffect(()=>{if(service && c?.phase!=='recording' && c?.phase!=='starting') void service.db.list().then(setTrips).catch(e=>setError(String(e)));},[service,c?.phase]);
   const ownsCurrent=!!profile&&c?.trip?.user_id===profile.id;
   const latest=ownsCurrent?c?.latest:undefined;
@@ -171,11 +172,11 @@ function CanopyApp() {
     setError('');setScreen(c?.collectionMode??'user');setEntered(true);
   }
   async function changeProfile(p:Profile){const saved=await updateProfile(p);await service?.db.saveSync('ui:session',saved);setProfile(saved);}
-  async function startJourney(){
+  async function startJourney(direction:'outbound'|'return'='outbound'){
     if(!service||!c||!profile||['starting','recording','stopping'].includes(c.phase)||c.trip?.status==='recording')return;
     setError('');setTripError('');setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
     await service.db.saveSync('ui:pending-journey',{profile_id:profile.id,route});
-    await prepareJourney(route?.quoteId);
+    await prepareJourney(route?.quoteId,direction);
     await c?.start();
   }
   function select(id:string){

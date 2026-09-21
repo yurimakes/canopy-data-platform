@@ -66,6 +66,16 @@ def recover(store, api=None, now=None):
             continue
         if dispatch.get("next_attempt_at", "") > now.isoformat():
             continue
+        if os.getenv('TRIP_DATABRICKS_DISPATCH_MODE','job')=='resident':
+            # The continuous worker consumes the durable published outbox directly.
+            # Never launch a second Spark job for each Trip in this mode.
+            if now < datetime.fromisoformat(trip['ended_at']) + timedelta(seconds=1800):
+                continue
+            trip.update(status='failed',failed_step='databricks_timeout',
+                        error_message='Processing did not finish. Please retry.')
+            try:store.replace(trip)
+            except Conflict:pass
+            continue
         event = trip.get("trip_end_outbox", {}).get("event", {})
         failure = None
         try:

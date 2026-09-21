@@ -2,6 +2,8 @@
 import importlib.util
 import shutil
 import subprocess
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,9 @@ def packaged(tmp_path):
     for name in ["cloud/azure/functions/func_canopy_dev", "apps/api"]:
         shutil.copytree(ROOT / name, tmp_path / name,
                         ignore=shutil.ignore_patterns(".venv", "build", ".local-data", "__pycache__", ".env*"))
+    for name in packager.DOMAIN_FILES:
+        destination=tmp_path/name;destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copy2(ROOT/name,destination)
     return packager.package(tmp_path)
 
 
@@ -27,6 +32,18 @@ def test_all_function_groups_registered(packaged):
     assert (packaged / "mission_policy.yaml").is_file()
     assert (packaged / "ranking_api.py").is_file()
     assert not (packaged / "local.settings.json").exists()
+
+def test_mobile_function_key_cannot_call_diagnostics_or_legacy_principal_routes(packaged):
+    script="""
+from function_app import app
+names={'gps_smoke','cosmos_smoke','keyvault_smoke','mission_get','ranking_get'}
+for function in app.get_functions():
+    if function.get_function_name() in names:
+        binding=next(b for b in function.get_bindings_dict()['bindings'] if b['type']=='httpTrigger')
+        assert binding['authLevel'].value=='admin'
+"""
+    env={**os.environ,'CANOPY_COMMUNITY_ENABLED':'true'};env.pop('PYTHONPATH',None)
+    subprocess.run([sys.executable,'-c',script],cwd=packaged,env=env,check=True,capture_output=True)
 
 
 def test_missing_ranking_dependency_blocks_package(packaged):

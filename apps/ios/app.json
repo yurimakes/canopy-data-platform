@@ -27,6 +27,19 @@
       ],
       "expo-sharing",
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "localOnly": false,
+      "routeApiUrl": "",
+      "gpsApiUrl": "",
+      "gpsFunctionKey": "",
+      "tripApiUrl": "",
+      "tripFunctionKey": "",
+      "tripAllowLocalHttp": false,
+      "eas": {
+        "projectId": "ff471472-f120-4d84-9835-62ce24c81ab8"
+      }
+    },
+    "owner": "haydens2hn"
   }
 }

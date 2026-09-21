@@ -4,6 +4,18 @@
     "appVersionSource": "local"
   },
   "build": {
+    "production": {
+      "extends": "azure-preview",
+      "environment": "production",
+      "distribution": "store",
+      "autoIncrement": true
+    },
+    "azure-preview": {
+      "distribution": "internal",
+      "environment": "preview",
+      "env": {"CANOPY_RELEASE_BUILD":"true","CANOPY_LOCAL_ONLY":"false","CANOPY_UI_PREVIEW":"false","CANOPY_TRIP_ALLOW_LOCAL_HTTP":"false"},
+      "ios": {"simulator":false}
+    },
     "preview": {
       "distribution": "internal",
       "environment": "preview",
@@ -11,5 +23,8 @@
         "simulator": false
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

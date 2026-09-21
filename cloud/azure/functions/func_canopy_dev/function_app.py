@@ -47,7 +47,9 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
     return func.HttpResponse(
         json.dumps({
             "status": "ok",
-            "service": "canopy-api"
+            "service": "canopy-api",
+            "release": (Path(__file__).with_name('release-id.txt').read_text().strip()
+                        if Path(__file__).with_name('release-id.txt').is_file() else None)
         }),
         status_code=200,
         mimetype="application/json"
@@ -60,7 +62,7 @@ def health(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(
     route="gps-smoke",
     methods=["POST"],
-    auth_level=func.AuthLevel.FUNCTION
+    auth_level=func.AuthLevel.ADMIN
 )
 def gps_smoke(req: func.HttpRequest) -> func.HttpResponse:
 
@@ -140,7 +142,7 @@ def gps_smoke(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(
     route="cosmos-smoke",
     methods=["POST"],
-    auth_level=func.AuthLevel.FUNCTION
+    auth_level=func.AuthLevel.ADMIN
 )
 def cosmos_smoke(req: func.HttpRequest) -> func.HttpResponse:
 
@@ -213,7 +215,7 @@ def cosmos_smoke(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(
     route="keyvault-smoke",
     methods=["GET"],
-    auth_level=func.AuthLevel.FUNCTION
+    auth_level=func.AuthLevel.ADMIN
 )
 def keyvault_smoke(req: func.HttpRequest) -> func.HttpResponse:
 
@@ -311,6 +313,15 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
         logging.warning("GPS request rejected: body is not valid JSON")
         return _gps_json_response({"code": "invalid_json"}, 400)
 
+    if os.getenv('CANOPY_ACCOUNT_AUTH_ENABLED','false').lower()=='true':
+        from services.gps_authorization import authorize
+        from services.runtime import authenticate,service
+        from services.trip_service import ApiError
+        try:authorize(payload,req.headers,service(),authenticate)
+        except ApiError as exc:return _gps_json_response({'code':exc.code,'message':str(exc)},exc.status)
+        except Exception:
+            logging.error('GPS authorization service unavailable')
+            return _gps_json_response({'code':'service_unavailable'},503)
     _extract_core_fields(payload)
 
     event.set(req.get_body().decode("utf-8"))

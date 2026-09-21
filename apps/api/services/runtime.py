@@ -118,6 +118,8 @@ def authenticate(headers) -> str:
             if isinstance(secret, str) and len(secret) >= 24 and hmac.compare_digest(secret, token):
                 return user_id
         raise ApiError(401, "unauthorized", "invalid local test token")
+    if os.getenv('CANOPY_ACCOUNT_AUTH_ENABLED','false').lower()=='true' and not os.getenv('TRIP_JWKS_URL'):
+        raise ApiError(401,'unauthorized','invalid access token')
     import jwt
     issuer, audience, url = (os.environ[k] for k in ("TRIP_JWT_ISSUER", "TRIP_JWT_AUDIENCE", "TRIP_JWKS_URL"))
     try:
