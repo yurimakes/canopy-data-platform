@@ -26,6 +26,9 @@ variables:
   deduplication_watermark:
     description: Development default for bounded event_id deduplication state; tune per environment.
     default: 1 day
+  apply_deduplication:
+    description: Apply bounded event_id deduplication to GPS and trip_ended streams.
+    default: "true"
   event_hubs_namespace:
     default: evhns-canopy-dev
   event_hubs_topic:
@@ -77,6 +80,7 @@ targets:
       ingestion_continuous_pause_status: PAUSED
       ingestion_trigger_interval: 1 second
       fuse_gps_parse_validation: "true"
+      apply_deduplication: "false"
     presets:
       tags:
         environment: trial
@@ -88,6 +92,7 @@ targets:
           configuration:
             pipelines.trigger.interval: ${var.ingestion_trigger_interval}
             canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
+            canopy.apply_deduplication: ${var.apply_deduplication}
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
