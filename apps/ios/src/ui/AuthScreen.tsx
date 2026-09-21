@@ -1,3 +1,4 @@
+import {IllustratedIcon} from './IllustratedIcon';
 import Text from './AppText';
 import {LandingScreen} from './LandingScreen';
 import React,{useState} from 'react';
@@ -30,7 +31,7 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
   return <SafeAreaView style={S.root}><KeyboardAvoidingView style={{flex:1}} behavior={Platform.OS==='ios'?'padding':undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[S.scroll,{flexGrow:1,paddingTop:24,paddingBottom:32}]}>
       <Fade key={page}>
-      <View style={S.between}><View style={S.row}><Icon name="leaf" size={27}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
+      <View style={S.between}><View style={S.row}><IllustratedIcon name="leaf" size={38}/><Text style={{fontSize:23,fontWeight:'800',letterSpacing:2,color:C.deep}}>Canopy</Text></View>{<Pressable accessibilityRole="button" accessibilityLabel="처음으로" onPress={()=>navigate('welcome')} style={{padding:12}}><Icon name="close"/></Pressable>}</View>
       {page==='signup'&&step===1?<>
         <Text style={S.pill}>2 / 2  출퇴근 장소</Text>
         <Text style={S.title}>자주 가는 곳을{ '\n'}알려주세요.</Text>

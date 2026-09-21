@@ -1,9 +1,10 @@
+import {IllustratedIcon,type ArtName} from './IllustratedIcon';
 import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
 import {AccessibilityInfo,Animated,ActivityIndicator,Platform,Pressable,StyleSheet,TextInput,View,type TextInputProps} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-export const C={green:'#176B50',deep:'#102F29',ink:'#19372F',muted:'#6B7C75',mint:'#EAF2E9',paper:'#F7F8F2',line:'#E2E8DF',white:'#FFFFFF',surface:'#FFFFFF',leaf:'#D7F88B',red:'#B34040',gold:'#AE853B'};
-export function Icon({name,size=22,color=C.green}:{name:React.ComponentProps<typeof Ionicons>['name'];size?:number;color?:string}){return <Ionicons name={name} size={size} color={color}/>;}
+export const C={green:'#176B50',deep:'#102F29',ink:'#19372F',muted:'#6B7C75',mint:'#EAF2E9',paper:'#F0F6F3',line:'#E2E8DF',white:'#FFFFFF',surface:'#FFFFFF',leaf:'#D7F88B',red:'#B34040',gold:'#AE853B'};
+export function Icon({name,size=22,color=C.green}:{name:React.ComponentProps<typeof Ionicons>['name'];size?:number;color?:string}){const art:Partial<Record<string,ArtName>>={'business-outline':'office','home-outline':'home','leaf':'leaf','leaf-outline':'leaf','footsteps-outline':'walk','flag-outline':'mission','gift-outline':'wallet','wallet-outline':'wallet','trophy':'trophy','trophy-outline':'trophy','podium-outline':'trophy','bus-outline':'bus'};return art[name]?<IllustratedIcon name={art[name]!} size={Math.max(28,size)}/>:<Ionicons name={name} size={size} color={color}/>;}
 export function Button({title,onPress,disabled=false,quiet=false,danger=false,busy=false}:{title:string;onPress:()=>void;disabled?:boolean;quiet?:boolean;danger?:boolean;busy?:boolean}){
  const scale=useRef(new Animated.Value(1)).current,reduced=useRef(true);
  useEffect(()=>{let alive=true;void AccessibilityInfo.isReduceMotionEnabled().then(v=>{if(alive)reduced.current=v;});const sub=AccessibilityInfo.addEventListener('reduceMotionChanged',v=>{reduced.current=v;});return()=>{alive=false;sub.remove();};},[]);
@@ -34,7 +35,7 @@ export const S=StyleSheet.create({
   row:{flexDirection:'row',alignItems:'center',gap:12},between:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
   title:{fontSize:30,lineHeight:40,fontWeight:'800',letterSpacing:-1.3,color:C.deep},heading:{fontSize:18,lineHeight:25,fontWeight:'700',color:C.ink},
   label:{fontSize:14,fontWeight:'600',color:C.ink},note:{fontSize:13,lineHeight:21,color:C.muted},metric:{fontSize:22,fontWeight:'700',color:C.deep},
-  card:{backgroundColor:C.surface,borderRadius:24,padding:22,gap:16,borderWidth:1,borderColor:'#EBEFE7',boxShadow:'0 4px 18px #102F2904'},
+  card:{backgroundColor:C.surface,borderRadius:24,padding:22,gap:16,borderWidth:1,borderColor:'#FFFFFF',boxShadow:'0 8px 26px #234B3910'},
   input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:56,borderRadius:18,backgroundColor:C.deep,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
   buttonText:{flexShrink:1,textAlign:'center',fontSize:16,fontWeight:'700',color:C.white},quiet:{backgroundColor:C.mint},

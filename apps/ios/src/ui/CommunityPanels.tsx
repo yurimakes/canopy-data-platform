@@ -1,3 +1,6 @@
+import {MissionCard} from './MissionCard';
+import {IllustratedIcon} from './IllustratedIcon';
+import {MascotConversation} from './MascotConversation';
 import Text from './AppText';
 import {LinearGradient} from 'expo-linear-gradient';
 import {ProfileAvatar} from './ProfileAvatar';
@@ -36,13 +39,14 @@ export function MissionPanel({value=unavailable,onRetry,preview=false}:{value?:R
   const [filter,setFilter]=useState<'all'|'active'|'completed'>('active');
   const [busy,setBusy]=useState<string|null>(null),[error,setError]=useState('');
   const [reward,setReward]=useState<{amount:number;title:string}|null>(null);
-  const [claimed,setClaimed]=useState<string[]>([]);
-  async function claim(id:string){if(busy)return;setBusy(id);setError('');try{
+  const [claimed,setClaimed]=useState<string[]>([]),[leaving,setLeaving]=useState<string|null>(null);
+  const claimLock=useRef(false);
+  async function claim(id:string){if(claimLock.current)return;claimLock.current=true;setBusy(id);setError('');try{
     const example=preview&&value.state==='ready'?value.data.items.find(m=>m.id===id):undefined;
     const r=preview?{status:'paid',points:example?.rewardPoints??0,title:example?.title??'미션 보상'}:await localAction('/missions/acknowledge',{assignment_id:id});
     if(r.status!=='paid')throw Error('지급 결과를 확인하지 못했어요. 다시 시도해주세요.');
-    setClaimed(v=>[...v,id]);if(Number.isFinite(r.points)&&r.points>0)setReward({amount:r.points,title:r.title});onRetry?.();
-  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(null);}}
+    setLeaving(id);await new Promise(resolve=>setTimeout(resolve,420));setClaimed(v=>[...v,id]);setLeaving(null);if(Number.isFinite(r.points)&&r.points>0)setReward({amount:r.points,title:r.title});onRetry?.();
+  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(null);claimLock.current=false;}}
   const items=value.state==='ready'?value.data.items.map(m=>({...m,status:claimed.includes(m.id)?'completed':m.status})):[];
   const shown=useRef(new Set<string>());
   const [started,setStarted]=useState<string[]>([]);
@@ -52,22 +56,16 @@ export function MissionPanel({value=unavailable,onRetry,preview=false}:{value?:R
   useEffect(()=>{for(const m of visible){if(shown.current.has(m.id)||m.id.startsWith('preview-'))continue;shown.current.add(m.id);void track(m.id,'shown').catch(()=>shown.current.delete(m.id));}},[shownKey]);
   return <>
     <View style={{gap:8}}><Eyebrow>SMALL STEPS. BIG CHANGE.</Eyebrow><Text style={S.title}>하나씩 해내는{'\n'}초록 미션.</Text><Note>목표를 채우고 토큰을 받아요.</Note></View>
-    <View style={[S.between,{backgroundColor:C.deep,borderRadius:24,padding:20}]}><View style={{gap:8}}><Text style={{color:'#BFD3C6',fontSize:12}}>이번 주 달성</Text><Text style={{fontSize:32,fontWeight:'700',color:C.leaf}}>{items.filter(m=>m.status==='completed'||m.status==='claimable').length}<Text style={{fontSize:16,color:'white'}}> / {items.length}</Text></Text></View><View style={{width:95}}><CanopyMascot pose="trophy" height={95} animated/></View></View>
+    <View style={[S.between,{backgroundColor:'#E6F2EA',borderRadius:26,padding:20,borderWidth:1,borderColor:'white'}]}><View style={{gap:8}}><Text style={{color:C.muted,fontSize:12}}>이번 주 달성</Text><Text style={{fontSize:32,fontWeight:'700',color:C.deep}}>{items.filter(m=>m.status==='completed'||m.status==='claimable').length}<Text style={{fontSize:16,color:C.muted}}> / {items.length}</Text></Text></View><View style={{width:95}}><IllustratedIcon name="mission" size={95}/></View></View>
     <Segmented items={[{id:'active',label:'도전 중'},{id:'completed',label:'완료'},{id:'all',label:'전체'}]} value={filter} onChange={v=>setFilter(v as typeof filter)}/>
     {!!error&&<Note error>{error}</Note>}
     {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
       <Updated week={value.data.week} time={value.data.updatedAt}/>
-      {visible.map((m,i)=><Card key={m.id}>
-        <View style={S.between}><View style={{backgroundColor:['#edf5d8','#e5eefb','#fff0db'][i%3],padding:14,borderRadius:20}}><Icon name={m.status==='completed'?'checkmark-circle':'leaf-outline'} size={30}/></View><Text style={S.pill}>{m.status==='completed'?'보상 수령 완료':m.status==='claimable'?'목표 달성!':m.category}</Text></View>
-        <Text style={[S.heading,{fontSize:21,lineHeight:30}]}>{m.title}</Text>{m.week&&m.week!==value.data.week&&<Note>{m.week} 주에 달성한 미션 · 지금도 수령할 수 있어요.</Note>}<Disclosure title="달성 방법"><Note>{m.description}</Note></Disclosure>
-        <View style={S.between}><Text style={S.label}>{m.progress.toLocaleString()} / {m.goal.toLocaleString()} {m.unit}</Text><Text style={[S.label,{color:'#a27621'}]}>{m.rewardPoints!==undefined?`+${m.rewardPoints} T`:''}</Text></View>
-        <ProgressTrack value={m.progress} max={m.goal}/>
-        {m.status==='active'&&<><Button title={started.includes(m.id)?'실천 중':'도전하기'} quiet disabled={started.includes(m.id)} onPress={()=>void track(m.id,'started').then(()=>setStarted(v=>[...v,m.id])).catch(e=>setError(String(e)))}/><Note>여정을 기록하면 자동으로 반영돼요.</Note></>}
-        {m.status==='claimable'&&<Button title="보상 받기" busy={busy===m.id} disabled={!!busy} onPress={()=>void claim(m.id)}/>}
-      </Card>)}
+      {visible.map(m=><MissionCard key={m.id} mission={m} week={value.data.week} started={started.includes(m.id)} busy={!!busy} leaving={leaving===m.id} onStart={()=>void track(m.id,'started').then(()=>setStarted(v=>[...v,m.id])).catch(e=>setError(String(e)))} onClaim={()=>void claim(m.id)}/>)}
       {!visible.length&&<Status value={{state:'empty'}}/>}
     </>}
-    {reward&&<RewardCelebration {...reward} onClose={()=>{setReward(null);setFilter('completed');onRetry?.();}}/>}
+    <MascotConversation compact message="하나씩 해내고 있어요. 오늘의 작은 실천을 응원해요!"/>
+    {reward&&<RewardCelebration {...reward} headline={"작은 실천이\n보상이 되었어요."} confirmLabel="확인 · 완료한 미션 보기" onClose={()=>{setReward(null);setFilter('completed');onRetry?.();}}/>}
   </>;
 }
 
@@ -75,11 +73,11 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
  const [group,setGroup]=useState<'personal'|'department'>('personal'),[season,setSeason]=useState(false);
  const data=value.state==='ready'?value.data:null,rows=(season?data?.cumulative?.[group]:data?.[group])??[];
  const me=rows.find(r=>'isMe' in r&&r.isMe);
- return <><View style={S.between}><View style={{gap:8}}><Eyebrow>THE GREEN LEAGUE</Eyebrow><Text style={S.title}>함께라서,{'\n'}더 멀리.</Text></View><View style={{width:90}}><CanopyMascot pose="trophy" animated height={110}/></View></View>
+ return <><View style={S.between}><View style={{gap:8}}><Eyebrow>THE GREEN LEAGUE</Eyebrow><Text style={S.title}>함께라서,{'\n'}더 멀리.</Text></View><View style={{width:90}}><IllustratedIcon name="trophy" size={95}/></View></View>
  <Segmented items={[{id:'week',label:'이번 주'},{id:'season',label:'캠페인 전체'}]} value={season?'season':'week'} onChange={v=>setSeason(v==='season')}/>
  <View style={S.row}>{(['personal','department'] as const).map(g=><Pressable key={g} accessibilityRole="button" accessibilityState={{selected:group===g}} onPress={()=>setGroup(g)} style={{minHeight:44,paddingHorizontal:16,justifyContent:'center',borderBottomWidth:2,borderBottomColor:group===g?C.green:'transparent'}}><Text style={[S.label,{color:group===g?C.green:C.muted}]}>{g==='personal'?'개인':'부서'}</Text></Pressable>)}</View>
  {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
- {rows.length>0&&<View style={{flexDirection:'row',alignItems:'flex-end',gap:8,paddingTop:10,paddingBottom:4}}>{[2,1,3].map(rank=>{const row=rows.find(r=>r.rank===rank);return <View key={rank} style={{flex:1,alignItems:'center',gap:8}}>{rank===1&&<Icon name="trophy" color={C.gold} size={24}/>}<ProfileAvatar size={rank===1?72:56} name={row?.name??'—'} uri={row&&'avatarDataUri' in row&&typeof row.avatarDataUri==='string'?row.avatarDataUri:null}/><Text numberOfLines={1} style={[S.label,{fontSize:12}]}>{row?.name??'도전자를 기다려요'}</Text><View style={{width:'100%',height:rank===1?92:rank===2?68:52,borderTopLeftRadius:16,borderTopRightRadius:16,backgroundColor:rank===1?C.deep:'#E5EDDD',alignItems:'center',justifyContent:'center',gap:3}}><Text style={{fontSize:22,fontWeight:'700',color:rank===1?C.leaf:C.green}}>{rank}</Text><Text style={{fontSize:11,color:rank===1?'white':C.green}}>{row?.points??0} P</Text></View></View>;})}</View>}
+ {rows.length>0&&<View style={{flexDirection:'row',alignItems:'flex-end',gap:8,paddingTop:10,paddingBottom:4}}>{[2,1,3].map(rank=>{const row=rows.find(r=>r.rank===rank);return <View key={rank} style={{flex:1,alignItems:'center',gap:8}}>{rank===1&&<IllustratedIcon name="trophy" size={32}/>}<ProfileAvatar size={rank===1?72:56} name={row?.name??'—'} uri={row&&'avatarDataUri' in row&&typeof row.avatarDataUri==='string'?row.avatarDataUri:null}/><Text numberOfLines={1} style={[S.label,{fontSize:12}]}>{row?.name??'도전자를 기다려요'}</Text><View style={{width:'100%',height:rank===1?92:rank===2?68:52,borderTopLeftRadius:16,borderTopRightRadius:16,backgroundColor:rank===1?C.deep:'#E5EDDD',alignItems:'center',justifyContent:'center',gap:3}}><Text style={{fontSize:22,fontWeight:'700',color:rank===1?C.leaf:C.green}}>{rank}</Text><Text style={{fontSize:11,color:rank===1?'white':C.green}}>{row?.points??0} P</Text></View></View>;})}</View>}
  {me&&<View style={[S.between,{padding:18,borderRadius:18,backgroundColor:C.leaf}]}><View style={S.row}><Icon name="trending-up"/><Text style={S.label}>현재 내 순위</Text></View><Text style={S.heading}>{me.rank}위</Text></View>}
  <Note>{season?'캠페인 동안 모은 여정 포인트':'이번 주에 모은 여정 포인트'}로 순위를 정해요.</Note>
  {rows.map(row=><View key={row.id} style={[S.row,{paddingVertical:16,borderBottomWidth:1,borderColor:C.line}]}><Text style={[S.metric,{width:26,fontSize:18,color:row.rank<=3?C.green:C.muted}]}>{row.rank}</Text><ProfileAvatar name={row.name} uri={'avatarDataUri' in row&&typeof row.avatarDataUri==='string'?row.avatarDataUri:null} size={42}/><View style={{flex:1,gap:3}}><Text numberOfLines={1} style={S.label}>{row.name}{'isMe' in row&&row.isMe?' · 나':''}</Text><Text style={{fontSize:11,color:C.muted}}>{group==='personal'?'초록 발걸음':'함께 쌓은 변화'}</Text></View><Text style={S.label}>{(row.points??0).toLocaleString()} P</Text></View>)}
@@ -92,11 +90,11 @@ export function RewardPanel({value=unavailable,onRetry}:{value?:RemotePanel<Rewa
  const [kind,setKind]=useState('all');
  const rows=value.state==='ready'?value.data.items.filter(r=>kind==='all'||(r.kind??'weekly')===kind):[];
  return <><Eyebrow>MY CANOPY WALLET</Eyebrow><Text style={S.title}>좋은 이동이{'\n'}쌓이는 지갑.</Text>
- <LinearGradient colors={['#153F32','#0A2723']} start={{x:0,y:0}} end={{x:1,y:1}} style={{borderRadius:28,padding:24,gap:14}}><View style={S.between}><Text style={{color:'#C1D9CA',fontSize:13}}>보유 캐노피 토큰</Text><Icon name="wallet-outline" color={C.leaf}/></View><View style={S.between}><Text style={{fontSize:44,fontWeight:'700',letterSpacing:-2,color:'white'}}>{value.state==='ready'?value.data.balance.toLocaleString('ko-KR',{maximumFractionDigits:2}):'—'}<Text style={{fontSize:22,color:C.leaf}}> T</Text></Text><View style={{width:85}}><CanopyMascot pose="coin" animated height={100}/></View></View><Text style={{color:'#B3CBBE',fontSize:12}}>당신의 작은 실천이 만든 가치</Text></LinearGradient>
+ <LinearGradient colors={['#153F32','#0A2723']} start={{x:0,y:0}} end={{x:1,y:1}} style={{borderRadius:28,padding:24,gap:14}}><View style={S.between}><Text style={{color:'#C1D9CA',fontSize:13}}>보유 캐노피 토큰</Text><IllustratedIcon name="wallet" size={52}/></View><View style={S.between}><Text style={{fontSize:44,fontWeight:'700',letterSpacing:-2,color:'white'}}>{value.state==='ready'?value.data.balance.toLocaleString('ko-KR',{maximumFractionDigits:2}):'—'}<Text style={{fontSize:22,color:C.leaf}}> T</Text></Text><View style={{width:85}}><CanopyMascot pose="coin" animated height={100}/></View></View><Text style={{color:'#B3CBBE',fontSize:12}}>당신의 작은 실천이 만든 가치</Text></LinearGradient>
  {value.state==='ready'&&value.data.developmentOnly&&<Note>테스트 토큰이에요. 실제 자산이 아닙니다.</Note>}
  <SectionTitle title="토큰 내역"/>
  <View style={{flexDirection:'row',gap:6,flexWrap:'wrap'}}>{[['all','전체'],['trip','이동'],['mission','미션'],['weekly','주간'],['ranking','랭킹']].map(([id,label])=><Pressable key={id} accessibilityRole="button" accessibilityState={{selected:kind===id}} onPress={()=>setKind(id)} style={{paddingHorizontal:16,minHeight:44,justifyContent:'center',borderRadius:14,backgroundColor:kind===id?C.deep:'#EAF0E5'}}><Text style={{fontSize:13,fontWeight:'600',color:kind===id?'white':C.muted}}>{label}</Text></Pressable>)}</View>
- {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>{!rows.length&&<Status value={{state:'empty'}}/>}{rows.map(row=><View key={row.id} style={[S.row,{paddingVertical:16,borderBottomWidth:1,borderColor:C.line}]}><View style={{padding:12,borderRadius:16,backgroundColor:C.mint}}><Icon name={row.kind==='mission'?'flag-outline':row.kind==='ranking'?'trophy-outline':'footsteps-outline'}/></View><View style={{flex:1,gap:5}}><Text style={[S.label,{fontSize:13}]}>{row.title}</Text><Note>{new Date(row.time).toLocaleDateString('ko-KR',{month:'short',day:'numeric'})} · {row.status==='paid'?'적립 완료':'확인 중'}</Note></View><Text style={[S.label,{color:C.green}]}>{row.status==='paid'?`+${row.amount.toLocaleString()} T`:'확인 중'}</Text></View>)}</>}
+ {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>{!rows.length&&<Status value={{state:'empty'}}/>}{rows.map(row=><View key={row.id} style={[S.row,{paddingVertical:16,borderBottomWidth:1,borderColor:C.line}]}><View style={{padding:12,borderRadius:16,backgroundColor:C.mint}}><IllustratedIcon name={row.kind==='mission'?'mission':row.kind==='ranking'?'trophy':'walk'} size={42}/></View><View style={{flex:1,gap:5}}><Text style={[S.label,{fontSize:13}]}>{row.title}</Text><Note>{new Date(row.time).toLocaleDateString('ko-KR',{month:'short',day:'numeric'})} · {row.status==='paid'?'적립 완료':'확인 중'}</Note></View><Text style={[S.label,{color:C.green}]}>{row.status==='paid'?`+${row.amount.toLocaleString()} T`:'확인 중'}</Text></View>)}</>}
  <Disclosure title="토큰은 어떻게 모으나요?"><Note>이동: 기준보다 탄소를 줄이면 적립돼요.</Note><Note>미션: 목표를 달성하고 보상을 받으세요.</Note><Note>랭킹: 주간 상위권에 들면 추가 적립돼요.</Note></Disclosure></>;
 }
 

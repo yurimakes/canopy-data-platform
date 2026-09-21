@@ -13,7 +13,7 @@ import Constants from 'expo-constants';
 import type {ServerTrip} from '../tripApi';
 import {km} from '../service';
 
-export function RewardCelebration({amount,title,onClose}:{amount:number;title:string;onClose():void}){
+export function RewardCelebration({amount,title,onClose,confirmLabel='확인 · 지갑 보기',headline='오늘의 이동이\n보상이 되었어요.'}:{amount:number;title:string;onClose():void;confirmLabel?:string;headline?:string}){
  const enter=useRef(new Animated.Value(0)).current,fly=useRef(new Animated.Value(0)).current;
  const coin=useRef<View>(null),wallet=useRef<View>(null),[destination,setDestination]=useState({x:0,y:180});
  const [count,setCount]=useState(0),[sending,setSending]=useState(false),reduced=useReducedMotion();
@@ -23,12 +23,12 @@ export function RewardCelebration({amount,title,onClose}:{amount:number;title:st
  useEffect(()=>()=>{fly.stopAnimation();},[]);
  return <Modal transparent visible animationType="fade" onRequestClose={onClose}><SafeAreaView style={{flex:1,backgroundColor:'#082A24'}}><ScrollView contentContainerStyle={{flexGrow:1,justifyContent:'center',padding:28,gap:20,alignItems:'center'}}>
   <Eyebrow light>YOUR MOVE. YOUR REWARD.</Eyebrow>
-  <Text style={{fontSize:29,lineHeight:40,color:'white',fontWeight:'700',textAlign:'center'}}>오늘의 이동이{'\n'}보상이 되었어요.</Text>
+  <Text style={{fontSize:29,lineHeight:40,color:'white',fontWeight:'700',textAlign:'center'}}>{headline}</Text>
   <View ref={coin} collapsable={false} style={{height:205,width:205,zIndex:10}}><Animated.View style={{flex:1,opacity:fly.interpolate({inputRange:[0,.85,1],outputRange:[1,1,0]}),transform:[{translateX:fly.interpolate({inputRange:[0,1],outputRange:[0,destination.x]})},{translateY:fly.interpolate({inputRange:[0,1],outputRange:[0,destination.y]})},{scale:fly.interpolate({inputRange:[0,.35,1],outputRange:[1,1.1,.08]})}]}}><CanopyMascot pose="coin" height={205} animated/></Animated.View></View>
   <Text accessibilityLiveRegion="polite" style={{fontSize:58,fontWeight:'700',letterSpacing:-2,color:C.leaf}}>+{count.toLocaleString('ko-KR',{maximumFractionDigits:2})}<Text style={{fontSize:26}}> T</Text></Text>
   <Text style={{fontSize:14,color:'#C2D8CD',textAlign:'center'}}>{title}</Text>
   <View ref={wallet} collapsable={false} style={{borderWidth:1,borderColor:'#537364',borderRadius:20,padding:18,flexDirection:'row',alignItems:'center',gap:12,width:'100%',backgroundColor:'#193E32'}}><Icon name="wallet-outline" color={C.leaf} size={30}/><View style={{flex:1}}><Text style={{color:'white',fontWeight:'700'}}>내 캐노피 지갑</Text><Text style={{color:'#C2D8CD',fontSize:12,marginTop:4}}>{sending?'토큰이 도착했어요':'적립 완료'}</Text></View><Icon name="checkmark-circle" color={C.leaf}/></View>
-  <View style={{width:'100%'}}><Button title={sending?'지갑으로 이동 중':'확인 · 지갑 보기'} quiet busy={sending} onPress={confirm}/></View>
+  <View style={{width:'100%'}}><Button title={sending?'토큰을 담고 있어요':confirmLabel} quiet busy={sending} onPress={confirm}/></View>
  </ScrollView></SafeAreaView></Modal>;
 }
 const celebratedTrips=new Set<string>();
