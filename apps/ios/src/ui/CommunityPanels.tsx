@@ -54,7 +54,7 @@ export function MissionPanel({value=unavailable,onRetry,preview=false,nickname='
   const shownKey=visible.map(m=>m.id).join('|');
   useEffect(()=>{for(const m of visible){if(shown.current.has(m.id)||m.id.startsWith('preview-'))continue;shown.current.add(m.id);void track(m.id,'shown').catch(()=>shown.current.delete(m.id));}},[shownKey]);
   return <>
-    <Text style={[S.title,{fontSize:25,lineHeight:36}]}>{nickname}님만을 위한{'\n'}이번 주 미션</Text>
+    <View style={{gap:8}}><Eyebrow>SMALL STEPS. BIG CHANGE.</Eyebrow><Text style={[S.title,{fontSize:25,lineHeight:36}]}>{nickname}님만을 위한{'\n'}이번 주 미션</Text></View>
     <View style={[S.between,{backgroundColor:'#E6F2EA',borderRadius:26,padding:20,borderWidth:1,borderColor:'white'}]}><View style={{gap:8}}><Text style={{color:C.muted,fontSize:12}}>이번 주 달성</Text><Text style={{fontSize:32,fontWeight:'700',color:C.deep}}>{items.filter(m=>m.status==='completed'||m.status==='claimable').length}<Text style={{fontSize:16,color:C.muted}}> / {items.length}</Text></Text></View><View style={{width:95}}><IllustratedIcon name="mission" size={95}/></View></View>
     <Segmented items={[{id:'active',label:'도전 중'},{id:'completed',label:'완료'},{id:'all',label:'전체'}]} value={filter} onChange={v=>setFilter(v as typeof filter)}/>
     {!!error&&<Note error>{error}</Note>}
@@ -72,7 +72,7 @@ export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<Ran
  const [group,setGroup]=useState<'personal'|'department'>('personal'),[season,setSeason]=useState(false);
  const data=value.state==='ready'?value.data:null,rows=(season?data?.cumulative?.[group]:data?.[group])??[];
  const me=rows.find(r=>'isMe' in r&&r.isMe);
- return <><View style={S.between}><View style={{gap:8}}><Text style={S.title}>랭킹</Text></View><View style={{width:90}}><IllustratedIcon name="trophy" size={95}/></View></View>
+ return <><View style={S.between}><View style={{gap:8}}><Eyebrow>THE GREEN LEAGUE</Eyebrow><Text style={S.title}>랭킹</Text></View><View style={{width:90}}><IllustratedIcon name="trophy" size={95}/></View></View>
  <Segmented items={[{id:'week',label:'이번 주'},{id:'season',label:'캠페인 전체'}]} value={season?'season':'week'} onChange={v=>setSeason(v==='season')}/>
  <View style={S.row}>{(['personal','department'] as const).map(g=><Pressable key={g} accessibilityRole="button" accessibilityState={{selected:group===g}} onPress={()=>setGroup(g)} style={{minHeight:44,paddingHorizontal:16,justifyContent:'center',borderBottomWidth:2,borderBottomColor:group===g?C.green:'transparent'}}><Text style={[S.label,{color:group===g?C.green:C.muted}]}>{g==='personal'?'개인':'부서'}</Text></Pressable>)}</View>
  {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
