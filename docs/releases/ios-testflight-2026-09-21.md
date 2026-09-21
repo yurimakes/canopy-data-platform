@@ -12,3 +12,9 @@
 앱 설치 후 확인: 잘못된 캠페인 코드가 첫 화면에서 차단되는지, MSDS가 장소 설정으로 진행되는지, 새 아이콘이 표시되는지. 기존 로그인/위치 권한 등은 유지한다. 빌드/업로드 성공과 Apple 처리 후 기기 설치 확인은 구분한다.
 
 빌드 4와 EAS Submit 모두 FINISHED, 제출 오류 없음 확인. App Store Connect 업로드 완료 상태이며 Apple 처리 후 TestFlight 업데이트로 설치한다. 실기기 아이콘/가입 첫 화면 확인은 설치 후 수행한다.
+
+## Build 6 — original frame crop
+
+User approved the original artwork cropped to its rounded green frame, with no generated artwork and no added green background. Source: ChatGPT Image 2026년 9월 21일 오후 04_12_04.png (1254 square). Crop rectangle (122, 139, 1133, 1150), uniformly resized to 1024 square with Lanczos. The part of the leaf outside that frame is cropped as requested. Original alpha is retained in the source asset; Expo generates the opaque native icon with its standard corner matte. No outer padding was added. Actual Expo native icon output inspected locally.
+
+Build 5 (eff4ae0b-f502-40bf-a6ab-9f1d90a3ee75) was canceled because its green backdrop was rejected. Build 6 uses only the approved frame crop. Apple upload status will be recorded after completion.
