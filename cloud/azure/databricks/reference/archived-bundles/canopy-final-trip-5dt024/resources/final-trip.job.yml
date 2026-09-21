@@ -1,0 +1,50 @@
+resources:
+  jobs:
+    final_trip:
+      name: canopy-final-trip-${bundle.target}
+      parameters:
+      - name: publish_mode
+        default: publish
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      timeout_seconds: 3600
+      environments:
+      - environment_key: downstream
+        spec:
+          environment_version: '4'
+          dependencies:
+          - ${workspace.file_path}/dist/canopy_downstream_5dt024-0.3.9-py3-none-any.whl
+          - azure-cosmos==4.17.1
+          - azure-identity==1.25.3
+          - azure-storage-blob==12.30.2
+          - pandas==3.0.6
+          - pyarrow==25.0.1
+          - PyYAML==6.0.3
+      tasks:
+      - task_key: finalize_cycle
+        environment_key: downstream
+        spark_python_task:
+          python_file: ${workspace.file_path}/scripts/run.py
+          parameters:
+          - final-cycle
+          - --catalog
+          - ${var.catalog}
+          - --gold-schema
+          - ${var.gold_schema}
+          - --cosmos-endpoint
+          - ${var.cosmos_endpoint}
+          - --database
+          - ${var.cosmos_database}
+          - --secret-scope
+          - ${var.cosmos_secret_scope}
+          - --cosmos-secret-key
+          - ${var.cosmos_secret_key}
+          - --run-id
+          - '{{job.run_id}}'
+          - --publish-mode
+          - '{{job.parameters.publish_mode}}'
+          - --pipeline-id
+          - ${resources.pipelines.final_trip_etl.id}
+      continuous:
+        pause_status: ${var.final_trip_continuous_pause_status}
