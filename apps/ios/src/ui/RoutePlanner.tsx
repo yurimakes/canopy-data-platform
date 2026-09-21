@@ -1,9 +1,10 @@
+import {currentOrigin} from '../currentOrigin';
 import Text from './AppText';
 import type {BaselineView,RemotePanel} from './CommunityPanels';
 import {attachRouteQuote} from '../routeQuote';
 import {PopulationPreview} from './PopulationPreview';
 import {localAction} from '../communityClient';
-import React,{useRef,useState} from 'react';
+import React,{useEffect,useRef,useState} from 'react';
 import {Modal,Platform,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView,SafeAreaProvider} from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -50,29 +51,35 @@ export function PlacePicker({title,value,onPick}:{title:string;value:Place|null;
     </SafeAreaView></SafeAreaProvider></Modal></>;
 }
 export function RoutePlanner({profile,direction='outbound',onChoose,onFree,baseline}:{baseline?:RemotePanel<BaselineView>;profile:Profile;direction?:'outbound'|'return';onChoose(route:PlannedRoute):void;onFree():void}){
-  const [from,setFrom]=useState<Place|null>(direction==='outbound'?profile.home:profile.work),[to,setTo]=useState<Place|null>(direction==='outbound'?profile.work:profile.home);
+  const [from,setFrom]=useState<Place|null>(null),[to,setTo]=useState<Place|null>(null);
   const [routes,setRoutes]=useState<PlannedRoute[]|null>(null),[selected,setSelected]=useState<PlannedRoute|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
-  function change(which:'from'|'to',p:Place){if(busy)return;if(which==='from')setFrom(p);else setTo(p);setRoutes(null);setSelected(null);setError('');}
-  async function search(){if(!from||!to||busy)return;setBusy(true);setError('');setSelected(null);setRoutes(null);try{
+  const [locating,setLocating]=useState(false),[originError,setOriginError]=useState('');
+  const originGeneration=useRef(0),originAt=useRef(0);
+  async function locate(){const generation=++originGeneration.current;setLocating(true);setOriginError('');setFrom(null);setRoutes(null);setSelected(null);try{
+    const place=await currentOrigin({permission:async()=>(await Location.requestForegroundPermissionsAsync()).granted,position:()=>Location.getCurrentPositionAsync({accuracy:Location.Accuracy.High})});
+    if(generation!==originGeneration.current)return null;setFrom(place);originAt.current=Date.now();return place;
+  }catch(e){if(generation===originGeneration.current)setOriginError(e instanceof Error?e.message:String(e));return null;}finally{if(generation===originGeneration.current)setLocating(false);}}
+  useEffect(()=>{void locate();return()=>{originGeneration.current++;};},[]);
+  function change(p:Place){if(busy)return;setTo(p);setRoutes(null);setSelected(null);setError('');}
+  async function search(){if(!to||busy||locating)return;setBusy(true);setError('');setSelected(null);setRoutes(null);try{
+    const origin=from&&Date.now()-originAt.current<30000?from:await locate();if(!origin)return;
+
     const extra=Constants.expoConfig?.extra??{},url=routeApiUrl(extra);
-    if(extra.localOnly){const r=await localAction('/journey/quote',{from,to,direction});setRoutes([r]);setSelected(r);return;}
-    const [routing,reference]=await Promise.allSettled([searchRoutes(url,searchConfig().headers,from,to),localAction('/journey/quote',{from,to,direction})]);
+    if(extra.localOnly){const r=await localAction('/journey/quote',{from:origin,to,direction});setRoutes([r]);setSelected(r);return;}
+    const [routing,reference]=await Promise.allSettled([searchRoutes(url,searchConfig().headers,origin,to),localAction('/journey/quote',{from:origin,to,direction})]);
     if(reference.status==='rejected')throw reference.reason;
     const quote=reference.value as PlannedRoute;
     if(routing.status==='fulfilled'&&routing.value.length){setRoutes(routing.value.map(route=>attachRouteQuote(route,quote)));}
     else{setRoutes([attachRouteQuote(quote,quote)]);setError(routing.status==='rejected'?'길 안내를 불러오지 못했어요. 보상 기준은 확인할 수 있어요.':'가까운 거리예요. 아래 보상 기준을 확인하고 출발하세요.');}
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   return <>
-    <Eyebrow>PLAN YOUR NEXT MOVE</Eyebrow><Text style={S.title}>오늘의 이동,{ '\n'}더 가볍게.</Text><Note>어디로 갈까요? 경로와 보상 기준을 함께 확인해요.</Note>
-    <View pointerEvents={busy?"none":"auto"} style={{gap:8,opacity:busy?.6:1}}>
-      <PlacePicker title="출발지" value={from} onPick={p=>change('from',p)}/>
-      <View style={{alignItems:'center',marginVertical:-8,zIndex:1}}><Pressable accessibilityRole="button" accessibilityLabel="출발지와 도착지 바꾸기" onPress={()=>{setFrom(to);setTo(from);setRoutes(null);setSelected(null);}} style={{backgroundColor:C.white,borderRadius:24,padding:10,borderWidth:1,borderColor:C.line}}><Icon name="swap-vertical" size={18}/></Pressable></View>
-      <PlacePicker title="도착지" value={to} onPick={p=>change('to',p)}/>
-    </View>
-    <Button title={Constants.expoConfig?.extra?.localOnly?"보상 기준 확인":"경로 찾기"} busy={busy} disabled={!from||!to} onPress={()=>void search()}/>
+    <Text style={[S.title,{fontSize:27}]}>어디로 갈까요?</Text>
+    <View style={{backgroundColor:'#E5F1EA',borderRadius:22,padding:17,gap:8}}><View style={S.between}><View style={S.row}><Icon name="locate-outline"/><Text style={S.label}>{locating?'현재 위치 확인 중':from?'현재 위치에서 출발':'위치를 확인해주세요'}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="현재 위치 다시 확인" disabled={locating||busy} onPress={()=>void locate()} style={{padding:10}}><Icon name="refresh" size={19}/></Pressable></View>{!!originError&&<Note error>{originError}</Note>}</View>
+    <View pointerEvents={busy?"none":"auto"} style={{gap:8,opacity:busy?.6:1}}><PlacePicker title="목적지" value={to} onPick={change}/></View>
+    <Button title={Constants.expoConfig?.extra?.localOnly?"보상 기준 확인":"경로 찾기"} busy={busy} disabled={!from||!to||locating} onPress={()=>void search()}/>
     {busy&&<View style={{alignItems:'center',paddingVertical:18,gap:12}}><Icon name="navigate-circle-outline" size={56}/><Text style={S.heading}>가는 길을 찾고 있어요</Text><Note>조금만 기다려주세요!</Note></View>}
     {!!error&&<Card><Icon name="cloud-offline-outline" size={48}/><Text style={[S.heading,{textAlign:'center'}]}>경로 검색 안내</Text><Note error>{error}</Note><Button title="다시 시도하기" onPress={()=>void search()}/></Card>}
-    {routes?.length===0&&<Card><Icon name="search-outline" size={48}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>출발지와 도착지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
+    {routes?.length===0&&<Card><Icon name="search-outline" size={48}/><Text style={S.heading}>경로를 찾을 수 없어요</Text><Note>목적지를 변경하거나 경로 없이 기록해보세요.</Note></Card>}
     {!!routes?.length&&<Text style={S.note}>{Constants.expoConfig?.extra?.localOnly?'선택한 출발·도착지의 비교 기준':'추천 경로 - 지금 출발'}</Text>}
     {routes?.map(r=><Pressable key={r.id} accessibilityRole="button" accessibilityLabel={`${r.minutes}분 경로 상세보기`} onPress={()=>setSelected(r)} style={[S.card,{gap:12,boxShadow:'0 4px 16px #174c3909'}]}>
       <Text style={[S.metric,{fontSize:26,color:C.ink}]}>{r.minutes}분</Text>

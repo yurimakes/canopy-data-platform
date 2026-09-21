@@ -9,6 +9,8 @@ vi.mock('react-native',()=>({View:'View',Pressable:'Pressable',ScrollView:'Scrol
 vi.mock('react-native-safe-area-context',()=>({SafeAreaView:'SafeAreaView',SafeAreaProvider:'SafeAreaProvider'}));
 vi.mock('expo-constants',()=>({default:{expoConfig:{extra:{localOnly:false}}}}));
 vi.mock('../communityClient',()=>({localAction:vi.fn(async()=>({}))}));
+vi.mock('./RewardShop',()=>({RewardShop:'RewardShop'}));
+vi.mock('./AccountPages',()=>({AccountSettings:'AccountSettings',PrivacyNotice:'PrivacyNotice',UserGuide:'UserGuide'}));
 vi.mock('./IllustratedIcon',()=>({IllustratedIcon:'IllustratedIcon'}));
 vi.mock('./ProfileAvatar',()=>({ProfileAvatar:'ProfileAvatar',chooseProfilePhoto:vi.fn()}));
 vi.mock('./DesignPrimitives',()=>({Eyebrow:'Eyebrow'}));
