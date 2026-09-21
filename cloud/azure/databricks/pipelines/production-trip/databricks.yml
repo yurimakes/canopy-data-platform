@@ -27,6 +27,7 @@ variables:
   cosmos_container:
     default: trips
   cosmos_secret_scope:
+    default: canopy-production-trip
     description: Databricks secret scope containing cosmos-key. This is credential storage, not the Cosmos database name.
   cosmos_key:
     default: cosmos-key
