@@ -51,6 +51,9 @@ variables:
   fuse_gps_parse_validation:
     description: Inline GPS parsing/validation into Silver outputs instead of materializing gps_events_parsed.
     default: "false"
+  direct_eventhub_fanout:
+    description: Read Event Hubs directly for latency-critical Silver outputs instead of routing through persisted Bronze.
+    default: "false"
 
 targets:
   trial:
@@ -81,6 +84,7 @@ targets:
       ingestion_trigger_interval: 1 second
       fuse_gps_parse_validation: "true"
       apply_deduplication: "false"
+      direct_eventhub_fanout: "true"
     presets:
       tags:
         environment: trial
@@ -93,6 +97,7 @@ targets:
             pipelines.trigger.interval: ${var.ingestion_trigger_interval}
             canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
             canopy.apply_deduplication: ${var.apply_deduplication}
+            canopy.direct_eventhub_fanout: ${var.direct_eventhub_fanout}
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
