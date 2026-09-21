@@ -9,6 +9,36 @@ sync:
     - "**/__pycache__/**"
     - "**/.pytest_cache/**"
 
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  silver_schema:
+    default: silver
+  gold_schema:
+    default: gold
+  gps_observations_table:
+    default: gps_observations
+  final_trips_table:
+    default: final_trips
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  storage_url:
+    default: https://stcanopydev5dt.blob.core.windows.net
+  secret_scope:
+    default: canopy-personal-5dt024
+  storage_key:
+    default: storage-key
+  storage_container:
+    default: personal-5dt024
+  cosmos_key:
+    default: cosmos-key
+  production_trip_pause_status:
+    default: PAUSED
+
 targets:
   trial:
     default: true
