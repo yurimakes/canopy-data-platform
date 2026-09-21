@@ -19,6 +19,8 @@ variables:
     default: silver_gps_observations
   trip_ended_table:
     default: silver_trip_ended_events
+  ingestion_pipeline_id:
+    default: b862968d-b674-4f78-8137-a2ac2e8fcee9
 
 targets:
   trial:
