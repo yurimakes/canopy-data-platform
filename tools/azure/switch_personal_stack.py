@@ -41,7 +41,8 @@ def main():
  if a.apply:
   backup=out/'settings-before.json'
   if not backup.exists():backup.write_text(json.dumps(settings))
-  az('eventhubs','eventhub','consumer-group','create','-g',GROUP,'--namespace-name','evhns-canopy-dev','--eventhub-name',UPDATES['EVENTHUB_NAME'],'--name',UPDATES['TRIP_EVENTHUB_CONSUMER_GROUP'])
+  for consumer in [UPDATES['TRIP_EVENTHUB_CONSUMER_GROUP'],'personal-5dt024-fast']:
+   az('eventhubs','eventhub','consumer-group','create','-g',GROUP,'--namespace-name','evhns-canopy-dev','--eventhub-name',UPDATES['EVENTHUB_NAME'],'--name',consumer)
   identity=az('functionapp','identity','show','-g',GROUP,'-n',APP)['principalId']
   scope=f'/subscriptions/{SUB}/resourceGroups/{GROUP}/providers/Microsoft.EventHub/namespaces/evhns-canopy-dev/eventhubs/'+UPDATES['EVENTHUB_NAME']
   for role in ['Azure Event Hubs Data Sender','Azure Event Hubs Data Receiver']:

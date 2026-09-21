@@ -36,7 +36,7 @@ def public(item: dict) -> dict:
               "segments", "model_version", "failed_step", "error_message", "is_mock", "confirmation_status", "carbon",
               "original_segments", "confirmed_segments", "revision", "confirmed_at", "confirmed_trip",
               "confirmation_source", "data_quality", "expected_last_sequence",
-              "feedback_status", "has_issue", "feedback_id", "feedback_updated_at")
+              "feedback_status", "has_issue", "feedback_id", "feedback_updated_at", "live_prediction")
     return {**{key: item.get(key) for key in fields}, "review_required": item.get("review_required", False)}
 
 

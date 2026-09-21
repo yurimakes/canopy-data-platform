@@ -8,15 +8,32 @@ import {PopulationPreview} from './PopulationPreview';
 import {journeyProgress,metersBetween} from '../journeyGeometry';
 import {localAction} from '../communityClient';
 import {gpsDistance,km} from '../service';
-import {liveMotionLabel} from '../liveMotion';
+import {liveMotionLabel,liveSpeedKmh} from '../liveMotion';
 import {MODES} from '../types';
 import type {ServiceProps} from './ServiceScreen';
 import {C,S,Note,Icon} from './theme';
 export function ActiveJourney({p,direction,replayDistance,replayMode}:{replayDistance?:number;replayMode?:string;p:Pick<ServiceProps,'active'|'events'|'route'|'duration'|'tripId'|'baseline'>;direction:'outbound'|'return'}){
- const [expanded,setExpanded]=useState(true),[mode,setMode]=useState('이동 감지 중');
+ const [expanded,setExpanded]=useState(true),[prediction,setPrediction]=useState<{mode:string;observed_at:string}|null>(null);
+ const [now,setNow]=useState(Date.now());
+ useEffect(()=>{if(!p.active)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[p.active]);
+ useEffect(()=>{setExpanded(true);},[p.tripId]);
+ const speed=p.active?liveSpeedKmh(p.events,now):null;
+ const speedText=speed==null?'수신 대기':`${speed.toFixed(1)} km/h`;
+ const freshPrediction=prediction&&now-Date.parse(prediction.observed_at)<=30000&&now-Date.parse(prediction.observed_at)>=-5000;
+ const mode=freshPrediction?(MODES.find(m=>m.value===prediction.mode)?.title??'이동 감지 중')+' (분석 중)':speed==null?'위치 수신 대기':liveMotionLabel(p.events);
  const busy=!!p.active,points=p.events.map(e=>({latitude:e.lat,longitude:e.lon,name:'현재 위치'}));
  const last=points.at(-1),progress=journeyProgress(p.route,busy?last:undefined),distance=busy?(replayDistance??gpsDistance(p.events)):0;
- useEffect(()=>{let alive=true;setMode('이동 감지 중');if(!busy||!p.tripId)return;if(!Constants.expoConfig?.extra?.localOnly){setMode(liveMotionLabel(p.events));return;}const refresh=()=>localAction('/predictions/'+p.tripId).then(v=>{if(alive)setMode(MODES.find(m=>m.value===v.mode)?.title??'이동 감지 중');}).catch(()=>{if(alive)setMode('분석 연결 확인 중');});void refresh();const timer=setInterval(refresh,2000);return()=>{alive=false;clearInterval(timer);};},[p.tripId,busy,p.events.at(-1)?.sequence]);
+ useEffect(()=>{
+  let alive=true,timer:ReturnType<typeof setTimeout>|undefined;setPrediction(null);
+  if(!busy||!p.tripId)return;
+  const local=!!Constants.expoConfig?.extra?.localOnly;
+  const refresh=async()=>{
+   try{const v=await localAction((local?'/predictions/':'/trips/')+p.tripId);if(alive)setPrediction(local&&v.mode?{mode:v.mode,observed_at:v.observed_at??new Date().toISOString()}:v.live_prediction??null);}
+   catch{if(alive)setPrediction(null);}
+   finally{if(alive)timer=setTimeout(refresh,3000);}
+  };
+  void refresh();return()=>{alive=false;if(timer)clearTimeout(timer);};
+ },[p.tripId,busy]);
  return <View style={{gap:0,...(busy?{flex:1,minHeight:0,overflow:'hidden'}:{})}}>
   <View style={{flexShrink:0,padding:12,paddingBottom:10,backgroundColor:C.white,borderTopLeftRadius:28,borderTopRightRadius:28,zIndex:1}}>
    <View style={S.between}><Text style={{fontSize:11,letterSpacing:1.3,fontWeight:'700',color:C.green}}>{direction==='return'?'ON MY WAY HOME':'MY GREEN COMMUTE'}</Text><Text style={S.pill}>{busy?'이동 중':'출발 준비'}</Text></View>
@@ -31,8 +48,11 @@ export function ActiveJourney({p,direction,replayDistance,replayMode}:{replayDis
 
   <View style={{overflow:'hidden',...(busy?{flex:1,flexBasis:0,minHeight:0}:{height:300})}}><View style={{position:'absolute',inset:0}}><JourneyMap points={busy?points:[]} route={p.route} fill/></View></View>
   <View style={{flexShrink:0,zIndex:5,elevation:5,backgroundColor:C.white,borderRadius:28,paddingHorizontal:20,paddingBottom:expanded?12:8,boxShadow:'0 -6px 28px #183d3510'}}>
-   <Pressable accessibilityRole="button" accessibilityLabel={expanded?'이동 정보 숨기기':'이동 정보 펼치기'} accessibilityState={{expanded}} onPress={()=>{LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);setExpanded(!expanded);}} style={{alignItems:'center',padding:10,gap:5}}><View style={{width:36,height:4,borderRadius:4,backgroundColor:'#b5c9bd'}}/>{!expanded&&<Text style={{fontSize:12,color:C.green}}>{p.duration} · {km(distance)} · {busy?(replayMode??mode):'출발 전'} · 펼치기</Text>}</Pressable>
-   {expanded&&<View style={{gap:10}}><View style={S.between}><View style={{flex:1}}><Text style={S.note}>이동 시간</Text><Text style={[S.metric,{fontSize:27}]}>{busy?p.duration.replace(/^(\d+):(\d+)$/, '$1분 $2초'):'0분 00초'}</Text></View><View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:20}}><Text style={S.note}>이동 거리</Text><Text style={[S.metric,{fontSize:27}]}>{km(distance)}</Text></View></View><View style={[S.between,{backgroundColor:'#f2f6ee',borderRadius:18,padding:12}]}><Text style={S.label}>현재 이동수단</Text><Text style={{color:C.green,fontWeight:'800',flexShrink:1,textAlign:'right'}}>{busy?(replayMode??mode):'출발 전'}</Text></View><Note>이동 중 거리는 GPS 추정값이며, 종료 후 확정됩니다.</Note></View>}
+   <Pressable testID="journey-info-toggle" accessibilityRole="button" accessibilityLabel={expanded?'이동 정보 접기':'이동 정보 펼치기'} accessibilityState={{expanded}} onPress={()=>{LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);setExpanded(value=>!value);}} style={{minHeight:48,justifyContent:'center',paddingVertical:8,gap:6}}>
+    <View style={S.between}><Text style={{fontSize:13,fontWeight:'700',color:C.green}}>이동 정보</Text><View style={{flexDirection:'row',alignItems:'center',gap:4}}><Text style={{fontSize:13,fontWeight:'700',color:C.green}}>{expanded?'접기':'펼치기'}</Text><Icon name={expanded?'chevron-down':'chevron-up'} size={18}/></View></View>
+    {!expanded&&<View style={{gap:3}}><Text style={{fontSize:13,color:C.ink}}>{p.duration} · {km(distance)} · {speedText}</Text><Text style={{fontSize:12,color:C.green}}>{busy?(replayMode??mode):'출발 전'}</Text></View>}
+   </Pressable>
+   {expanded&&<View style={{gap:10}}><View style={S.between}><View style={{flex:1}}><Text style={S.note}>이동 시간</Text><Text style={[S.metric,{fontSize:27}]}>{busy?p.duration.replace(/^(\d+):(\d+)$/, '$1분 $2초'):'0분 00초'}</Text></View><View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:20}}><Text style={S.note}>이동 거리</Text><Text style={[S.metric,{fontSize:27}]}>{km(distance)}</Text></View></View><View style={[S.between,{gap:8}]}><Text style={S.label}>현재 속도</Text><Text testID="journey-live-speed" style={[S.metric,{fontSize:24,flexShrink:1}]}>{speedText}</Text></View><View style={[S.between,{backgroundColor:'#f2f6ee',borderRadius:18,padding:12}]}><Text style={S.label}>현재 이동수단</Text><Text style={{color:C.green,fontWeight:'800',flexShrink:1,textAlign:'right'}}>{busy?(replayMode??mode):'출발 전'}</Text></View><Note>속도·거리는 GPS 추정값이에요. 위치가 오래 갱신되지 않으면 속도는 수신 대기로 표시돼요.</Note></View>}
   </View>
 
  </View>;

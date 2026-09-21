@@ -6,6 +6,20 @@
   "description": "Cosmos canopy-db/trips: id=trip_id, partition key /user_id. Extends the team's Cosmos schema with lifecycle status and processor fields; legacy records are not migrated.",
   "required": ["trip_id", "user_id", "campaign_id", "status", "started_at", "ended_at", "created_at", "updated_at", "segments", "model_version", "failed_step", "error_message"],
   "properties": {
+    "live_prediction": {
+      "type": ["object", "null"],
+      "description": "Provisional server ML display only. Never used to settle rewards or replace final segments.",
+      "required": ["mode", "sequence", "observed_at", "updated_at", "model_version", "provisional"],
+      "properties": {
+        "mode": {"enum": ["walk", "bike", "car", "bus", "rail"]},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "sequence": {"type": "integer", "minimum": 1},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "model_version": {"type": "string"},
+        "provisional": {"const": true}
+      }
+    },
     "review_required": {"type": "boolean", "default": false},
     "confirmation_source": {"enum": [null, "system", "user"]},
     "feedback_status": {"enum": [null, "pending", "no_issue", "submitted"]},
