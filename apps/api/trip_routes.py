@@ -27,6 +27,11 @@ def dispatch(method, path, headers, raw, trip_service=None, auth=authenticate, f
             if account_api is None and os.getenv("CANOPY_ACCOUNT_AUTH_ENABLED", "false").lower() != "true":
                 raise ApiError(503, "auth_unavailable", "계정 로그인이 아직 활성화되지 않았습니다.")
             account = account_api or accounts()
+            if method == "POST" and path == "/api/auth/campaign":
+                if set(body) != {"campaign_code"}:
+                    raise ApiError(400, "invalid_fields", "캠페인 코드를 확인해주세요.")
+                code, _ = account.campaigns.resolve(body.get("campaign_code"), account.clock())
+                return 200, {"valid": True, "campaign_code": code}
             if method == "POST" and path == "/api/auth/signup":
                 return 201, account.signup(body)
             if method == "POST" and path == "/api/auth/login":

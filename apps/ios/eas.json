@@ -13,8 +13,15 @@
     "azure-preview": {
       "distribution": "internal",
       "environment": "preview",
-      "env": {"CANOPY_RELEASE_BUILD":"true","CANOPY_LOCAL_ONLY":"false","CANOPY_UI_PREVIEW":"false","CANOPY_TRIP_ALLOW_LOCAL_HTTP":"false"},
-      "ios": {"simulator":false}
+      "env": {
+        "CANOPY_RELEASE_BUILD": "true",
+        "CANOPY_LOCAL_ONLY": "false",
+        "CANOPY_UI_PREVIEW": "false",
+        "CANOPY_TRIP_ALLOW_LOCAL_HTTP": "false"
+      },
+      "ios": {
+        "simulator": false
+      }
     },
     "preview": {
       "distribution": "internal",
@@ -25,6 +32,10 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6814368929"
+      }
+    }
   }
 }

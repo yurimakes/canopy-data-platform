@@ -4,7 +4,7 @@ import React,{useState} from 'react';
 import {KeyboardAvoidingView,Platform,Pressable,ScrollView,View} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import * as Crypto from 'expo-crypto';
-import {loginProfile,registerProfile} from '../profileStore';
+import {loginProfile,registerProfile,validateCampaign} from '../profileStore';
 import type {Profile,Place} from '../service';
 import {PlacePicker} from './RoutePlanner';
 import {Button,C,Fade,Field,Icon,Note,S} from './theme';
@@ -19,7 +19,8 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
       if(!nickname.trim()||!/^\S+@\S+\.\S+$/.test(email.trim()))throw Error('이름과 이메일을 확인해주세요.');
       if(password.length<12)throw Error('비밀번호를 12자 이상 입력해주세요.');
       if(!code.trim())throw Error('캠페인 코드를 입력해주세요.');
-      setStep(1);return;
+      const approvedCode=await validateCampaign(code);
+      setCode(approvedCode);setStep(1);return;
     }
     const result=page==='signup'?await registerProfile({id:Crypto.randomUUID(),nickname:nickname.trim(),email:email.trim().toLowerCase(),role:'user',campaignCode:code.trim().toUpperCase(),home,work},password,code):await loginProfile(email.trim(),password);
     onEnter(result);
@@ -42,7 +43,7 @@ export function AuthScreen({onEnter,error:runtimeError,ready=true,savedProfile,o
       </>:<>
         {page==='signup'&&<Text style={S.pill}>1 / 2  프로필</Text>}
         <Text style={[S.title,{marginTop:28}]}>{page==='signup'?'반가워요!\n함께 시작해볼까요?':'다시 만나 반가워요'}</Text>
-        <Note>{page==='signup'?'프로필을 만들고 TEST 캠페인에 참여하세요.':'나의 일상 속 초록빛 여정을 이어가세요.'}</Note>
+        <Note>{page==='signup'?'발급받은 캠페인 코드로 참여하세요.':'나의 일상 속 초록빛 여정을 이어가세요.'}</Note>
         {page==='signup'&&<Field label="이름 또는 닉네임" value={nickname} onChangeText={setNickname} placeholder="어떻게 불러드릴까요?" maxLength={30}/>}
         <Field label={page==='login'?'이메일 또는 개발자 ID':'이메일'} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="canopy@example.com" maxLength={120}/>
         <Field label="비밀번호" value={password} onChangeText={setPassword} secureTextEntry={!visible} placeholder={page==='signup'?'12자 이상 입력':'비밀번호 입력'} autoCapitalize="none" maxLength={128}/>

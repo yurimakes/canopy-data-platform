@@ -71,6 +71,16 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(results.count(409), 1)
         self.assertEqual(len(self.container.rows), 1)
 
+    def test_campaign_preflight_requires_no_account_and_rechecks_at_signup(self):
+        self.api.campaigns=CampaignRegistry('ignored',{'MSDS':{'campaign_id':'main','accepting_signups':True}})
+        for code,status in [('TEST',400),('FAKE',400),('',400),(' msds ',200)]:
+            result,payload=dispatch('POST','/api/auth/campaign',{},json.dumps({'campaign_code':code}).encode(),account_api=self.api)
+            self.assertEqual(result,status)
+            if status==200:self.assertEqual(payload,{'valid':True,'campaign_code':'MSDS'})
+        self.assertFalse(self.container.rows)
+        self.api.campaigns.entries['MSDS']['accepting_signups']=False
+        with self.assertRaises(ApiError):self.api.signup(dict(self.body,campaign_code='MSDS'))
+
     def test_role_identity_and_campaign_cannot_be_injected(self):
         for key in ['role', 'id', 'user_id', 'campaign_id', 'campaign_joined_at']:
             with self.assertRaises(ApiError):

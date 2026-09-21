@@ -37,3 +37,11 @@ export async function logoutProfile(){
   if(saved){try{await accountRequest(accountConfig(),'logout','POST',{},saved.access_token);}catch(e){if(!(e instanceof AccountError&&e.status===401))throw e;}}
   await saveSession(null);
 }
+
+export async function validateCampaign(code:string):Promise<string>{
+  const normalized=code.trim().toUpperCase();
+  if(!normalized)throw Error('캠페인 코드를 입력해주세요.');
+  const result=await accountRequest(accountConfig(),'campaign','POST',{campaign_code:normalized});
+  if(result?.valid!==true||result.campaign_code!==normalized)throw Error('캠페인 코드를 확인할 수 없습니다. 다시 시도해주세요.');
+  return normalized;
+}
