@@ -23,8 +23,8 @@ def main() -> None:
         f"""
         SELECT
           timestamp,
-          origin:flow_name::STRING AS flow_name,
-          origin:update_id::STRING AS update_id,
+          origin.flow_name AS flow_name,
+          origin.update_id AS update_id,
           details:flow_progress:status::STRING AS status,
           TRY_CAST(details:flow_progress:metrics:num_output_rows AS BIGINT) AS num_output_rows,
           TRY_CAST(details:flow_progress:metrics:num_output_bytes AS BIGINT) AS num_output_bytes,
