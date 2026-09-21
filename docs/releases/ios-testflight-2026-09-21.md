@@ -18,3 +18,7 @@
 User approved the original artwork cropped to its rounded green frame, with no generated artwork and no added green background. Source: ChatGPT Image 2026년 9월 21일 오후 04_12_04.png (1254 square). Crop rectangle (122, 139, 1133, 1150), uniformly resized to 1024 square with Lanczos. The part of the leaf outside that frame is cropped as requested. Original alpha is retained in the source asset; Expo generates the opaque native icon with its standard corner matte. No outer padding was added. Actual Expo native icon output inspected locally.
 
 Build 5 (eff4ae0b-f502-40bf-a6ab-9f1d90a3ee75) was canceled because its green backdrop was rejected. Build 6 uses only the approved frame crop. Apple upload status will be recorded after completion.
+
+Build 6: d6c66e85-0a28-4ef7-b5a1-e4a8ddd4bc58 — FINISHED.
+Submission 6: 265a8c20-6c8b-4644-9892-ca153c31b54d — FINISHED, no submission error.
+Apple upload completed. TestFlight availability depends on Apple processing; device installation and icon display remain device checks.
