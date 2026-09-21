@@ -59,18 +59,6 @@ targets:
   trial:
     default: true
     mode: development
-    presets:
-      tags:
-        environment: trial
-        lifecycle: production
-        component: ingestion
-    workspace:
-      host: https://adb-7405612422597045.5.azuredatabricks.net
-      profile: CANOPY_TRIAL
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
-
-  trial_direct_fanout:
-    mode: development
     variables:
       ingestion_continuous_pause_status: PAUSED
       ingestion_trigger_interval: 1 second
@@ -80,7 +68,7 @@ targets:
     presets:
       tags:
         environment: trial
-        lifecycle: production-candidate
+        lifecycle: production
         component: ingestion
     resources:
       pipelines:
