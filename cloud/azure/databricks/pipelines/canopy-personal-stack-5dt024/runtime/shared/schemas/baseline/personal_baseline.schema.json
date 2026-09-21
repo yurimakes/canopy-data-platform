@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.personal-baseline.v1",
+  "title": "Canopy Personal Baseline History",
+  "description": "One row/document-equivalent per user_id + campaign_id + evaluation week. Derived from prior completed Weekly Gold only; the evaluation week itself is excluded.",
+  "type": "object",
+  "required": [
+    "user_id", "campaign_id", "week", "cumulative_g_co2e", "cumulative_distance_km",
+    "baseline_g_co2e_per_km", "method", "policy_version", "status", "value",
+    "eligibility_policy_version", "observation_days", "confirmed_trip_count",
+    "observation_source", "eligibility_reason", "primary_baseline"
+  ],
+  "properties": {
+    "user_id": {"type": "string", "minLength": 1},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "week": {"type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$"},
+    "cumulative_g_co2e": {"type": ["number", "null"], "minimum": 0, "description": "Prior completed weeks cumulative gCO2e."},
+    "cumulative_distance_km": {"type": ["number", "null"], "minimum": 0, "description": "Prior completed weeks cumulative km."},
+    "baseline_g_co2e_per_km": {"type": ["number", "null"], "minimum": 0},
+    "method": {"enum": ["personal_cumulative", "population_fallback"]},
+    "policy_version": {"type": "string", "minLength": 1},
+    "status": {"enum": ["collecting", "ready"]},
+    "value": {"type": ["number", "null"], "minimum": 0},
+    "eligibility_policy_version": {"type": "string", "minLength": 1},
+    "observation_days": {"type": ["integer", "null"], "minimum": 0},
+    "confirmed_trip_count": {"type": ["integer", "null"], "minimum": 0, "description": "Prior accepted commute Trip count."},
+    "observation_source": {"type": ["string", "null"]},
+    "eligibility_reason": {"type": ["string", "null"]},
+    "primary_baseline": {"enum": ["population", null]}
+  },
+  "additionalProperties": true
+}

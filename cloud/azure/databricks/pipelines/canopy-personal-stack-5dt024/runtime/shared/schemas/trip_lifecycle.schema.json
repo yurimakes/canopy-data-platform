@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.trip-lifecycle.v1",
+  "title": "Explicit Trip end event",
+  "type": "object",
+  "required": ["event_id", "event_type", "schema_version", "trip_id", "user_id", "campaign_id", "started_at", "ended_at", "expected_last_sequence", "occurred_at", "processing_generation", "result_owner"],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_type": {"const": "trip_ended"},
+    "schema_version": {"const": "trip-lifecycle-v1"},
+    "trip_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "started_at": {"type": "string", "format": "date-time"},
+    "ended_at": {"type": "string", "format": "date-time"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "expected_last_sequence": {"type": "integer", "minimum": 0, "maximum": 10000000},
+    "processing_generation": {"type": "integer", "minimum": 1},
+    "result_owner": {"enum": ["functions", "databricks"]}
+  },
+  "additionalProperties": false
+}

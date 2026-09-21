@@ -1,0 +1,19 @@
+bundle:
+  name: canopy-production-trip
+
+include:
+  - resources/*.yml
+
+sync:
+  exclude:
+    - "**/__pycache__/**"
+    - "**/.pytest_cache/**"
+
+targets:
+  trial:
+    default: true
+    mode: production
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
