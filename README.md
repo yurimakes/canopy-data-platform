@@ -2,6 +2,8 @@
 
 Canopy 프로젝트 통합 모노레포입니다. iPhone 애플리케이션, 백엔드/API, 머신러닝 모델, Azure 인프라, 데이터 자산, 공통 계약을 관리합니다.
 
+현재 플랫폼은 iPhone GPS 수집부터 Azure Functions·Event Hubs·ADLS, Databricks 기반 GPS 처리와 주간 분석, Baseline·Behavior Change·Mission·Reward·Ranking·Campaign KPI, API/iOS 소비까지의 데이터 흐름을 통합합니다.
+
 ## 저장소 구조
 
 ```text
@@ -20,7 +22,12 @@ canopy-data-platform/
 │   └── azure/                    # Azure 전용 인프라 및 배포 정의
 │       ├── infrastructure/
 │       ├── functions/
+│       │   ├── func_canopy_dev/  # 공용 Azure Functions 배포 소스
+│       │   └── gps_ingest/       # GPS 수집 Function
 │       ├── pipelines/
+│       │   ├── databricks/       # Databricks 배포/실행 구성
+│       │   ├── gps_streaming/    # GPS 스트리밍 처리
+│       │   └── weekly_analysis/  # 주간 분석 파이프라인
 │       ├── monitoring/
 │       └── config/
 │
@@ -66,6 +73,64 @@ canopy-data-platform/
 ```
 
 > 상위 디렉터리는 **소유권과 런타임 경계**를 나타냅니다. 구현 세부 디렉터리는 실제 기능이 추가될 때 필요한 범위에서만 생성합니다.
+
+## 핵심 데이터 흐름
+
+GPS 수집과 주행 처리 흐름은 다음과 같습니다.
+
+```text
+iPhone GPS
+→ Azure Functions
+→ Event Hubs
+├→ Databricks GPS Streaming
+└→ Event Hubs Capture / ADLS Raw
+→ Trip Processing
+→ Final Trip
+```
+
+주간 분석과 서비스 소비 흐름은 다음과 같습니다.
+
+```text
+Final Trip Gold
+→ Weekly Gold
+→ Baseline / Behavior Change
+→ Mission Profile / Mission Response
+→ Reward Calculation
+→ Reward Ledger
+→ Ranking / Campaign KPI
+→ API / iOS
+```
+
+## Weekly Analysis Pipeline
+
+주간 분석 파이프라인은 `cloud/azure/pipelines/weekly_analysis/`에서 관리합니다. `weekly_pipeline.py`를 중심으로 Final Trip 입력을 사용자·캠페인·주차 단위의 분석 결과로 변환합니다.
+
+현재 `main`에 연결된 주요 단계는 다음과 같습니다.
+
+```text
+final_trip_gold_input
+→ weekly_summary
+→ weekly_gold
+→ baseline_eligibility
+→ personal_baseline
+→ personal_ready_users
+→ global_eligibility
+→ global_baseline
+→ baseline_gold
+→ behavior_change
+→ weekly_user_profile
+→ reward_calculation
+→ ranking
+→ campaign_kpi
+```
+
+- `weekly_user_profile`은 Canonical Mission Profile Gold 입력을 사용합니다.
+- `reward_calculation`은 Weekly Gold, Personal/Global Baseline, Mission Response를 연결해 주간 보상 계산 결과를 생성합니다.
+- `ranking`은 Reward Ledger와 Campaign Membership을 기반으로 개인/부서 랭킹을 계산합니다.
+- `campaign_kpi`는 Weekly Gold, Mission Response, Behavior Change, Reward Ledger, Campaign Membership을 집계합니다.
+- `next_week_missions`는 현재 출력 계약만 정의된 placeholder이며, canonical source로 사용하지 않습니다.
+- `weekly_outputs_gold`는 소비 계약이 확정되지 않은 draft 출력으로 아직 계산 연결되지 않았습니다.
+- 일부 외부 Delta 입력은 개발 검증 시 `PATH_NOT_FOUND`에 한해 typed 0-row DataFrame fallback을 사용하며, 권한·스키마 등 다른 통합 오류는 실패 처리합니다.
 
 ## 작업 규칙
 
