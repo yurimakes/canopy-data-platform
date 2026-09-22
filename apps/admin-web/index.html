@@ -258,11 +258,64 @@ tbody tr:hover{background:#fbfdf8}
 }
 .toast.show{opacity:1;transform:none}
 
+
+.guide-hero{
+  display:grid;grid-template-columns:minmax(0,1fr) 240px;gap:16px;
+  background:linear-gradient(135deg,#f2fadf 0%,#eef8ff 100%);
+  border:1px solid #dcead2;border-radius:20px;padding:22px 24px;margin-bottom:14px;
+  box-shadow:var(--shadow)
+}
+.guide-hero h2{margin:0 0 8px;color:var(--forest);font-size:22px;letter-spacing:-.7px}
+.guide-hero p{margin:0;color:#6f8176;font-size:11px;line-height:1.7;max-width:720px}
+.guide-hero-side{
+  background:rgba(255,255,255,.72);border:1px solid rgba(220,234,210,.9);
+  border-radius:16px;padding:15px
+}
+.guide-hero-side b{display:block;color:var(--forest);font-size:11px;margin-bottom:7px}
+.guide-hero-side span{font-size:10px;color:#829187;line-height:1.65}
+.guide-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.guide-step{
+  position:relative;background:#fff;border:1px solid #e2ecd9;border-radius:16px;
+  padding:16px 15px;min-height:148px;box-shadow:var(--shadow)
+}
+.guide-step:nth-child(2){background:#f7fbea}
+.guide-step:nth-child(3){background:#fff9e8}
+.guide-step:nth-child(4){background:#f3faff}
+.guide-no{
+  display:inline-grid;place-items:center;width:28px;height:28px;border-radius:10px;
+  background:var(--forest);color:#fff;font-size:10px;font-weight:900;margin-bottom:11px
+}
+.guide-step h3{margin:0 0 6px;color:var(--forest);font-size:12px}
+.guide-step p{margin:0;color:#7b8a80;font-size:10px;line-height:1.55}
+.guide-step .btn{margin-top:12px;height:30px;padding:0 10px;font-size:10px}
+.guide-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.guide-list{margin:0;padding:0;list-style:none;display:grid;gap:9px}
+.guide-list li{
+  position:relative;padding:10px 11px 10px 30px;background:#fbfdf8;
+  border:1px solid #e5eddf;border-radius:12px;font-size:10px;line-height:1.55;color:#607168
+}
+.guide-list li:before{
+  content:"✓";position:absolute;left:10px;top:9px;color:#55c900;font-weight:900
+}
+.guide-list.warn li:before{content:"!";color:#b78722}
+.guide-list.warn li{background:#fffaf0;border-color:#efe1bc}
+.guide-kpi{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.guide-kpi div{padding:12px 13px;border-radius:14px;background:#f7faef;border:1px solid #e1ead9}
+.guide-kpi b{display:block;color:var(--forest);font-size:11px;margin-bottom:5px}
+.guide-kpi span{font-size:9px;color:#7d8d82;line-height:1.55}
+.guide-tip{
+  margin-top:12px;padding:10px 12px;border-radius:12px;background:#eef8ff;
+  border:1px solid #d8ebf6;color:#688095;font-size:10px;line-height:1.6
+}
+
 @media(max-width:1160px){
   .summary-grid{grid-template-columns:repeat(3,1fr)}
   .dashboard-grid,.company-layout{grid-template-columns:1fr}
 }
 @media(max-width:850px){
+  .guide-flow{grid-template-columns:repeat(2,1fr)}
+  .guide-columns{grid-template-columns:1fr}
+  .guide-hero{grid-template-columns:1fr}
   .shell{grid-template-columns:1fr}
   .sidebar{border-right:0;border-bottom:1px solid #e0ead8;padding:10px 12px}
   .side-title,.side-info{display:none}
@@ -271,6 +324,7 @@ tbody tr:hover{background:#fbfdf8}
   .page-head{align-items:flex-start;flex-direction:column}
 }
 @media(max-width:650px){
+  .guide-flow,.guide-kpi{grid-template-columns:1fr}
   .summary-grid{grid-template-columns:repeat(2,1fr)}
   .nav{grid-template-columns:repeat(2,minmax(130px,1fr))}
   .page-head h1{font-size:25px}
@@ -297,6 +351,7 @@ tbody tr:hover{background:#fbfdf8}
       <button data-view="company"><span class="nav-dot">02</span>기업 캠페인 설정</button>
       <button class="admin-only" data-view="selections"><span class="nav-dot">03</span>기업 설정 현황</button>
       <button data-view="datasets"><span class="nav-dot">04</span>데이터셋 관리</button>
+      <button class="admin-only" data-view="guide"><span class="nav-dot">05</span>관리자 사용 가이드</button>
     </div>
     <div class="side-info">
       <b>Data snapshot</b>
@@ -425,6 +480,86 @@ tbody tr:hover{background:#fbfdf8}
       </div>
     </section>
 
+
+    <section id="guide" class="view">
+      <div class="guide-hero">
+        <div>
+          <div class="eyebrow" style="margin-bottom:8px"><span>CANOPY ADMIN GUIDE</span><span class="eyebrow-lines"><i></i><i></i><i></i></span></div>
+          <h2>관리자는 이렇게 사용하면 됩니다</h2>
+          <p>캠페인 현황을 먼저 확인한 뒤, 필요한 데이터셋을 조회하고 기업별 캠페인 선택지를 설정한 다음 저장 결과를 확인합니다. 현재 웹은 발표·검증용 데모이므로 실제 운영 DB와 미션 배정 파이프라인에 연결된 기능과는 구분해 사용합니다.</p>
+        </div>
+        <div class="guide-hero-side">
+          <b>현재 데모 기준</b>
+          <span>Power BI 2026-W39 KPI 스냅샷<br>mission-policy-v3.2 선택지<br>기업 설정값은 browser localStorage 저장</span>
+        </div>
+      </div>
+
+      <div class="guide-flow">
+        <div class="guide-step">
+          <span class="guide-no">01</span>
+          <h3>캠페인 현황 확인</h3>
+          <p>등록·활동 사용자, 참여율, 미션 완료율, 탄소량, Behavior Change 상태를 확인합니다.</p>
+          <button class="btn btn-line guide-jump" data-target="dashboard">현황 보기</button>
+        </div>
+        <div class="guide-step">
+          <span class="guide-no">02</span>
+          <h3>데이터셋 확인</h3>
+          <p>campaign_kpi, mission_catalog, 기업 선택 결과를 조회하고 필요 시 CSV로 내려받습니다.</p>
+          <button class="btn btn-line guide-jump" data-target="datasets">데이터 보기</button>
+        </div>
+        <div class="guide-step">
+          <span class="guide-no">03</span>
+          <h3>기업 캠페인 설정</h3>
+          <p>기업을 선택하고 적용할 미션 템플릿을 체크한 뒤 ‘선택 저장’을 누릅니다.</p>
+          <button class="btn btn-line guide-jump" data-target="company">설정하기</button>
+        </div>
+        <div class="guide-step">
+          <span class="guide-no">04</span>
+          <h3>설정 결과 확인</h3>
+          <p>기업별로 어떤 선택지가 저장됐는지 확인합니다. 현재는 같은 브라우저의 데모 저장값입니다.</p>
+          <button class="btn btn-line guide-jump" data-target="selections">결과 보기</button>
+        </div>
+      </div>
+
+      <div class="guide-columns">
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">현재 데모에서 할 수 있는 것</div></div>
+          <div class="panel-body">
+            <ul class="guide-list">
+              <li>Power BI 화면 기준 KPI 스냅샷과 주차별 상세 현황 확인</li>
+              <li>mission-policy-v3.2 기준 미션 카탈로그 조회</li>
+              <li>기업별 미션 템플릿 선택 및 브라우저 저장</li>
+              <li>저장된 기업 선택 결과 조회와 CSV 다운로드</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><div class="panel-title">운영 연동 전 확인이 필요한 것</div></div>
+          <div class="panel-body">
+            <ul class="guide-list warn">
+              <li>현재 KPI는 실시간 Power BI Embedded 데이터가 아니라 정적 스냅샷입니다.</li>
+              <li>기업 선택값은 실제 Cosmos DB나 Weekly Pipeline에 저장되지 않습니다.</li>
+              <li>현재 정책은 system_assigns_missions = true이므로 기업 선택이 실제 미션 배정에 반영된다고 표현하면 안 됩니다.</li>
+              <li>실서비스 연결 시 저장 schema, 권한, func-canopy-dev API, E2E 검증이 추가로 필요합니다.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><div class="panel-title">지표를 이렇게 읽으세요</div></div>
+        <div class="panel-body">
+          <div class="guide-kpi">
+            <div><b>참여율</b><span>등록 사용자 가운데 해당 주차에 활동한 사용자의 비율을 확인하는 지표입니다.</span></div>
+            <div><b>미션 완료율</b><span>현재 화면에 표시된 주차 기준 완료율을 확인합니다. 데이터 기준과 주차를 함께 봅니다.</span></div>
+            <div><b>Behavior Change</b><span>CANOPY 개입 이후 관측된 행동 변화 KPI이며, 인과효과로 단정하지 않습니다.</span></div>
+          </div>
+          <div class="guide-tip">발표 데모 순서는 ‘캠페인 현황 → 기업 캠페인 설정 → 기업 설정 현황 → 데이터셋 관리’ 순서가 가장 자연스럽습니다.</div>
+        </div>
+      </div>
+    </section>
+
     <section id="selections" class="view">
       <div class="panel">
         <div class="panel-head"><div class="panel-title">기업 선택 현황</div><button class="btn btn-danger" id="clear">데모 저장값 초기화</button></div>
@@ -471,7 +606,8 @@ function setView(v){
     dashboard:["Canopy campaign KPI","캠페인 주요 지표와 주간 현황을 확인합니다."],
     datasets:["Dataset Explorer","CANOPY 데이터 스냅샷을 조회하고 CSV로 내려받습니다."],
     company:["기업 캠페인 선택지","기업별 캠페인 미션 템플릿을 선택합니다."],
-    selections:["기업 선택 현황","기업별로 저장된 데모 선택 결과를 확인합니다."]
+    selections:["기업 선택 현황","기업별로 저장된 데모 선택 결과를 확인합니다."],
+    guide:["관리자 사용 가이드","CANOPY 관리자 웹의 데모 운영 순서와 현재 기능 범위를 확인합니다."]
   };
   document.getElementById("title").textContent=names[v][0];
   document.getElementById("page-description").textContent=names[v][1];
@@ -509,11 +645,12 @@ function loadCompany(){
 }
 function renderSelections(){document.getElementById("selectionTable").innerHTML=table(selectRows())}
 document.querySelectorAll(".nav button").forEach(function(b){b.onclick=function(){setView(b.getAttribute("data-view"))}});
+document.querySelectorAll(".guide-jump").forEach(function(b){b.onclick=function(){setView(b.getAttribute("data-target"))}});
 document.getElementById("role").onchange=function(e){
   state.role=e.target.value;
   document.querySelectorAll(".admin-only").forEach(function(x){x.style.display=state.role==="company"?"none":""});
   document.querySelector(".account").textContent=state.role==="company"?"기업 계정":"관리자 계정";
-  if(state.role==="company"&&state.view==="selections")setView("dashboard");
+  if(state.role==="company"&&(state.view==="selections"||state.view==="guide"))setView("dashboard");
   toast(state.role==="company"?"기업 화면으로 전환했습니다.":"관리자 화면으로 전환했습니다.");
 };
 document.getElementById("searchButton").onclick=function(){toast("조회 조건을 적용했습니다.")};
