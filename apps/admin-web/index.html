@@ -330,6 +330,124 @@ tbody tr:hover{background:#fbfdf8}
   .page-head h1{font-size:25px}
 }
 </style>
+
+<style id="visual-refinement-v2">
+:root{
+  --space-1:6px;
+  --space-2:10px;
+  --space-3:14px;
+  --space-4:18px;
+  --space-5:24px;
+  --space-6:32px;
+}
+.main{padding:30px 36px 56px;max-width:1580px;width:100%;margin:0 auto}
+.page-head{margin-bottom:18px}
+.filter-panel{padding:14px 16px;margin-bottom:16px;gap:12px}
+.notice{margin-bottom:18px}
+.panel{margin-bottom:16px}
+.panel-head{padding:0 18px;min-height:48px}
+.panel-body{padding:18px}
+.dashboard-grid,.company-layout,.guide-columns{gap:16px}
+.summary-grid{gap:14px;margin-bottom:16px}
+
+/* Sidebar: icon-first visual hierarchy */
+.sidebar{padding:24px 14px 20px}
+.nav{gap:7px}
+.nav button{padding:10px 12px;border-radius:13px;gap:11px;min-height:44px}
+.nav-icon{
+  width:30px;height:30px;border-radius:10px;display:grid;place-items:center;flex:0 0 30px;
+  background:rgba(255,255,255,.88);border:1px solid #e1ebda;color:#60756a;
+  transition:.18s ease
+}
+.nav-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.nav button:first-child .nav-icon svg{fill:currentColor;stroke:none}
+.nav button.active .nav-icon{background:#fff;color:var(--forest);border-color:rgba(255,255,255,.85);box-shadow:0 3px 10px rgba(40,88,41,.12)}
+.nav button span:last-child{font-weight:750;letter-spacing:-.15px}
+
+/* KPI: icon, tone, spacing */
+.summary-card{min-height:126px;padding:17px 18px;border-radius:20px;display:flex;flex-direction:column;justify-content:space-between}
+.summary-card:after{width:68px;height:68px;right:-22px;top:-22px}
+.summary-card.tone-white{background:#fff}
+.summary-card.tone-mint{background:#f3faec}
+.summary-card.tone-green{background:#eef9df}
+.summary-card.tone-lime{background:#f7fbe8}
+.summary-card.tone-blue{background:#f1f9ff}
+.summary-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.summary-label{margin:0;font-size:11px;font-weight:800;color:#65766c}
+.kpi-icon{
+  width:34px;height:34px;border-radius:12px;display:grid;place-items:center;
+  background:rgba(255,255,255,.78);border:1px solid rgba(218,232,208,.95);color:#56804e
+}
+.kpi-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.summary-value{font-size:31px;line-height:1;font-variant-numeric:tabular-nums}
+.summary-value small{font-size:13px;color:#6d7f74;font-weight:800;margin-left:2px}
+.summary-foot{margin-top:0}
+
+/* Tables: cleaner data density */
+.table-wrap{border-radius:0 0 18px 18px}
+.data-grid{border-spacing:0;border-collapse:separate}
+.data-grid thead th{position:sticky;top:0;z-index:2;background:#eef6e7;color:#5a6d62;font-size:10px;letter-spacing:.01em}
+.data-grid th,.data-grid td{padding:12px 12px}
+.data-grid tbody tr:nth-child(even){background:#fcfdf9}
+.data-grid tbody tr{transition:background .15s ease}
+.data-grid tbody tr:hover{background:#f3faec}
+.data-grid td.numeric{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;color:#43584b}
+.data-grid th.numeric{text-align:right}
+#datasetTable{max-height:520px;overflow:auto;border-radius:0 0 18px 18px}
+
+/* Company selection: selected row + clear save area */
+.company-top{margin-bottom:16px;align-items:center}
+.company-caption{margin:7px 0 0;font-size:10px;color:#91a096}
+.selected-count{
+  min-width:112px;padding:10px 13px;border-radius:14px;background:#f4fae9;border:1px solid #deebd4;
+  display:flex;align-items:baseline;justify-content:center;gap:5px;text-align:left
+}
+.selected-count span{font-size:9px;color:#839188}
+.selected-count b{font-size:23px;margin:0;color:var(--green)}
+.selected-count em{font-size:10px;font-style:normal;color:#78887e}
+.option-table tbody tr.selected-row{background:#f0f9e5}
+.option-table tbody tr.selected-row td:first-child{box-shadow:inset 4px 0 0 var(--green)}
+.option-table input[type=checkbox]{width:16px;height:16px}
+.company-savebar{position:sticky;bottom:0;z-index:5;background:rgba(251,253,248,.97);backdrop-filter:blur(8px);padding:13px 16px}
+.save-state,.save-summary{display:flex;align-items:center;gap:9px}
+.save-dot{width:7px;height:7px;border-radius:50%;background:#b8c5ba;box-shadow:0 0 0 4px #eef3ec}
+.save-summary>span{font-size:10px;color:#7d8c82}
+.save-summary>span b{color:var(--forest);font-size:13px}
+.company-savebar .btn{min-width:104px}
+
+/* Guide: connected stepper */
+.guide-stepper{position:relative;gap:20px}
+.guide-stepper .guide-step{overflow:visible;padding:17px 16px 16px}
+.guide-stepper .guide-step:not(:last-child):after{
+  content:"›";position:absolute;right:-16px;top:55px;width:22px;height:22px;border-radius:50%;
+  display:grid;place-items:center;background:#fff;border:1px solid #dce8d4;color:#61c93a;
+  font-size:20px;font-weight:900;z-index:3;box-shadow:0 4px 10px rgba(47,91,49,.06)
+}
+.guide-no{margin-bottom:12px}
+.guide-kicker{
+  position:absolute;right:14px;top:16px;font-size:8px;letter-spacing:.12em;font-weight:900;color:#9aa89f
+}
+.guide-step h3{font-size:12px;margin-bottom:7px}
+.guide-step p{min-height:48px}
+.guide-step .btn{margin-top:13px;width:100%;justify-content:center}
+
+/* Consistent content rhythm */
+.guide-hero{margin-bottom:16px}
+.guide-flow{margin-bottom:16px}
+.guide-columns{margin-bottom:2px}
+.policy .panel-body{padding:18px}
+.actionbar{padding:13px 16px}
+
+@media(max-width:1160px){
+  .guide-stepper{gap:12px}
+  .guide-stepper .guide-step:not(:last-child):after{display:none}
+}
+@media(max-width:850px){
+  .main{padding:22px 16px 44px}
+  .nav-icon{width:28px;height:28px;flex-basis:28px}
+}
+</style>
+
 </head>
 <body>
 <header class="topbar">
@@ -347,11 +465,11 @@ tbody tr:hover{background:#fbfdf8}
   <aside class="sidebar">
     <div class="side-title">CANOPY ADMIN</div>
     <div class="nav">
-      <button class="active" data-view="dashboard"><span class="nav-dot">01</span>캠페인 현황</button>
-      <button data-view="company"><span class="nav-dot">02</span>기업 캠페인 설정</button>
-      <button class="admin-only" data-view="selections"><span class="nav-dot">03</span>기업 설정 현황</button>
-      <button data-view="datasets"><span class="nav-dot">04</span>데이터셋 관리</button>
-      <button class="admin-only" data-view="guide"><span class="nav-dot">05</span>관리자 사용 가이드</button>
+      <button class="active" data-view="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-3H4v3Zm10-13h6V4h-6v3Z"/></svg></span><span>캠페인 현황</span></button>
+      <button data-view="company"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12H4Zm4-8h2m4 0h2M8 16h2m4 0h2"/></svg></span><span>기업 캠페인 설정</span></button>
+      <button class="admin-only" data-view="selections"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 3 3 6-7M4 5h16M4 19h16"/></svg></span><span>기업 설정 현황</span></button>
+      <button data-view="datasets"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="7" ry="3"/><path d="M5 5v6c0 1.7 3.1 3 7 3s7-1.3 7-3V5m-14 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/></svg></span><span>데이터셋 관리</span></button>
+      <button class="admin-only" data-view="guide"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4Zm3 0v16M11 8h5m-5 4h5"/></svg></span><span>관리자 사용 가이드</span></button>
     </div>
     <div class="side-info">
       <b>Data snapshot</b>
@@ -386,11 +504,26 @@ tbody tr:hover{background:#fbfdf8}
 
     <section id="dashboard" class="view active">
       <div class="summary-grid">
-        <div class="summary-card"><div class="summary-label">등록 사용자</div><div class="summary-value">6</div><div class="summary-foot">2026-W39</div></div>
-        <div class="summary-card"><div class="summary-label">활동 사용자</div><div class="summary-value">2</div><div class="summary-foot">Trip 발생 사용자</div></div>
-        <div class="summary-card"><div class="summary-label">참여율</div><div class="summary-value primary">33.3%</div><div class="summary-foot">Power BI 기준</div></div>
-        <div class="summary-card"><div class="summary-label">미션 완료율</div><div class="summary-value primary">75.0%</div><div class="summary-foot">Power BI 기준</div></div>
-        <div class="summary-card"><div class="summary-label">총 탄소량</div><div class="summary-value">0.12 kg</div><div class="summary-foot">집계값</div></div>
+        <div class="summary-card tone-white">
+          <div class="summary-top"><div class="summary-label">등록 사용자</div><span class="kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8-1a3 3 0 1 0 0-6M2 21v-2a6 6 0 0 1 12 0v2m2-7a5 5 0 0 1 6 5v2"/></svg></span></div>
+          <div class="summary-value">6</div><div class="summary-foot">2026-W39 기준</div>
+        </div>
+        <div class="summary-card tone-mint">
+          <div class="summary-top"><div class="summary-label">활동 사용자</div><span class="kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></span></div>
+          <div class="summary-value">2</div><div class="summary-foot">Trip 발생 사용자</div>
+        </div>
+        <div class="summary-card tone-green">
+          <div class="summary-top"><div class="summary-label">참여율</div><span class="kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5M7 7h.01M17 17h.01"/><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/></svg></span></div>
+          <div class="summary-value primary">33.3%</div><div class="summary-foot">Power BI 스냅샷</div>
+        </div>
+        <div class="summary-card tone-lime">
+          <div class="summary-top"><div class="summary-label">미션 완료율</div><span class="kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6V3Zm3 5h6m-6 4h6m-6 4h3"/></svg></span></div>
+          <div class="summary-value primary">75.0%</div><div class="summary-foot">Power BI 스냅샷</div>
+        </div>
+        <div class="summary-card tone-blue">
+          <div class="summary-top"><div class="summary-label">총 탄소량</div><span class="kpi-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4C11 4 5 8 5 15c0 3 2 5 5 5 7 0 10-7 10-16ZM4 21c2-6 7-10 13-13"/></svg></span></div>
+          <div class="summary-value">0.12 <small>kg</small></div><div class="summary-foot">해당 주차 집계값</div>
+        </div>
       </div>
 
       <div class="dashboard-grid">
@@ -420,7 +553,7 @@ tbody tr:hover{background:#fbfdf8}
       <div class="panel">
         <div class="panel-head"><div class="panel-title">주차별 상세 현황</div></div>
         <div class="table-wrap">
-          <table>
+          <table class="data-grid">
             <thead><tr><th>주차</th><th>등록</th><th>활동</th><th>참여율</th><th>Trip</th><th>탄소(kg)</th><th>완료율</th><th>변화</th><th>지급포인트</th></tr></thead>
             <tbody><tr><td>2026-W39</td><td>6</td><td>2</td><td>0.33</td><td>6</td><td>0.12</td><td>0.75</td><td>0</td><td>1</td></tr></tbody>
           </table>
@@ -452,17 +585,23 @@ tbody tr:hover{background:#fbfdf8}
           <div class="panel-head"><div class="panel-title">기업 캠페인 선택지<span class="panel-sub">mission-policy-v3.2 active template</span></div></div>
           <div class="panel-body">
             <div class="company-top">
-              <label class="field"><span>기업</span><select id="companySelect"><option value="company-a">기업 A (데모)</option><option value="company-b">기업 B (데모)</option><option value="company-c">기업 C (데모)</option></select></label>
-              <div class="selected-count">선택된 항목 <b id="selectedCount">0</b></div>
+              <div>
+                <label class="field"><span>기업</span><select id="companySelect"><option value="company-a">기업 A (데모)</option><option value="company-b">기업 B (데모)</option><option value="company-c">기업 C (데모)</option></select></label>
+                <p class="company-caption">기업별로 노출할 미션 템플릿을 선택해 주세요.</p>
+              </div>
+              <div class="selected-count"><span>선택된 항목</span><b id="selectedCount">0</b><em>개</em></div>
             </div>
             <div class="table-wrap">
-              <table class="option-table">
+              <table class="option-table data-grid">
                 <thead><tr><th style="width:50px">선택</th><th style="width:120px">유형</th><th>미션 템플릿</th><th style="width:90px">상태</th></tr></thead>
                 <tbody id="options"></tbody>
               </table>
             </div>
           </div>
-          <div class="actionbar"><span class="meta" id="saveStatus">아직 저장하지 않았습니다.</span><button class="btn btn-primary" id="save">선택 저장</button></div>
+          <div class="actionbar company-savebar">
+            <div class="save-state"><span class="save-dot"></span><span class="meta" id="saveStatus">아직 저장하지 않았습니다.</span></div>
+            <div class="save-summary"><span><b id="saveSelectedCount">0</b>개 항목 선택</span><button class="btn btn-primary" id="save">선택 저장</button></div>
+          </div>
         </div>
 
         <div class="panel policy">
@@ -494,27 +633,27 @@ tbody tr:hover{background:#fbfdf8}
         </div>
       </div>
 
-      <div class="guide-flow">
+      <div class="guide-flow guide-stepper">
         <div class="guide-step">
-          <span class="guide-no">01</span>
+          <span class="guide-no">01</span><span class="guide-kicker">CHECK</span>
           <h3>캠페인 현황 확인</h3>
           <p>등록·활동 사용자, 참여율, 미션 완료율, 탄소량, Behavior Change 상태를 확인합니다.</p>
           <button class="btn btn-line guide-jump" data-target="dashboard">현황 보기</button>
         </div>
         <div class="guide-step">
-          <span class="guide-no">02</span>
+          <span class="guide-no">02</span><span class="guide-kicker">EXPLORE</span>
           <h3>데이터셋 확인</h3>
           <p>campaign_kpi, mission_catalog, 기업 선택 결과를 조회하고 필요 시 CSV로 내려받습니다.</p>
           <button class="btn btn-line guide-jump" data-target="datasets">데이터 보기</button>
         </div>
         <div class="guide-step">
-          <span class="guide-no">03</span>
+          <span class="guide-no">03</span><span class="guide-kicker">SET</span>
           <h3>기업 캠페인 설정</h3>
           <p>기업을 선택하고 적용할 미션 템플릿을 체크한 뒤 ‘선택 저장’을 누릅니다.</p>
           <button class="btn btn-line guide-jump" data-target="company">설정하기</button>
         </div>
         <div class="guide-step">
-          <span class="guide-no">04</span>
+          <span class="guide-no">04</span><span class="guide-kicker">REVIEW</span>
           <h3>설정 결과 확인</h3>
           <p>기업별로 어떤 선택지가 저장됐는지 확인합니다. 현재는 같은 브라우저의 데모 저장값입니다.</p>
           <button class="btn btn-line guide-jump" data-target="selections">결과 보기</button>
@@ -595,7 +734,7 @@ function put(v){localStorage.setItem(STORE,JSON.stringify(v))}
 function toast(t){var x=document.getElementById("toast");x.textContent=t;x.classList.add("show");setTimeout(function(){x.classList.remove("show")},1700)}
 function selectRows(){var s=saved();return Object.keys(s).map(function(k){var x=s[k];return {company:companies[x.company_id]||x.company_id,campaign_id:x.campaign_id,week:x.week,selected_count:x.selected_mission_ids.length,selected_mission_ids:x.selected_mission_ids.join(", "),updated_at:x.updated_at}})}
 function dataset(name){if(name==="campaign_kpi")return {source:"Power BI screenshot · 2026-W39",rows:[{week:"2026-W39",registered_users:6,active_users:2,participation_rate:.33,trip_count:6,total_carbon_kg:.12,mission_completion_rate:.75,behavior_change:0,reward_points:1}]};if(name==="mission_catalog")return {source:"mission-policy-v3.2 · main",rows:catalog.map(function(x){return {id:x.id,category:x.category,title:x.title,status:"active"}})};return {source:"browser localStorage · demo only",rows:selectRows()}}
-function table(rows){if(!rows.length)return '<div class="meta" style="padding:24px 16px">조회된 데이터가 없습니다.</div>';var cols=Object.keys(rows[0]);var h="<table><thead><tr>";cols.forEach(function(c){h+="<th>"+esc(c)+"</th>"});h+="</tr></thead><tbody>";rows.forEach(function(r){h+="<tr>";cols.forEach(function(c){h+="<td>"+esc(r[c])+"</td>"});h+="</tr>"});return h+"</tbody></table>"}
+function table(rows){if(!rows.length)return '<div class="meta" style="padding:28px 18px">조회된 데이터가 없습니다.</div>';var cols=Object.keys(rows[0]);var h="<table class=\"data-grid\"><thead><tr>";cols.forEach(function(c){var n=typeof rows[0][c]==="number";h+="<th class=\""+(n?"numeric":"")+"\">"+esc(c)+"</th>"});h+="</tr></thead><tbody>";rows.forEach(function(r){h+="<tr>";cols.forEach(function(c){var n=typeof r[c]==="number";h+="<td class=\""+(n?"numeric":"")+"\">"+esc(r[c])+"</td>"});h+="</tr>"});return h+"</tbody></table>"}
 function setView(v){
   state.view=v;
   document.querySelectorAll(".view").forEach(function(x){x.classList.remove("active")});
@@ -631,11 +770,11 @@ function renderOptions(){
   var box=document.getElementById("options"),h="";
   catalog.forEach(function(x){
     var on=!!state.draft[x.id];
-    h+='<tr><td><input type="checkbox" value="'+esc(x.id)+'" '+(on?"checked":"")+'></td><td><span class="category-label '+categoryClass(x.category)+'">'+esc(x.category)+'</span></td><td><span class="title">'+esc(x.title)+'</span><span class="code">'+esc(x.id)+'</span></td><td><span class="status-chip status-green">사용</span></td></tr>';
+    h+='<tr class="'+(on?"selected-row":"")+'"><td><input type="checkbox" value="'+esc(x.id)+'" '+(on?"checked":"")+'></td><td><span class="category-label '+categoryClass(x.category)+'">'+esc(x.category)+'</span></td><td><span class="title">'+esc(x.title)+'</span><span class="code">'+esc(x.id)+'</span></td><td><span class="status-chip status-green">사용</span></td></tr>';
   });
   box.innerHTML=h;
   box.querySelectorAll("input").forEach(function(i){i.onchange=function(){if(i.checked)state.draft[i.value]=true;else delete state.draft[i.value];renderOptions()}});
-  document.getElementById("selectedCount").textContent=Object.keys(state.draft).length;
+  document.getElementById("selectedCount").textContent=Object.keys(state.draft).length;var saveCount=document.getElementById("saveSelectedCount");if(saveCount)saveCount.textContent=Object.keys(state.draft).length;
 }
 function loadCompany(){
   var x=saved()[state.company];state.draft={};
