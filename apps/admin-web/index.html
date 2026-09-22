@@ -419,9 +419,13 @@ tbody tr:hover{background:#fbfdf8}
 .guide-stepper{position:relative;gap:20px}
 .guide-stepper .guide-step{overflow:visible;padding:17px 16px 16px}
 .guide-stepper .guide-step:not(:last-child):after{
-  content:"›";position:absolute;right:-16px;top:55px;width:22px;height:22px;border-radius:50%;
-  display:grid;place-items:center;background:#fff;border:1px solid #dce8d4;color:#61c93a;
-  font-size:20px;font-weight:900;z-index:3;box-shadow:0 4px 10px rgba(47,91,49,.06)
+  content:"";position:absolute;right:-16px;top:55px;width:22px;height:22px;border-radius:50%;
+  background:#fff;border:1px solid #dce8d4;z-index:3;box-shadow:0 4px 10px rgba(47,91,49,.06)
+}
+.guide-stepper .guide-step:not(:last-child):before{
+  content:"";position:absolute;right:-7px;top:62px;width:6px;height:6px;
+  border-top:2px solid #61c93a;border-right:2px solid #61c93a;
+  transform:rotate(45deg);z-index:4
 }
 .guide-no{margin-bottom:12px}
 .guide-kicker{
@@ -440,7 +444,8 @@ tbody tr:hover{background:#fbfdf8}
 
 @media(max-width:1160px){
   .guide-stepper{gap:12px}
-  .guide-stepper .guide-step:not(:last-child):after{display:none}
+  .guide-stepper .guide-step:not(:last-child):after,
+  .guide-stepper .guide-step:not(:last-child):before{display:none}
 }
 @media(max-width:850px){
   .main{padding:22px 16px 44px}
