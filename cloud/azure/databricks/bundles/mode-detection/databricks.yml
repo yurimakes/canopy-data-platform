@@ -21,15 +21,36 @@ variables:
   trip_ended_events_table:
     description: Parsed trip-end lifecycle source table.
     default: trip_ended_events
-  gold_schema:
-    description: Schema containing finalized trip output.
-    default: gold
-  final_trips_table:
-    description: Finalized trip output table.
-    default: final_trips
+  output_schema:
+    description: Schema containing mode-detection debug/sealed output.
+    default: sandbox
+  mode_detection_results_table:
+    description: Sealed mode-detection output table used for validation before Gold wiring.
+    default: mode_detection_results
   prediction_stride_seconds:
-    description: Normal mode-prediction cadence. Trip-end finalization may occur between stride boundaries.
+    description: Normal mode-prediction cadence.
     default: "10"
+  state_ttl_ms:
+    description: Per-trip transformWithState TTL in milliseconds.
+    default: "7200000"
+  state_store_partitions:
+    description: Number of Spark state-store partitions for the mode-detection processor.
+    default: "4"
+  model_artifact_path:
+    description: Workspace-local or mounted path to the HGBC joblib artifact.
+    default: /Workspace/Shared/canopy/models/aihub_canonical_raw120.joblib
+  transit_reference_root:
+    description: Root containing the preserved transit_context Python package.
+    default: /Workspace/Shared/canopy/transit/reference-model
+  transit_reference_dir:
+    description: Directory containing transit reference CSVs.
+    default: /Workspace/Shared/canopy/transit/reference-data
+  mode_detection_pause_status:
+    description: Pause status for the continuous wrapper job.
+    default: PAUSED
+  mode_detection_trigger_interval:
+    description: Lakeflow micro-batch trigger interval.
+    default: 1 second
 
 targets:
   trial:
@@ -40,6 +61,11 @@ targets:
         environment: trial
         lifecycle: production
         component: mode-detection
+    resources:
+      pipelines:
+        mode_detection_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
@@ -51,14 +77,21 @@ targets:
       silver_schema: sandbox
       gps_observations_table: silver_gps_observations
       trip_ended_events_table: silver_trip_ended_events
-      gold_schema: sandbox
-      final_trips_table: mode_detection_final_trips
+      output_schema: sandbox
+      mode_detection_results_table: mode_detection_results
       prediction_stride_seconds: "10"
+      mode_detection_pause_status: PAUSED
+      mode_detection_trigger_interval: 1 second
     presets:
       tags:
         environment: trial
         lifecycle: experimental
         component: mode-detection
+    resources:
+      pipelines:
+        mode_detection_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
