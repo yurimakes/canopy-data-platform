@@ -37,21 +37,22 @@ class ModePrediction:
 
 
 class ModeDetectingModel(Protocol):
-    """Model boundary used by the streaming trip processor.
-
-    Implementations own model-specific readiness, feature extraction, and
-    inference. The surrounding streaming architecture must not hard-code a
-    particular window length, feature set, or estimator type.
-    """
+    """Model boundary used by the streaming trip processor."""
 
     @property
     def metadata(self) -> ModeModelMetadata: ...
 
-    def prediction_ready(self, observations: Sequence[Observation]) -> bool: ...
+    def prediction_ready(
+        self,
+        observations: Sequence[Observation],
+        *,
+        window_end: datetime,
+    ) -> bool: ...
 
     def predict(
         self,
         observations: Sequence[Observation],
         *,
+        window_end: datetime,
         raw_point_count: int,
     ) -> ModePrediction: ...
