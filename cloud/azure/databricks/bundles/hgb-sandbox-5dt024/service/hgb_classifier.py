@@ -2,6 +2,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import hashlib,math
+from bisect import bisect_left
 import joblib
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -10,7 +11,7 @@ from src.aihub.ingest import AiHubPoint
 from src.aihub.training import ROBUST_FEATURE_COLUMNS
 from src.common.geo import haversine_distance_km
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='hgb-canonical-raw120-16features-production-flow-v3'
+VERSION='hgb-canonical-raw120-16features-time-window-v4'
 
 def stamp(value):
     value=value if isinstance(value,datetime) else datetime.fromisoformat(value.replace('Z','+00:00'))
@@ -43,14 +44,40 @@ class HgbClassifier:
         return dict(zip(self.classes,map(float,probabilities))),f
 
     def predict(self,points):
-        # Preserve the existing 20-step output cadence and 200-step context.
-        # HGB consumes 16 calculated features instead of a padded speed tensor.
+        """120-second trailing GPS windows, advanced in elapsed 10-second slots.
+
+        Final settlement covers the initial window and the final tail exactly
+        once. A trip shorter than 120 seconds uses only its observed points;
+        it is never padded, discarded, or presented as a full training window.
+        """
         if len(points)<2:return []
+        times=[stamp(p['event_time']) for p in points]
+        if any(b<=a for a,b in zip(times,times[1:])):
+            raise ValueError('Prediction requires unique, ordered GPS timestamps')
+        seconds=int(self.bundle['window_duration_seconds'])
+        boundary=times[0]+timedelta(seconds=seconds)
         rows=[];begin=0
-        for end in range(20,len(points)-1+20,20):
-            end=min(end,len(points)-1)
-            probabilities,_=self.predict_window(points[max(0,end-200):end+1])
+        while boundary<=times[-1]:
+            # Same half-open selection as the original latest_rolling_window.
+            left=bisect_left(times,boundary-timedelta(seconds=seconds))
+            right=bisect_left(times,boundary)
+            if right-left>=2:
+                end=right-1
+                if end>begin:
+                    probabilities,_=self.predict_window(points[left:right])
+                    mode=max(probabilities,key=probabilities.get)
+                    rows.append({'begin':begin,'end':end,'mode':mode,
+                        'confidence':probabilities[mode],'probabilities':probabilities})
+                    begin=end
+            boundary+=timedelta(seconds=10)
+        if begin<len(points)-1:
+            # Final endpoint must not disappear between stride boundaries.
+            left=bisect_left(times,times[-1]-timedelta(seconds=seconds))
+            selected=points[left:]
+            if len(selected)<2:
+                raise ValueError('Not enough GPS points in final inference window')
+            probabilities,_=self.predict_window(selected)
             mode=max(probabilities,key=probabilities.get)
-            rows.append({'begin':begin,'end':end,'mode':mode,'confidence':probabilities[mode],'probabilities':probabilities})
-            begin=end
+            rows.append({'begin':begin,'end':len(points)-1,'mode':mode,
+                'confidence':probabilities[mode],'probabilities':probabilities})
         return rows

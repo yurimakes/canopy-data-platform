@@ -40,8 +40,9 @@ def start_live_predictions(spark, store, model, table, stop=None):
                     if stop.is_set():
                         return
                     rows = (session.table(table).where(
-                        (F.col('trip_id') == trip['trip_id']) & (F.col('user_id') == trip['user_id']))
-                        .orderBy(F.col('sequence').desc()).limit(201).collect())
+                        (F.col('trip_id') == trip['trip_id']) & (F.col('user_id') == trip['user_id']) &
+                        (F.col('event_time') >= F.current_timestamp() - F.expr('INTERVAL 180 SECONDS')))
+                        .orderBy(F.col('event_time').desc()).collect())
                     points = []
                     for row in reversed(rows):
                         p = row.asDict(recursive=True)
@@ -50,6 +51,9 @@ def start_live_predictions(spark, store, model, table, stop=None):
                             p['event_time'] = (at.replace(tzinfo=timezone.utc) if at.tzinfo is None else at).isoformat()
                         points.append(p)
                     if len(points) < 2:
+                        continue
+                    elapsed = (datetime.fromisoformat(points[-1]['event_time'].replace('Z','+00:00'))-datetime.fromisoformat(points[0]['event_time'].replace('Z','+00:00'))).total_seconds()
+                    if elapsed < 120:
                         continue
                     latest = points[-1]
                     age = (datetime.now(timezone.utc)-datetime.fromisoformat(latest['event_time'].replace('Z','+00:00'))).total_seconds()
