@@ -8,6 +8,8 @@ include:
 sync:
   include:
     - mode_detection/**
+    - assets/**
+    - scripts/**
     - tests/**
     - pyproject.toml
 
