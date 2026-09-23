@@ -2,6 +2,9 @@ resources:
   jobs:
     generic_event_ingestion_continuous:
       name: canopy-generic-event-ingestion-continuous-${bundle.target}
+      permissions:
+        - group_name: users
+          level: CAN_MANAGE
       continuous:
         pause_status: ${var.ingestion_continuous_pause_status}
       max_concurrent_runs: 1
