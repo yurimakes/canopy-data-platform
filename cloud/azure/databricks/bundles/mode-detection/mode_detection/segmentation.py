@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from .transit import TransitAdjustedPrediction
+from .windowing import terminal_segment_end
 
 
 @dataclass(frozen=True)
@@ -24,8 +25,12 @@ class SegmentState:
     trip_start: datetime
     completed: list[ModeSegment] = field(default_factory=list)
     current: ModeSegment | None = None
+    sealed: bool = False
 
     def apply(self, prediction: TransitAdjustedPrediction) -> None:
+        if self.sealed:
+            raise ValueError("cannot apply prediction after segments are sealed")
+
         decision_time = prediction.raw_prediction.window_end
         mode = prediction.final_mode
         confidence = prediction.confidence
@@ -34,7 +39,6 @@ class SegmentState:
             raise ValueError("prediction precedes trip start")
 
         if self.current is None:
-            # First complete 120-second prediction labels the initial trip history.
             self.current = ModeSegment(
                 mode=mode,
                 start_time=self.trip_start,
@@ -73,6 +77,27 @@ class SegmentState:
             confidence=confidence,
             prediction_count=1,
         )
+
+    def seal(self, trip_end: datetime, *, stride_seconds: int) -> tuple[ModeSegment, ...]:
+        if self.sealed:
+            return self.segments
+        if self.current is None:
+            raise ValueError("cannot seal trip without a mode prediction")
+
+        terminal_segment_end(
+            last_prediction_end=self.current.end_time,
+            trip_end=trip_end,
+            stride_seconds=stride_seconds,
+        )
+        self.current = ModeSegment(
+            mode=self.current.mode,
+            start_time=self.current.start_time,
+            end_time=trip_end,
+            confidence=self.current.confidence,
+            prediction_count=self.current.prediction_count,
+        )
+        self.sealed = True
+        return self.segments
 
     @property
     def segments(self) -> tuple[ModeSegment, ...]:
