@@ -3,6 +3,7 @@ bundle:
 
 include:
   - resources/*.yml
+  - ../../shared/*.yml
 
 sync:
   include:
@@ -11,6 +12,54 @@ sync:
     - pyproject.toml
 
 variables:
+  silver_schema:
+    description: Schema containing validated GPS and trip-end inputs.
+    default: silver
+  gps_observations_table:
+    description: Validated GPS observation source table.
+    default: gps_observations
+  trip_ended_events_table:
+    description: Parsed trip-end lifecycle source table.
+    default: trip_ended_events
+  gold_schema:
+    description: Schema containing finalized trip output.
+    default: gold
+  final_trips_table:
+    description: Finalized trip output table.
+    default: final_trips
   prediction_stride_seconds:
     description: Normal mode-prediction cadence. Trip-end finalization may occur between stride boundaries.
     default: "10"
+
+targets:
+  trial:
+    default: true
+    mode: production
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production
+        component: mode-detection
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
+
+  sandbox:
+    mode: development
+    variables:
+      silver_schema: sandbox
+      gps_observations_table: silver_gps_observations
+      trip_ended_events_table: silver_trip_ended_events
+      gold_schema: sandbox
+      final_trips_table: mode_detection_final_trips
+      prediction_stride_seconds: "10"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: experimental
+        component: mode-detection
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
