@@ -3,14 +3,17 @@ bundle:
 
 include:
   - resources/*.yml
+  - ../../shared/*.yml
+
+permissions:
+  - group_name: users
+    level: CAN_MANAGE
 
 sync:
   paths:
     - .
 
 variables:
-  catalog:
-    default: dbw_canopy_trial
   bronze_schema:
     default: bronze
   silver_schema:
@@ -58,7 +61,9 @@ variables:
 targets:
   trial:
     default: true
-    mode: development
+    # Shared integration target: all collaborators intentionally use one deployment
+    # identity and therefore manage the same bound workspace resources.
+    mode: production
     variables:
       ingestion_continuous_pause_status: PAUSED
       ingestion_trigger_interval: 1 second
@@ -81,9 +86,10 @@ targets:
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
 
   ingestion_latency:
+    # Personal/experimental target retained for isolated latency experiments.
     mode: development
     variables:
       bronze_schema: sandbox

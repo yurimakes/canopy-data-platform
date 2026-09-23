@@ -3,15 +3,13 @@ bundle:
 
 include:
   - resources/*.yml
+  - ../../shared/*.yml
 
-sync:
-  exclude:
-    - "**/__pycache__/**"
-    - "**/.pytest_cache/**"
+permissions:
+  - group_name: users
+    level: CAN_MANAGE
 
 variables:
-  catalog:
-    default: dbw_canopy_trial
   silver_schema:
     default: silver
   gold_schema:
@@ -37,8 +35,10 @@ variables:
 targets:
   trial:
     default: true
+    # Shared integration target: all collaborators intentionally use one deployment
+    # identity and therefore manage the same bound workspace job.
     mode: production
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
