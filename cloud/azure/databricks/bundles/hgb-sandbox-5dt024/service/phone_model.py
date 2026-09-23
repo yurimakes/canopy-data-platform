@@ -10,7 +10,7 @@ from src.aihub.ingest import AiHubPoint
 from src.aihub.training import ROBUST_FEATURE_COLUMNS
 from src.common.geo import haversine_distance_km
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='hgb-canonical-raw120-16features-sandbox-v1'
+VERSION='hgb-canonical-raw120-16features-sandbox-v2'
 
 def stamp(value):
     value=value if isinstance(value,datetime) else datetime.fromisoformat(value.replace('Z','+00:00'))
@@ -21,6 +21,31 @@ def distance(a,b):
 
 def features(points):
     return canonical_window_features([AiHubPoint(timestamp=stamp(p['event_time']),latitude=p['lat'],longitude=p['lon'],accuracy_m=p.get('accuracy'),altitude_m=p.get('altitude_m')) for p in points],user_id='sandbox',trajectory_id='window',raw_point_count=len(points))
+
+def coalesce_gps_bursts(points):
+    """Choose one measured fix from overlapping sub-100ms phone callbacks.
+
+    Keep original coordinates/timestamps. Bound each burst from its first fix
+    so a chain of close callbacks cannot collapse a longer observation period.
+    Missing/invalid accuracy and spatially distinct fixes stay separate.
+    """
+    selected=[]
+    burst_start=None
+    def usable_accuracy(point):
+        value=point.get('accuracy')
+        return value if isinstance(value,(int,float)) and not isinstance(value,bool) and math.isfinite(value) and 0<=value<=100 else None
+    for point in points:
+        when=stamp(point['event_time'])
+        if selected and 0<(when-burst_start).total_seconds()<0.1:
+            previous=selected[-1]
+            a,b=usable_accuracy(previous),usable_accuracy(point)
+            if a is not None and b is not None and distance(previous,point)<=a+b:
+                if b<a:selected[-1]=point
+                continue
+        selected.append(point)
+        burst_start=when
+    return selected
+
 
 class PhoneModel:
     def __init__(self):
@@ -56,7 +81,7 @@ class PhoneModel:
             if not -90<=p['lat']<=90 or not -180<=p['lon']<=180:raise ValueError('Coordinate range')
             if when in unique and unique[when]!=p:raise ValueError('Conflicting duplicate GPS timestamp')
             unique[when]=p
-        ordered=[unique[k] for k in sorted(unique)]
+        ordered=coalesce_gps_bursts([unique[k] for k in sorted(unique)])
         issues=[];runs=[];run=[]
         for a,b in zip(ordered,ordered[1:]):
             seconds=(stamp(b['event_time'])-stamp(a['event_time'])).total_seconds()
