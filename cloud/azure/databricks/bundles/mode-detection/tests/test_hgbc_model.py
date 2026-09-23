@@ -59,18 +59,30 @@ def test_metadata_uses_configured_stride():
     assert model.metadata.model_version == "c3_hgb_robust_cadence"
 
 
-def test_prediction_requires_full_120_second_span():
+def test_prediction_requires_full_scheduled_window():
     model = build()
-    assert not model.prediction_ready([observation(1, 0), observation(2, 119)])
-    assert model.prediction_ready([observation(1, 0), observation(2, 120)])
+    points = [observation(1, 0), observation(2, 119)]
+    assert not model.prediction_ready(points, window_end=BASE + timedelta(seconds=120))
+
+    points.append(observation(3, 120))
+    assert model.prediction_ready(points, window_end=BASE + timedelta(seconds=120))
 
 
-def test_predict_uses_exact_16_feature_order_and_window_end_semantics():
+def test_predict_uses_exact_16_feature_order_and_scheduled_window_end():
     estimator = FakeModel()
     model = build(bundle(estimator))
-    points = [observation(index + 1, seconds) for index, seconds in enumerate((0, 60, 120))]
+    points = [
+        observation(1, 0),
+        observation(2, 60),
+        observation(3, 120),
+        observation(4, 123),
+    ]
 
-    prediction = model.predict(points, raw_point_count=3)
+    prediction = model.predict(
+        points,
+        window_end=BASE + timedelta(seconds=120),
+        raw_point_count=3,
+    )
 
     assert prediction.predicted_mode == "car"
     assert prediction.confidence == pytest.approx(0.6)
@@ -79,7 +91,7 @@ def test_predict_uses_exact_16_feature_order_and_window_end_semantics():
     assert tuple(estimator.frames[0].columns) == HGBC_FEATURE_COLUMNS
 
 
-def test_latest_window_is_anchored_at_latest_observation():
+def test_future_observations_do_not_shift_scheduled_window():
     model = build()
     points = [
         observation(1, 0),
@@ -87,10 +99,15 @@ def test_latest_window_is_anchored_at_latest_observation():
         observation(3, 120),
         observation(4, 130),
     ]
-    prediction = model.predict(points, raw_point_count=4)
 
-    assert prediction.window_end == BASE + timedelta(seconds=130)
-    assert prediction.window_start == BASE + timedelta(seconds=10)
+    prediction = model.predict(
+        points,
+        window_end=BASE + timedelta(seconds=120),
+        raw_point_count=3,
+    )
+
+    assert prediction.window_start == BASE
+    assert prediction.window_end == BASE + timedelta(seconds=120)
 
 
 def test_rejects_non_robust_artifact_contract():
