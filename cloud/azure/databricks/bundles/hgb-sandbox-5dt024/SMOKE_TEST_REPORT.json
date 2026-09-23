@@ -1,0 +1,103 @@
+{
+  "verified_at_utc": "2026-09-23T16:35:17.606526+00:00",
+  "input_kind": "synthetic_241_GPS_plus_trip_ended",
+  "trip_id": "f4e208d5-c436-4b46-8b80-8c4abc343d44",
+  "user_id": "9b3338d7-efdd-4ffe-8aed-de327876470a",
+  "runs": [
+    {
+      "run_id": "387027279876887",
+      "job_id": 288158402366685,
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "url": "https://adb-7405612422597045.5.azuredatabricks.net/?o=7405612422597045#job/288158402366685/run/387027279876887",
+      "start_time": 1790180993176,
+      "end_time": 1790181075330
+    },
+    {
+      "run_id": "265268492673865",
+      "job_id": 1025081607321226,
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "url": "https://adb-7405612422597045.5.azuredatabricks.net/?o=7405612422597045#job/1025081607321226/run/265268492673865",
+      "start_time": 1790181103938,
+      "end_time": 1790181165660,
+      "summary": {
+        "status": "READY",
+        "quality": "complete",
+        "output_table": "dbw_canopy_trial.sandbox.m5dt024_gold_hgb_results",
+        "model_sha256": "f1c30c2923bccdb9018dd9d722167a1e7902450ec47ca8408bacfd300e533878",
+        "sklearn_version": "1.9.0",
+        "elapsed_seconds": 2.4823651950000567,
+        "gps_count": 241,
+        "window_count": 2,
+        "feature_count": 16,
+        "modes": [
+          "walk",
+          "walk"
+        ],
+        "carbon": {
+          "kg_co2e": 0.0,
+          "factor_version": "2026_v1",
+          "policy_version": "carbon-policy-v1",
+          "scope": "classified_segments_only"
+        },
+        "stored_rows_for_trip_generation": 1,
+        "readback_verified": true
+      }
+    },
+    {
+      "run_id": "569446902620869",
+      "job_id": 1025081607321226,
+      "state": {
+        "life_cycle_state": "TERMINATED",
+        "result_state": "SUCCESS",
+        "state_message": "",
+        "user_cancelled_or_timedout": false
+      },
+      "url": "https://adb-7405612422597045.5.azuredatabricks.net/?o=7405612422597045#job/1025081607321226/run/569446902620869",
+      "start_time": 1790181225596,
+      "end_time": 1790181282854,
+      "summary": {
+        "status": "READY",
+        "quality": "complete",
+        "output_table": "dbw_canopy_trial.sandbox.m5dt024_gold_hgb_results",
+        "model_sha256": "f1c30c2923bccdb9018dd9d722167a1e7902450ec47ca8408bacfd300e533878",
+        "sklearn_version": "1.9.0",
+        "elapsed_seconds": 2.0250209480000194,
+        "gps_count": 241,
+        "window_count": 2,
+        "feature_count": 16,
+        "modes": [
+          "walk",
+          "walk"
+        ],
+        "carbon": {
+          "kg_co2e": 0.0,
+          "factor_version": "2026_v1",
+          "policy_version": "carbon-policy-v1",
+          "scope": "classified_segments_only"
+        },
+        "stored_rows_for_trip_generation": 1,
+        "readback_verified": true
+      }
+    }
+  ],
+  "limitations": [
+    "Not a phone GPS accuracy test",
+    "Other collaborator redeployment not tested",
+    "No operational Cosmos or reward integration"
+  ],
+  "initial_test_failure": "Synthetic generator omitted required raw_location; fixed generator and resent a new test trip. No production parser validation was relaxed.",
+  "cleanup": {
+    "ingestion_job": "PAUSED",
+    "pipeline": "IDLE"
+  }
+}

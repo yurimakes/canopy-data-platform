@@ -1,0 +1,61 @@
+resources:
+  jobs:
+    sandbox_ingestion_job:
+      name: canopy-hgb-5dt024-ingestion-job
+      continuous:
+        pause_status: ${var.ingestion_continuous_pause_status}
+      max_concurrent_runs: 1
+      tasks:
+      - task_key: ingest
+        pipeline_task:
+          pipeline_id: ${resources.pipelines.sandbox_ingestion.id}
+      permissions:
+      - group_name: users
+        level: CAN_MANAGE
+      run_as:
+        user_name: ${workspace.current_user.userName}
+      tags:
+        component: hgb-sandbox
+        environment: ${bundle.target}
+      queue:
+        enabled: true
+    sandbox_hgb_trip:
+      name: canopy-hgb-5dt024-trip-job
+      max_concurrent_runs: 1
+      parameters:
+      - name: trip_id
+        default: ''
+      - name: user_id
+        default: ''
+      tasks:
+      - task_key: hgb_trip
+        spark_python_task:
+          python_file: ${workspace.file_path}/service/run_trip.py
+          parameters:
+          - --trip-id
+          - '{{job.parameters.trip_id}}'
+          - --user-id
+          - '{{job.parameters.user_id}}'
+          source: WORKSPACE
+        environment_key: hgb
+      environments:
+      - environment_key: hgb
+        spec:
+          environment_version: '4'
+          dependencies:
+          - scikit-learn==1.9.0
+          - pandas==3.0.6
+          - numpy==2.5.3
+          - scipy==1.18.1
+          - joblib==1.6.0
+          - PyYAML==6.0.3
+      permissions:
+      - group_name: users
+        level: CAN_MANAGE
+      run_as:
+        user_name: ${workspace.current_user.userName}
+      tags:
+        component: hgb-sandbox
+        environment: ${bundle.target}
+      queue:
+        enabled: true
