@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+from uuid import uuid5, NAMESPACE_URL
 
 SUBSCRIPTION = "27db5ec6-d206-4028-b5e1-6004dca5eeef"
 GROUP = "5dt-2nd-team1"
@@ -35,6 +36,20 @@ def main():
         raise RuntimeError("Current server is not the expected main Azure resident-worker configuration")
     print(json.dumps({"before": {k: current.get(k) for k in ROUTES[args.target]}, "after": ROUTES[args.target]}))
     if args.apply:
+        # The existing Function identity has hub-scoped RBAC, not namespace-wide RBAC.
+        identity = az_json(args.az, "functionapp", "identity", "show", "-g", GROUP, "-n", APP)
+        hub = ROUTES[args.target]["EVENTHUB_NAME"]
+        scope = f"/subscriptions/{SUBSCRIPTION}/resourceGroups/{GROUP}/providers/Microsoft.EventHub/namespaces/evhns-canopy-dev/eventhubs/{hub}"
+        existing = az_json(args.az, "role", "assignment", "list", "--assignee-object-id", identity["principalId"], "--scope", scope)
+        for role in ("Azure Event Hubs Data Sender", "Azure Event Hubs Data Receiver"):
+            if not any(r.get("roleDefinitionName")==role for r in existing):
+                az_json(args.az, "role", "assignment", "create", "--assignee-object-id", identity["principalId"],
+                    "--assignee-principal-type", "ServicePrincipal", "--role", role, "--scope", scope,
+                    "--name", str(uuid5(NAMESPACE_URL, scope+identity["principalId"]+role)))
+        group = current.get("TRIP_EVENTHUB_CONSUMER_GROUP")
+        if group and group != "$Default":
+            az_json(args.az, "eventhubs", "eventhub", "consumer-group", "create", "-g", GROUP,
+                    "--namespace-name", "evhns-canopy-dev", "--eventhub-name", hub, "--name", group)
         az_json(args.az, "functionapp", "config", "appsettings", "set", "-g", GROUP, "-n", APP,
                 "--settings", *[k+"="+v for k,v in ROUTES[args.target].items()])
         saved = {s["name"]:s["value"] for s in az_json(args.az,"functionapp","config","appsettings","list","-g",GROUP,"-n",APP)}
