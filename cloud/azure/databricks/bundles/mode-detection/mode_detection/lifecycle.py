@@ -40,10 +40,10 @@ class TripLifecycleState:
     def register_trip_end(self, event: TripEnded, *, processor: ModeDetectionProcessor) -> None:
         if event.trip_id != processor.trip.trip_id:
             raise ValueError("trip_end trip_id does not match processor state")
-        if event.started_at != processor.trip.trip_start:
-            raise ValueError("trip_end started_at does not match processor state")
         if event.ended_at < event.started_at:
             raise ValueError("trip_end ended_at precedes started_at")
+        if event.ended_at < processor.trip.trip_start:
+            raise ValueError("trip_end ended_at precedes first GPS observation")
         if event.expected_last_sequence < 1:
             raise ValueError("expected_last_sequence must be positive")
 
