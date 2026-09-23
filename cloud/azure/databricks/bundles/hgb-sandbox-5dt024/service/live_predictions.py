@@ -56,8 +56,6 @@ def start_live_predictions(spark, store, model, table, stop=None):
                     if age > 30 or age < -5 or latest['sequence'] <= (trip.get('live_prediction') or {}).get('sequence', 0):
                         continue
                     result = model.result(trip, points)
-                    if not result['segments']:
-                        continue  # HGB needs a complete 120-second window.
                     segment = result['segments'][-1]
                     publish_live(store, trip, {
                         'mode': segment['mode'], 'confidence': segment['confidence'],
