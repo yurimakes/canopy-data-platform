@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -50,7 +51,6 @@ class HGBCModeDetectingModel(ModeDetectingModel):
     @staticmethod
     def _load_bundle(path: str | Path) -> Any:
         import joblib
-
         return joblib.load(path)
 
     @staticmethod
@@ -70,40 +70,54 @@ class HGBCModeDetectingModel(ModeDetectingModel):
     def metadata(self) -> ModeModelMetadata:
         return self._metadata
 
-    def prediction_ready(self, observations: Sequence[Observation]) -> bool:
-        if len(observations) < 2:
-            return False
-        ordered = sorted(observations, key=lambda point: point.event_time)
-        duration = (ordered[-1].event_time - ordered[0].event_time).total_seconds()
-        return duration >= self._metadata.window_seconds
-
-    def _window(self, observations: Sequence[Observation]) -> tuple[Observation, ...]:
+    def _window(
+        self,
+        observations: Sequence[Observation],
+        *,
+        window_end: datetime,
+    ) -> tuple[Observation, ...]:
         if len(observations) < 2:
             raise ValueError("HGBC prediction requires at least two observations")
-        ordered = tuple(sorted(observations, key=lambda point: point.event_time))
-        window_end = ordered[-1].event_time
-        cutoff = window_end.timestamp() - self._metadata.window_seconds
-        selected = tuple(
-            point
-            for point in ordered
-            if cutoff <= point.event_time.timestamp() <= window_end.timestamp()
-        )
+
+        window_start = window_end - timedelta(seconds=self._metadata.window_seconds)
+        selected = tuple(sorted(
+            (
+                point
+                for point in observations
+                if window_start <= point.event_time <= window_end
+            ),
+            key=lambda point: point.event_time,
+        ))
         if len(selected) < 2:
             raise ValueError("full HGBC window does not contain enough observations")
-        duration = (selected[-1].event_time - selected[0].event_time).total_seconds()
-        if duration < self._metadata.window_seconds:
+
+        observed_span = (selected[-1].event_time - selected[0].event_time).total_seconds()
+        if observed_span < self._metadata.window_seconds:
             raise ValueError(
-                "HGBC prediction requires a complete 120-second observation span"
+                "HGBC prediction requires observations spanning the complete 120-second window"
             )
         return selected
+
+    def prediction_ready(
+        self,
+        observations: Sequence[Observation],
+        *,
+        window_end: datetime,
+    ) -> bool:
+        try:
+            self._window(observations, window_end=window_end)
+        except ValueError:
+            return False
+        return True
 
     def predict(
         self,
         observations: Sequence[Observation],
         *,
+        window_end: datetime,
         raw_point_count: int,
     ) -> ModePrediction:
-        window = self._window(observations)
+        window = self._window(observations, window_end=window_end)
         features = compute_hgbc_features(window, raw_point_count=raw_point_count)
 
         import pandas as pd
@@ -126,7 +140,7 @@ class HGBCModeDetectingModel(ModeDetectingModel):
             predicted_mode=predicted_mode,
             confidence=probability_map[predicted_mode],
             probabilities=probability_map,
-            window_start=window[0].event_time,
-            window_end=window[-1].event_time,
+            window_start=window_end - timedelta(seconds=self._metadata.window_seconds),
+            window_end=window_end,
             metadata=self._metadata,
         )
