@@ -37,14 +37,14 @@ variables:
     description: Number of Spark state-store partitions for the mode-detection processor.
     default: "4"
   model_artifact_path:
-    description: Workspace-local or mounted path to the HGBC joblib artifact.
-    default: /Workspace/Shared/canopy/models/aihub_canonical_raw120.joblib
+    description: Bundle-local staged HGBC joblib artifact.
+    default: ${workspace.file_path}/assets/models/aihub_canonical_raw120.joblib
   transit_reference_root:
-    description: Root containing the preserved transit_context Python package.
-    default: /Workspace/Shared/canopy/transit/reference-model
+    description: Bundle-local root containing the vendored transit_context Python package.
+    default: ${workspace.file_path}/assets/reference-model
   transit_reference_dir:
-    description: Directory containing transit reference CSVs.
-    default: /Workspace/Shared/canopy/transit/reference-data
+    description: Bundle-local directory containing externally staged transit reference CSVs.
+    default: ${workspace.file_path}/assets/transit
   mode_detection_pause_status:
     description: Pause status for the continuous wrapper job.
     default: PAUSED
