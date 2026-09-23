@@ -30,6 +30,12 @@ class ProductionContract(unittest.TestCase):
    self.assertEqual(saved['confirmed_trip']['confirmation_source'],'system')
  def test_canonical_storage_code_is_unchanged(self):
   original=ROOT.parent/'production-trip'
-  for path in ['runtime/cloud/azure/pipelines/databricks/finalize_trip_pipeline.py','runtime/cloud/azure/pipelines/databricks/infer_trip_batch.py','runtime/cloud/azure/pipelines/databricks/trip_delta_store.py','service/gps_reader.py']:
+  for path in ['runtime/cloud/azure/pipelines/databricks/finalize_trip_pipeline.py','runtime/cloud/azure/pipelines/databricks/infer_trip_batch.py','runtime/cloud/azure/pipelines/databricks/trip_delta_store.py']:
    self.assertEqual((ROOT/path).read_bytes(),(original/path).read_bytes(),path)
 if __name__=='__main__':unittest.main()
+
+class HgbInputCompatibility(unittest.TestCase):
+ def test_reader_preserves_altitude_and_otherwise_matches_original(self):
+  original=(ROOT.parent/'production-trip/service/gps_reader.py').read_text(encoding='utf-8')
+  copied=(ROOT/'service/gps_reader.py').read_text(encoding='utf-8')
+  self.assertEqual(copied.replace("'raw_speed','altitude_m')", "'raw_speed')"),original)

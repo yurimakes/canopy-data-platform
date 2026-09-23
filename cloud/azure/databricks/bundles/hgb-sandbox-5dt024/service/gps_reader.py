@@ -22,7 +22,7 @@ def read_gps(spark,table,trip,history_table=None):
         event=point['event_time']
         if hasattr(event,'isoformat'):
             point['event_time']=(event.replace(tzinfo=timezone.utc) if event.tzinfo is None else event).isoformat()
-        points.append({k:point.get(k) for k in ('user_id','trip_id','sequence','event_time','lat','lon','accuracy','raw_speed')})
+        points.append({k:point.get(k) for k in ('user_id','trip_id','sequence','event_time','lat','lon','accuracy','raw_speed','altitude_m')})
     expected=trip['expected_last_sequence']
     if history_table and {p['sequence'] for p in points}!=set(range(1,expected+1)):
         # Old Trips can predate the fast consumer's Event Hub retention window.
