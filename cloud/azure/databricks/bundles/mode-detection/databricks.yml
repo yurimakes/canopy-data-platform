@@ -1,0 +1,11 @@
+bundle:
+  name: canopy-mode-detection
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - mode_detection/**
+    - tests/**
+    - pyproject.toml
