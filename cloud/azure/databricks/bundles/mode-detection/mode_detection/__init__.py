@@ -4,6 +4,7 @@ from .contract import ModeDetectingModel, ModeModelMetadata, ModePrediction, Obs
 from .hgbc import HGBCModeDetectingModel
 from .hgbc_features import HGBC_FEATURE_COLUMNS, compute_hgbc_features
 from .state import TripProcessingState
+from .transit import TransitAdjustedPrediction, TransitContextState
 
 __all__ = [
     "HGBC_FEATURE_COLUMNS",
@@ -12,6 +13,8 @@ __all__ = [
     "ModeModelMetadata",
     "ModePrediction",
     "Observation",
+    "TransitAdjustedPrediction",
+    "TransitContextState",
     "TripProcessingState",
     "compute_hgbc_features",
 ]
