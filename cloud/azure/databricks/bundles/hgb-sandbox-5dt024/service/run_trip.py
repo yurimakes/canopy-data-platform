@@ -25,10 +25,9 @@ def select_points(rows,trip):
         raise ValueError(f'Incomplete GPS: expected={expected}, received={len(by_sequence)}, missing_sequence_sample={missing[:10]}; check ingestion and quarantine')
     return [by_sequence[i] for i in range(1,expected+1)]
 
-def main(argv=None):
+def main():
     p=argparse.ArgumentParser();p.add_argument('--trip-id',required=True);p.add_argument('--user-id',required=True)
-    p.add_argument('--processing-generation', type=int, default=0)
-    a=p.parse_args(argv)
+    a=p.parse_args()
     if not a.trip_id.strip() or not a.user_id.strip():raise ValueError('Specify test trip_id and user_id; no implicit production lookup')
     import sklearn
     if sklearn.__version__!='1.9.0':raise RuntimeError('Expected scikit-learn 1.9.0, got '+sklearn.__version__)
@@ -41,8 +40,6 @@ def main(argv=None):
     matches=spark.table(ended).where((F.col('trip_id')==a.trip_id)&(F.col('user_id')==a.user_id)).orderBy(F.col('processing_generation').desc()).limit(100).collect()
     if not matches:raise ValueError('No matching trip_ended event in sandbox; send GPS and lifecycle events to the test hub')
     trip=matches[0].asDict();generation=trip['processing_generation']
-    if a.processing_generation and generation != a.processing_generation:
-        raise ValueError('Lifecycle generation changed; refusing stale analysis')
     for row in matches:
         d=row.asDict()
         if d['processing_generation']==generation and any(d[k]!=trip[k] for k in ['started_at','ended_at','expected_last_sequence','campaign_id']):raise ValueError('Conflicting lifecycle events')
@@ -63,5 +60,4 @@ def main(argv=None):
     if len(saved)!=1 or json.loads(saved[0]['document_json'])!=result:
         raise RuntimeError('Stored sandbox result does not match the computed result')
     print(json.dumps({'status':result['status'],'quality':result['data_quality']['status'],'output_table':target,'model_sha256':model.sha256,'sklearn_version':sklearn.__version__,'elapsed_seconds':result['elapsed_seconds'],'gps_count':len(points),'window_count':len(result['transit_evidence']),'feature_count':len(model.bundle['feature_columns']),'modes':[s['mode'] for s in result['segments']],'carbon':result.get('carbon'),'stored_rows_for_trip_generation':len(saved),'readback_verified':True}))
-    return result
 if __name__=='__main__':main()
