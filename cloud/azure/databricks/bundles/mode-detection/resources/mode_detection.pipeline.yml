@@ -1,0 +1,26 @@
+resources:
+  pipelines:
+    mode_detection_pipeline:
+      name: canopy-mode-detection-${bundle.target}
+      serverless: true
+      channel: CURRENT
+      catalog: ${var.catalog}
+      schema: ${var.output_schema}
+      root_path: ${workspace.file_path}
+      libraries:
+        - file:
+            path: ${workspace.file_path}/mode_detection/lakeflow_pipeline.py
+      configuration:
+        spark.sql.session.timeZone: UTC
+        canopy.catalog: ${var.catalog}
+        canopy.silver_schema: ${var.silver_schema}
+        canopy.gps_observations_table: ${var.gps_observations_table}
+        canopy.trip_ended_events_table: ${var.trip_ended_events_table}
+        canopy.output_schema: ${var.output_schema}
+        canopy.mode_detection_results_table: ${var.mode_detection_results_table}
+        canopy.prediction_stride_seconds: ${var.prediction_stride_seconds}
+        canopy.state_ttl_ms: ${var.state_ttl_ms}
+        canopy.state_store_partitions: ${var.state_store_partitions}
+        canopy.model_artifact_path: ${var.model_artifact_path}
+        canopy.transit_reference_root: ${var.transit_reference_root}
+        canopy.transit_reference_dir: ${var.transit_reference_dir}
