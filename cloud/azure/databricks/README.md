@@ -73,7 +73,7 @@ The canonical `trial` targets use a shared deployment root:
 
 This is intentional: authorized collaborators deploying the same bundle/target resolve to the same bundle state instead of creating per-user copies.
 
-The shared trial bundles explicitly grant `CAN_MANAGE` to the workspace `users` group. In this workspace that group is the project developer group, so collaborators manage the same shared trial resources while their own authenticated user remains visible as the deployer. The bundle state is intentionally stored under `/Workspace/bundles` rather than the built-in `/Workspace/Shared` area.
+The shared trial resources use the workspace `users` group as the project developer group. For `production-trip`, bundle-level `CAN_MANAGE` remains appropriate because the bundle contains only a job. For `ingestion`, `CAN_MANAGE` is scoped to the continuous wrapper job rather than applied bundle-wide; this avoids cross-user deployments trying to reconcile the Lakeflow pipeline owner through the pipeline permissions API. The pipeline keeps its existing workspace ACL/owner configuration. The bundle state is intentionally stored under `/Workspace/bundles` rather than the built-in `/Workspace/Shared` area.
 
 ## Existing canonical workspace resources
 
