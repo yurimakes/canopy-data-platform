@@ -151,8 +151,6 @@ def trip_feedback(req: func.HttpRequest) -> func.HttpResponse:
 def trip_worker(timer: func.TimerRequest) -> None:
     # Cosmos processing documents are the outbox: stop + scheduling is a single CAS write.
     service().process_pending()
-    from services.hgb_sandbox import recover as recover_hgb
-    recover_hgb(service().store)
     if os.getenv("TRIP_DATABRICKS_ENABLED", "false").lower() == "true":
         from services.trip_dispatch import recover
         recover(service().store)
