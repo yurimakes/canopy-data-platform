@@ -9,3 +9,8 @@ sync:
     - mode_detection/**
     - tests/**
     - pyproject.toml
+
+variables:
+  prediction_stride_seconds:
+    description: Normal mode-prediction cadence. Trip-end finalization may occur between stride boundaries.
+    default: "10"
