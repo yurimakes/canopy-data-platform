@@ -44,7 +44,9 @@ class PhoneModel:
 
     def result(self,trip,points):
         from service.transit_fusion import fuse
-        start,end=stamp(trip['started_at']),stamp(trip['ended_at'])
+        start=stamp(trip['started_at'])
+        # The unchanged live-preview worker supplies collecting trips without ended_at.
+        end=stamp(trip['ended_at']) if trip.get('ended_at') else max((stamp(p['event_time']) for p in points),default=start)
         if end<start:raise ValueError('Invalid trip time range')
         unique={}
         for p in points:

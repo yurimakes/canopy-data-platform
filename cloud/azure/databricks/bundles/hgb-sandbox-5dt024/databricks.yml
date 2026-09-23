@@ -50,6 +50,24 @@ variables:
     description: Read Event Hubs directly for latency-critical Silver outputs instead
       of routing through persisted Bronze.
     default: 'true'
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+    description: Databricks secret scope containing cosmos-key. This is credential
+      storage, not the Cosmos database name.
+  cosmos_key:
+    default: cosmos-key
+  production_trip_pause_status:
+    default: PAUSED
+  gold_schema:
+    default: sandbox
+  final_trips_table:
+    default: m5dt024_final_trips
 targets:
   sandbox:
     default: true

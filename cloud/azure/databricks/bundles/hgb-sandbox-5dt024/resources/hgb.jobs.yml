@@ -21,41 +21,46 @@ resources:
         enabled: true
     sandbox_hgb_trip:
       name: canopy-hgb-5dt024-trip-job
+      tags:
+        component: hgb-sandbox
+        environment: ${bundle.target}
       max_concurrent_runs: 1
-      parameters:
-      - name: trip_id
-        default: ''
-      - name: user_id
-        default: ''
-      tasks:
-      - task_key: hgb_trip
-        spark_python_task:
-          python_file: ${workspace.file_path}/service/run_trip.py
-          parameters:
-          - --trip-id
-          - '{{job.parameters.trip_id}}'
-          - --user-id
-          - '{{job.parameters.user_id}}'
-          source: WORKSPACE
-        environment_key: hgb
+      queue:
+        enabled: true
+      continuous:
+        pause_status: ${var.production_trip_pause_status}
+      performance_target: PERFORMANCE_OPTIMIZED
       environments:
-      - environment_key: hgb
+      - environment_key: canopy_env
         spec:
           environment_version: '4'
           dependencies:
-          - scikit-learn==1.9.0
+          - azure-cosmos==4.17.1
+          - azure-identity==1.25.3
           - pandas==3.0.6
+          - pyarrow==25.0.1
+          - scikit-learn==1.9.0
+          - joblib==1.6.0
+          - catboost==1.2.10
+          - pyproj==3.7.2
+          - PyYAML==6.0.3
           - numpy==2.5.3
           - scipy==1.18.1
-          - joblib==1.6.0
-          - PyYAML==6.0.3
+      tasks:
+      - task_key: trip
+        environment_key: canopy_env
+        spark_python_task:
+          source: WORKSPACE
+          python_file: ${workspace.file_path}/service/resident_worker.py
+          parameters:
+          - --config
+          - '{"cosmos_endpoint":"${var.cosmos_endpoint}", "database":"${var.cosmos_database}",
+            "trips_container":"${var.cosmos_container}", "cosmos_secret_scope":"${var.cosmos_secret_scope}",
+            "cosmos_key":"${var.cosmos_key}", "gps_table":"${var.catalog}.${var.silver_schema}.${var.gps_observations_table}",
+            "gold_table":"${var.catalog}.${var.gold_schema}.${var.final_trips_table}"}'
+        timeout_seconds: 0
       permissions:
       - group_name: users
         level: CAN_MANAGE
       run_as:
         user_name: ${workspace.current_user.userName}
-      tags:
-        component: hgb-sandbox
-        environment: ${bundle.target}
-      queue:
-        enabled: true

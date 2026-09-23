@@ -2,7 +2,7 @@
 import inspect,sys,os,json,argparse,time
 from pathlib import Path
 ROOT=Path(inspect.currentframe().f_code.co_filename).resolve().parents[1]
-sys.path.insert(0,str(ROOT))
+sys.path[:0]=[str(ROOT/"runtime/apps/api"),str(ROOT)]
 os.environ['CANOPY_KTDB_REFERENCE_ROOT']=str(ROOT)  # existing Transit adapter's reference-code variable; not a KTDB model call
 os.environ['CANOPY_TRANSIT_REFERENCE_DIR']=str(ROOT/'assets/transit')
 from service.isolation import TABLES,require_table

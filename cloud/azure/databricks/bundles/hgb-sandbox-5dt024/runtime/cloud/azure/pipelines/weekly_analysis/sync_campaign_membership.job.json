@@ -1,0 +1,30 @@
+{
+  "parameters": [
+    {"name": "campaign_id", "default": "pipeline_test_iphone"}
+  ],
+  "tasks": [
+    {
+      "task_key": "sync_campaign_membership",
+      "environment_key": "membership_sync",
+      "spark_python_task": {
+        "python_file": "/Workspace/canopy-data-platform-git/cloud/azure/pipelines/databricks/sync_campaign_membership.py",
+        "source": "WORKSPACE",
+        "parameters": [
+          "{{job.parameters.campaign_id}}",
+          "--endpoint", "https://cosmos-canopy-dev.documents.azure.com:443/",
+          "--secret-scope", "canopy-trip-pipeline-test",
+          "--secret-key", "cosmos-key"
+        ]
+      }
+    }
+  ],
+  "environments": [
+    {
+      "environment_key": "membership_sync",
+      "spec": {
+        "environment_version": "4",
+        "dependencies": ["azure-cosmos==4.17.0", "azure-identity==1.25.3"]
+      }
+    }
+  ]
+}

@@ -3,7 +3,7 @@ from pathlib import Path
 from datetime import datetime,timedelta,timezone
 import pandas as pd
 import numpy as np
-ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+ROOT=Path(__file__).resolve().parents[1];sys.path[:0]=[str(ROOT/"runtime/apps/api"),str(ROOT)]
 os.environ['CANOPY_KTDB_REFERENCE_ROOT']=str(ROOT)
 os.environ['CANOPY_TRANSIT_REFERENCE_DIR']=str(ROOT/'assets/transit')
 from service.phone_model import PhoneModel,features,stamp
@@ -75,7 +75,7 @@ class IntegrationTests(unittest.TestCase):
   for job in jobs.values():
    self.assertEqual(job['permissions'],[{'group_name':'users','level':'CAN_MANAGE'}])
    self.assertEqual(job['run_as'],{'user_name':'${workspace.current_user.userName}'})
-  self.assertNotIn('continuous',jobs['sandbox_hgb_trip'])
+  self.assertEqual(jobs['sandbox_hgb_trip']['continuous']['pause_status'],'${var.production_trip_pause_status}')
   self.assertNotIn('schedule',jobs['sandbox_hgb_trip'])
   self.assertEqual(len(list(ROOT.rglob('*.joblib'))),1);self.assertFalse(list(ROOT.rglob('*.pth')))
 if __name__=='__main__':unittest.main(verbosity=2)
