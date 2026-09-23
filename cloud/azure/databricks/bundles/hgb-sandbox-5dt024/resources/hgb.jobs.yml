@@ -27,17 +27,23 @@ resources:
         default: ''
       - name: user_id
         default: ''
+      - name: processing_generation
+        default: '0'
       tasks:
+      - task_key: ingest_app_events
+        pipeline_task:
+          pipeline_id: ${resources.pipelines.sandbox_ingestion.id}
+        timeout_seconds: 600
       - task_key: hgb_trip
-        spark_python_task:
-          python_file: ${workspace.file_path}/service/run_trip.py
-          parameters:
-          - --trip-id
-          - '{{job.parameters.trip_id}}'
-          - --user-id
-          - '{{job.parameters.user_id}}'
+        depends_on:
+        - task_key: ingest_app_events
+        notebook_task:
+          notebook_path: ${workspace.file_path}/service/app_trip_notebook.py
           source: WORKSPACE
+          base_parameters:
+            bundle_root: ${workspace.file_path}
         environment_key: hgb
+        timeout_seconds: 600
       environments:
       - environment_key: hgb
         spec:
@@ -59,3 +65,4 @@ resources:
         environment: ${bundle.target}
       queue:
         enabled: true
+      timeout_seconds: 1500
