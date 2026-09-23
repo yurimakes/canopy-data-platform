@@ -35,12 +35,13 @@ class ModeDetectionProcessor:
         *,
         raw_point_count_for_window: RawPointCountProvider,
         transit_resolver: TransitResolver,
+        through=None,
     ) -> list[TransitAdjustedPrediction]:
         """Drain scheduled predictions through transit correction into segments."""
 
         emitted: list[TransitAdjustedPrediction] = []
 
-        for window_end in self.trip.due_prediction_ends(model):
+        for window_end in self.trip.due_prediction_ends(model, through=through):
             points = self.trip.observations
             if not model.prediction_ready(points, window_end=window_end):
                 break
