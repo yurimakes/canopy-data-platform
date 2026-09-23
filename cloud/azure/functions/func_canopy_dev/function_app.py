@@ -311,6 +311,16 @@ def gps_ingest(req: func.HttpRequest, event: func.Out[str]) -> func.HttpResponse
         logging.warning("GPS request rejected: body is not valid JSON")
         return _gps_json_response({"code": "invalid_json"}, 400)
 
+    from services.hgb_sandbox import route_gps
+    from services.trip_service import ApiError
+    try:
+        if route_gps(payload, {k.lower(): v for k, v in req.headers.items()}):
+            return _gps_json_response({"status": "accepted"}, 202)
+    except ApiError as exc:
+        return _gps_json_response({"code": exc.code}, exc.status)
+    except Exception:
+        logging.exception("hgb_gps_publish_failed")
+        return _gps_json_response({"code": "gps_temporarily_unavailable"}, 503)
     _extract_core_fields(payload)
 
     event.set(req.get_body().decode("utf-8"))

@@ -60,7 +60,8 @@ class CosmosTripStore:
         return list(self.container.query_items(
             query=f"SELECT TOP {int(limit)} * FROM c WHERE c.type = 'trip' AND c.status = 'processing' "
                   "AND c.process_after <= @now AND c.lease_until <= @now "
-                  "AND (NOT IS_DEFINED(c.result_owner) OR c.result_owner != 'databricks')",
+                  "AND (NOT IS_DEFINED(c.result_owner) OR c.result_owner != 'databricks') "
+                  "AND (NOT IS_DEFINED(c.processing_backend) OR c.processing_backend != 'hgb_sandbox_5dt024')",
             parameters=[{"name": "@now", "value": now}], enable_cross_partition_query=True))
 
     def pending_trip_ends(self, limit=20):
@@ -70,6 +71,12 @@ class CosmosTripStore:
     def pending_trip_dispatch(self, limit=20):
         return list(self.container.query_items(query=f"SELECT TOP {int(limit)} * FROM c WHERE c.type='trip' "
                     "AND c.status='processing' AND c.result_owner='databricks' ORDER BY c._ts ASC",
+                    enable_cross_partition_query=True))
+
+
+    def pending_hgb(self, limit=20):
+        return list(self.container.query_items(query=f"SELECT TOP {int(limit)} * FROM c WHERE c.type='trip' "
+                    "AND c.status='processing' AND c.processing_backend='hgb_sandbox_5dt024' ORDER BY c._ts ASC",
                     enable_cross_partition_query=True))
 
 
@@ -120,7 +127,8 @@ class SQLiteTripStore:
             rows = db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.status')='processing' "
                               "AND json_extract(payload,'$.process_after')<=? "
                               "AND json_extract(payload,'$.lease_until')<=? "
-                              "AND COALESCE(json_extract(payload,'$.result_owner'),'functions')!='databricks' LIMIT ?", (now, now, limit)).fetchall()
+                              "AND COALESCE(json_extract(payload,'$.result_owner'),'functions')!='databricks' "
+                              "AND COALESCE(json_extract(payload,'$.processing_backend'),'')!='hgb_sandbox_5dt024' LIMIT ?", (now, now, limit)).fetchall()
         return [{**json.loads(payload), "_etag": str(version)} for version, payload in rows]
 
     def pending_trip_ends(self, limit=20):
@@ -132,4 +140,10 @@ class SQLiteTripStore:
         with self.connect() as db:
             rows = db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.status')='processing' "
                               "AND json_extract(payload,'$.result_owner')='databricks' LIMIT ?", (limit,)).fetchall()
+        return [{**json.loads(payload), "_etag": str(version)} for version, payload in rows]
+
+    def pending_hgb(self, limit=20):
+        with self.connect() as db:
+            rows = db.execute("SELECT version,payload FROM trips WHERE json_extract(payload,'$.status')='processing' "
+                "AND json_extract(payload,'$.processing_backend')='hgb_sandbox_5dt024' LIMIT ?", (limit,)).fetchall()
         return [{**json.loads(payload), "_etag": str(version)} for version, payload in rows]

@@ -14,11 +14,15 @@ def end_event(trip, occurred_at):
             "event_type": "trip_ended", "schema_version": "trip-lifecycle-v1",
             **{key: trip[key] for key in ("trip_id", "user_id", "campaign_id", "started_at", "ended_at", "expected_last_sequence")},
             "occurred_at": occurred_at, "processing_generation": generation,
-            "result_owner": trip["result_owner"]}
+            "result_owner": trip["result_owner"],
+            **({"processing_backend": trip["processing_backend"]} if trip.get("processing_backend") else {})}
 
 
 class EventHubLifecyclePublisher:
     def publish(self, event):
+        from .hgb_sandbox import selected, publish
+        if selected(event):
+            return publish(event)
         from azure.eventhub import EventData, EventHubProducerClient
         from azure.identity import DefaultAzureCredential
         with DefaultAzureCredential() as credential:

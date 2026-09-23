@@ -60,6 +60,9 @@ class TripService:
         if self.lifecycle_publisher:
             from .trip_lifecycle import deliver
             item = deliver(self.store, self.lifecycle_publisher, item, iso(self.clock()))
+        from .hgb_sandbox import selected, advance
+        if selected(item):
+            return advance(self.store, item)
         if item.get("result_owner") == "databricks":
             return item
         if self.process_on_stop and item["status"] == "processing":
@@ -92,6 +95,8 @@ class TripService:
                 "segments": [], "model_version": None, "failed_step": None, "error_message": None,
                 "is_mock": False, "confirmation_status": "pending", "carbon": None,
                 "processing_generation": 0, "lease_until": "", "process_after": "", "last_retry_id": None}
+        from .hgb_sandbox import route_new_trip
+        route_new_trip(item)
         try:
             item = self.store.create(item)
             LOG.info("trip_started trip_id=%s", trip_id)
@@ -150,6 +155,9 @@ class TripService:
     def _process(self, items) -> int:
         processed = 0
         for item in items:
+            from .hgb_sandbox import selected
+            if selected(item):
+                continue
             if item.get("result_owner") == "databricks":
                 continue
             item.update(lease_until=iso(self.clock() + timedelta(seconds=self.lease_seconds)), worker_id=str(uuid4()))
