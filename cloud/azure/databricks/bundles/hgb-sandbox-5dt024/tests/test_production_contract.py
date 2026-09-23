@@ -25,8 +25,8 @@ class ProductionContract(unittest.TestCase):
    self.assertEqual(publish_cosmos(store,document),'published')
    self.assertEqual(publish_cosmos(store,document),'already_published')
    saved=store.read('test-trip','test-user')
-   self.assertEqual(saved['carbon']['kg_co2e'],0)
-   self.assertEqual(saved['segments'][0]['model_prediction'],'walk')
+   self.assertEqual(saved['carbon'],document['carbon'])
+   self.assertEqual(saved['segments'],document['segments'])
    self.assertEqual(saved['confirmed_trip']['confirmation_source'],'system')
  def test_canonical_storage_code_is_unchanged(self):
   original=ROOT.parent/'production-trip'

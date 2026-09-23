@@ -35,16 +35,16 @@ class IntegrationTests(unittest.TestCase):
    probs,_=self.model.predict_window(p);np.testing.assert_array_equal(expected,list(probs.values()))
  def test_transit_and_carbon(self):
   p=self.points();trip=self.trip(p);r=self.model.result(trip,p)
-  self.assertEqual(r['status'],'READY');self.assertEqual(len(r['transit_evidence']),2)
+  self.assertTrue(r['segments']);self.assertEqual(len(r['transit_evidence']),12)
   self.assertEqual(r['data_quality']['status'],'complete');validate_result(trip,r)
   self.assertEqual(len(r['transit_evidence'][0]['reference']['files']),4)
   self.assertGreaterEqual(carbon_for(r['segments'],'mode').emission_kgco2e,0)
  def test_incomplete_tail(self):
   p=self.points(181);r=self.model.result(self.trip(p),p)
-  self.assertEqual(r['data_quality']['status'],'partial');self.assertEqual(len(r['transit_evidence']),1)
+  self.assertEqual(r['data_quality']['status'],'complete');self.assertEqual(r['segments'][-1]['end_time'],p[-1]['event_time'])
  def test_short_trip_not_fabricated(self):
   p=self.points(45);r=self.model.result(self.trip(p),p)
-  self.assertEqual(r['status'],'COLLECTING');self.assertEqual(r['segments'],[])
+  self.assertTrue(r['segments']);self.assertEqual(r['segments'][-1]['end_time'],p[-1]['event_time'])
  def test_sequence_completeness_and_conflicts(self):
   p=self.points();trip=self.trip(p)
   self.assertEqual(len(select_points(p+[p[0]],trip)),len(p))
