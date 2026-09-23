@@ -1,7 +1,7 @@
 """Pure HGB inference adapter; no storage clients and no SpeedTransformer fallback."""
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import hashlib,json,math
+import hashlib,math
 import joblib
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
@@ -25,7 +25,7 @@ def features(points):
 class PhoneModel:
     def __init__(self):
         path=ROOT/'models/mobility_recognition/aihub_canonical_raw120.joblib'
-        expected=json.loads((ROOT/'SOURCE_MANIFEST.json').read_text())['files'][path.relative_to(ROOT).as_posix()]['sha256']
+        expected='f1c30c2923bccdb9018dd9d722167a1e7902450ec47ca8408bacfd300e533878'
         self.sha256=hashlib.sha256(path.read_bytes()).hexdigest()
         if self.sha256!=expected:raise ValueError('HGB artifact hash mismatch')
         self.bundle=joblib.load(path)

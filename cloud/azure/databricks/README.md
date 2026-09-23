@@ -43,14 +43,6 @@ canopy-databricks-pipelines/
   - canonical resident production-trip job
   - mode inference, segmentation, final-trip generation, and Cosmos DB publication
 
-### HGB sandbox bundle
-
-- `bundles/hgb-sandbox-5dt024` (target: `sandbox`)
-  - isolated 5dt024 Event Hub ingestion pipeline and wrapper job
-  - manual HistGradientBoosting analysis using 16 canonical features
-  - verified synthetic ingestion, inference and Delta upsert; see bundle README
-  - no operational Cosmos publication or app reward processing
-
 ### Benchmark bundles
 
 - `bundles/benchmarks/ingestion-latency`
