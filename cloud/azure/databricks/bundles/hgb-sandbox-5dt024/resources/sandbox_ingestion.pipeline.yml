@@ -1,0 +1,32 @@
+resources:
+  pipelines:
+    sandbox_ingestion:
+      name: canopy-hgb-5dt024-ingestion-pipeline
+      serverless: true
+      channel: CURRENT
+      catalog: ${var.catalog}
+      schema: ${var.silver_schema}
+      root_path: ${workspace.file_path}
+      libraries:
+      - file:
+          path: ${workspace.file_path}/gps_ingestion/lakeflow_pipeline.py
+      configuration:
+        spark.sql.session.timeZone: UTC
+        canopy.catalog: ${var.catalog}
+        canopy.bronze_schema: ${var.bronze_schema}
+        canopy.silver_schema: ${var.silver_schema}
+        canopy.bronze_events_table: ${var.bronze_events_table}
+        canopy.gps_observations_table: ${var.gps_observations_table}
+        canopy.gps_quarantine_table: ${var.gps_quarantine_table}
+        canopy.trip_ended_events_table: ${var.trip_ended_events_table}
+        canopy.deduplication_watermark: ${var.deduplication_watermark}
+        canopy.event_hubs.namespace: ${var.event_hubs_namespace}
+        canopy.event_hubs.topic: ${var.event_hubs_topic}
+        canopy.event_hubs.consumer_group: ${var.event_hubs_consumer_group}
+        canopy.event_hubs.sas_policy_name: ${var.event_hubs_sas_policy_name}
+        canopy.event_hubs.secret_scope: ${var.event_hubs_secret_scope}
+        canopy.event_hubs.secret_key: ${var.event_hubs_secret_key}
+        canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
+        canopy.direct_eventhub_fanout: ${var.direct_eventhub_fanout}
+        canopy.apply_deduplication: ${var.apply_deduplication}
+        pipelines.trigger.interval: ${var.ingestion_trigger_interval}
