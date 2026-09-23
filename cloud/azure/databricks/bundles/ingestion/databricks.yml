@@ -5,9 +5,6 @@ include:
   - resources/*.yml
   - ../../shared/*.yml
 
-permissions:
-  - group_name: users
-    level: CAN_MANAGE
 
 sync:
   paths:
