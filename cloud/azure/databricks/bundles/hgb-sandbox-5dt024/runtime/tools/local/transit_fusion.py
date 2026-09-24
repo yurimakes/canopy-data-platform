@@ -27,7 +27,18 @@ def runtime():
     return resolve_mode,load_settings(),tables,indexes,manifest
 
 
-def fuse(probabilities,points,station_history=None):
+def preserve_bus_continuity(decision,probabilities,previous_mode):
+    """Do not promote an ongoing ML bus prediction to rail from context alone."""
+    if (previous_mode=='bus' and max(probabilities,key=probabilities.get)=='bus'
+            and decision['final_mode']=='rail'):
+        return {**decision,'final_mode':'bus','rail_subtype':None,
+                'decision_confidence':probabilities['bus'],'correction_applied':False,
+                'decision_status':'bus_continuity',
+                'correction_reason':'Previous final mode and current ML prediction are both bus'}
+    return decision
+
+
+def fuse(probabilities,points,station_history=None,previous_mode=None):
     resolve,settings,tables,indexes,manifest=runtime()
     from src.transit_context.evidence import bus_context,subway_context,korail_context
     context={'bus_applicability':'INSUFFICIENT_REFERENCE','rail_applicability':'INSUFFICIENT_REFERENCE',
@@ -62,4 +73,5 @@ def fuse(probabilities,points,station_history=None):
         mode=max(probabilities,key=probabilities.get)
         decision.update(final_mode=mode,decision_confidence=probabilities[mode],correction_applied=False,
                         decision_status='insufficient_reference',correction_reason='Transit reference data is not installed; ML-only result')
+    decision=preserve_bus_continuity(decision,probabilities,previous_mode)
     return decision,context,{'settings_version':settings.version,'files':manifest}

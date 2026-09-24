@@ -19,8 +19,8 @@ class PhoneModel(OriginalModel):
     def predict(self,points):
         return super().predict(points)
 
-    def result(self,trip,points):
+    def result(self,trip,points,transition_state=None):
         # HGB features derive speed from coordinates and timestamps. Device
         # speed is optional and must not reject otherwise valid GPS fixes.
         # Original coordinate accuracy, gap and impossible-speed checks remain.
-        return super().result(trip,points)
+        return super().result(trip,points,transition_state=transition_state)

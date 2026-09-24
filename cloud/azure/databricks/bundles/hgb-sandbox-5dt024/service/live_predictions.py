@@ -24,6 +24,8 @@ def start_live_predictions(spark, store, model, table, stop=None):
     stop = stop or threading.Event()
 
     def run():
+        from service.segment_smoothing import TransitionState
+        states = {}
         from pyspark.sql import functions as F
         from trip_delta_store import table_name
         table_name(table)
@@ -36,6 +38,8 @@ def start_live_predictions(spark, store, model, table, stop=None):
                     "SELECT TOP 20 * FROM c WHERE c.type='trip' AND c.status='collecting' "
                     "AND (NOT IS_DEFINED(c.result_owner) OR c.result_owner='databricks') ORDER BY c._ts ASC",
                     enable_cross_partition_query=True))
+                active_keys = {(t['user_id'], t['trip_id']) for t in trips}
+                states = {k:v for k,v in states.items() if k in active_keys}
                 for trip in trips:
                     if stop.is_set():
                         return
@@ -59,7 +63,8 @@ def start_live_predictions(spark, store, model, table, stop=None):
                     age = (datetime.now(timezone.utc)-datetime.fromisoformat(latest['event_time'].replace('Z','+00:00'))).total_seconds()
                     if age > 30 or age < -5 or latest['sequence'] <= (trip.get('live_prediction') or {}).get('sequence', 0):
                         continue
-                    result = model.result(trip, points)
+                    state = states.setdefault((trip['user_id'], trip['trip_id']), TransitionState())
+                    result = model.result(trip, points, transition_state=state)
                     segment = result['segments'][-1]
                     publish_live(store, trip, {
                         'mode': segment['mode'], 'confidence': segment['confidence'],

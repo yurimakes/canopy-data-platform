@@ -1,4 +1,4 @@
-"""Original final-segment processing with only the classifier replaced by HGB."""
+"""HGB inference with transit continuity and conservative final-trip smoothing."""
 import sys
 import math
 from datetime import datetime
@@ -19,7 +19,7 @@ def distance(a,b):
 
 
 class LocalModel(HgbClassifier):
-    def result(self,trip,points):
+    def result(self,trip,points,transition_state=None):
         # 원본은 보존하고 계산 입력만 여정 경계 안의 고유 측정 시각으로 정리
         start=stamp(trip['started_at']) if trip.get('started_at') else None
         end=stamp(trip['ended_at']) if trip.get('ended_at') else None
@@ -44,16 +44,27 @@ class LocalModel(HgbClassifier):
         for index,run in enumerate(runs):
             rows.extend({**r,'points':run,'run':index} for r in self.predict(run))
         if not rows:raise ValueError('서로 다른 시각의 GPS가 최소 2개 필요합니다')
-        segments=[];evidence=[];station_history=[]
-        from transit_fusion import fuse
+        segments=[];evidence=[];station_history=[];previous_mode=None;previous_run=None;classified=[]
+        from service.transit_fusion import fuse
+        from service.segment_smoothing import smooth_modes, stationary
         for row in rows:
+            if row['run']!=previous_run:
+                previous_mode=None
+            previous_run=row['run']
             group=row['points'][row['begin']:row['end']+1]
-            decision,context,reference=fuse(row.get('probabilities') or {row['mode']:row['confidence']},group,station_history)
+            decision,context,reference=fuse(row.get('probabilities') or {row['mode']:row['confidence']},group,station_history,previous_mode=previous_mode)
+            previous_mode=decision['final_mode']
             for sid in context.get('subway_current_observed_station_ids',[]):
                 item=(str(sid),str(context.get('matched_subway_line')))
                 if item not in station_history:station_history.append(item)
             evidence.append({'start_time':group[0]['event_time'],'end_time':group[-1]['event_time'],'decision':decision,'context':context,'reference':reference})
-            row={**row,'mode':decision['final_mode'],'confidence':decision['decision_confidence']}
+            classified.append({**row,'mode':decision['final_mode'],'confidence':decision['decision_confidence'],
+                               'start_time':group[0]['event_time'],'end_time':group[-1]['event_time'],
+                               'stationary':stationary(group)})
+        classified=smooth_modes(classified,transition_state)
+        for row,item in zip(classified,evidence):
+            if 'smoothing' in row:item['smoothing']=row['smoothing']
+            group=row['points'][row['begin']:row['end']+1]
             segment={'mode':row['mode'],'start_time':group[0]['event_time'],'end_time':group[-1]['event_time'],
                      'distance_m':sum(distance(a,b) for a,b in zip(group,group[1:])), 'confidence':row['confidence']}
             if segments and segments[-1]['mode']==segment['mode'] and segments[-1]['end_time']==segment['start_time']:
@@ -61,6 +72,6 @@ class LocalModel(HgbClassifier):
                 segments[-1]['confidence']=min(segments[-1]['confidence'],segment['confidence'])
             else:segments.append(segment)
         for i,s in enumerate(segments):s['segment_id']=trip['trip_id']+':segment:'+str(i+1)
-        return {'trip_id':trip['trip_id'],'model_version':VERSION,'segments':segments,'transit_evidence':evidence,
+        return {'trip_id':trip['trip_id'],'model_version':VERSION+'+mode-confirmation-v1','segments':segments,'transit_evidence':evidence,
             'endpoint_observations':[{k:p.get(k) for k in ('event_time','lat','lon','accuracy')} for p in (points[0],points[-1])],
             'data_quality':{'version':QUALITY_VERSION,'status':'partial' if issues else 'complete','excluded_intervals':issues}}
