@@ -30,6 +30,8 @@ class TripEnded:
 class SealedModeDetection:
     trip_end: TripEnded
     segments: tuple[ModeSegment, ...]
+    status: str = "ready"
+    reason: str | None = None
 
 
 @dataclass
@@ -76,7 +78,13 @@ class TripLifecycleState:
             return None
 
         if (event.ended_at - event.started_at).total_seconds() < model.metadata.window_seconds:
-            raise ValueError("trip is shorter than the model window")
+            self.emitted_generations.add(event.processing_generation)
+            return SealedModeDetection(
+                event,
+                (),
+                status="insufficient_data",
+                reason="trip_shorter_than_model_window",
+            )
 
         processor.drain_due_mode_updates(
             model,
@@ -85,12 +93,28 @@ class TripLifecycleState:
             through=event.ended_at,
         )
 
-        if processor.trip.last_prediction_end is None:
-            raise ValueError("trip has no complete model prediction")
+        if not processor.segments.segments:
+            self.emitted_generations.add(event.processing_generation)
+            return SealedModeDetection(
+                event,
+                (),
+                status="insufficient_data",
+                reason="no_complete_model_prediction",
+            )
 
         segments = processor.segments.seal(
             event.ended_at,
             stride_seconds=model.metadata.prediction_stride_seconds,
         )
         self.emitted_generations.add(event.processing_generation)
-        return SealedModeDetection(event, segments)
+        status = (
+            "completed_partial"
+            if processor.skipped_prediction_windows > 0
+            else "ready"
+        )
+        reason = (
+            "prediction_gaps"
+            if processor.skipped_prediction_windows > 0
+            else None
+        )
+        return SealedModeDetection(event, segments, status=status, reason=reason)
