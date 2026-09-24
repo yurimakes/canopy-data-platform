@@ -106,7 +106,9 @@ class TripProcessingState:
         for window_end in self.due_prediction_ends(model):
             points = self.observations
             if not model.prediction_ready(points, window_end=window_end):
-                break
+                self.last_prediction_end = window_end
+                self._prune(model)
+                continue
 
             window_start = window_end - timedelta(
                 seconds=model.metadata.window_seconds
