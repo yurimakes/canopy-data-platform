@@ -1,0 +1,40 @@
+bundle:
+  name: canopy-mode-detection-latency-benchmark
+
+include:
+  - resources/*.yml
+
+sync:
+  include:
+    - scripts/**
+
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  schema:
+    default: sandbox
+  gps_table:
+    default: jun_016_silver_gps_observations
+  trip_ended_table:
+    default: jun_016_silver_trip_ended_events
+  mode_detection_results_table:
+    default: jun_016_gold_mode_detection_results
+
+targets:
+  sandbox:
+    default: true
+    mode: production
+    presets:
+      tags:
+        environment: trial
+        lifecycle: benchmark
+        component: mode-detection-latency-observer
+        owner: 5dt016
+    resources:
+      jobs:
+        mode_detection_latency_observer:
+          name: 5dt016-mode-detection-latency-observer
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
