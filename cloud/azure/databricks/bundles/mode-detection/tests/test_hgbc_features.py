@@ -77,3 +77,26 @@ def test_raw_point_count_is_not_implicitly_valid_count():
     ]
     with pytest.raises(ValueError, match="raw_point_count"):
         compute_hgbc_features(points, raw_point_count=1)
+
+
+def test_equal_event_timestamps_are_allowed_and_zero_duration_leg_is_ignored():
+    points = [
+        point(1, 0, 37.0, 127.0),
+        point(2, 0, 37.0001, 127.0001),
+        point(3, 10, 37.0002, 127.0002),
+    ]
+
+    result = compute_hgbc_features(points, raw_point_count=3)
+
+    assert result["distance_m"] > 0
+    assert result["mean_speed_mps"] > 0
+
+
+def test_decreasing_event_timestamp_is_rejected():
+    points = [
+        point(1, 10, 37.0, 127.0),
+        point(2, 9, 37.0001, 127.0001),
+    ]
+
+    with pytest.raises(ValueError, match="non-decreasing event_time"):
+        compute_hgbc_features(points, raw_point_count=2)
