@@ -84,8 +84,8 @@ def _validate(points: Sequence[Observation], raw_point_count: int) -> None:
             raise ValueError("coordinate out of range")
         if previous_sequence is not None and point.sequence <= previous_sequence:
             raise ValueError("observations must have strictly increasing sequence")
-        if previous_time is not None and point.event_time <= previous_time:
-            raise ValueError("observations must have strictly increasing event_time")
+        if previous_time is not None and point.event_time < previous_time:
+            raise ValueError("observations must have non-decreasing event_time")
         previous_sequence = point.sequence
         previous_time = point.event_time
 
