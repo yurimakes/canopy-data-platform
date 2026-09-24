@@ -133,6 +133,8 @@ def main() -> None:
             "timestamps": {
                 "first_event_time": str(gps_state["first_event_time"]),
                 "last_event_time": str(gps_state["last_event_time"]),
+                "last_gps_event_hub_enqueued_at": str(gps_state["last_gps_event_hub_enqueued_at"]),
+                "last_gps_validated_at": str(gps_state["last_gps_validated_at"]),
                 "trip_end_event_hub_enqueued_at": str(trip_end_enqueued),
                 "trip_end_parsed_at": str(trip_end_parsed),
                 "sealed_at": str(sealed_at),
@@ -146,6 +148,14 @@ def main() -> None:
                 "trip_end_eventhub_to_parsed": ms(trip_end_parsed, trip_end_enqueued),
                 "trip_end_parsed_to_sealed": ms(sealed_at, trip_end_parsed),
                 "trip_end_eventhub_to_sealed": ms(sealed_at, trip_end_enqueued),
+                "last_gps_eventhub_to_sealed": ms(
+                    sealed_at, gps_state["last_gps_event_hub_enqueued_at"]
+                ),
+                "last_gps_validated_to_sealed": ms(
+                    sealed_at, gps_state["last_gps_validated_at"]
+                ),
+            },
+            "observer_delay_ms": {
                 "sealed_to_observer_visible": ms(visible_at, sealed_at),
                 "trip_end_eventhub_to_observer_visible": ms(visible_at, trip_end_enqueued),
             },
