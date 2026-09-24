@@ -96,7 +96,17 @@ if DIRECT_COSMOS_SINK_ENABLED:
         # ForEachBatch runs in a cloned streaming worker where dbutils/dbruntime
         # is not guaranteed to exist. Read the Databricks secret-backed Spark
         # configuration through the batch DataFrame's SparkSession instead.
-        credential = batch_df.sparkSession.conf.get("canopy.cosmos_credential")
+        credential = batch_df.sparkSession.conf.get("spark.canopy.cosmos_credential")
+        if (
+            not credential
+            or credential == "[REDACTED]"
+            or credential.startswith("{{secrets/")
+        ):
+            raise RuntimeError(
+                "Cosmos credential secret reference was not resolved in the "
+                "ForEachBatch Spark configuration"
+            )
+
         container = open_container(
             COSMOS_ENDPOINT,
             COSMOS_DATABASE,
