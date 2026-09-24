@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
+from datetime import datetime
 
 import yaml
 
@@ -42,6 +44,68 @@ def load_carbon_policy(path: str) -> dict:
     if missing:
         raise ValueError(f"carbon policy missing keys: {sorted(missing)}")
     return policy
+
+
+def _legacy_segment_projection(segment: dict) -> dict:
+    start = datetime.fromisoformat(segment["start_time"].replace("Z", "+00:00"))
+    end = datetime.fromisoformat(segment["end_time"].replace("Z", "+00:00"))
+    return {
+        **segment,
+        "confirmed_mode": None,
+        "corrected": False,
+        "correction_status": "none",
+        "confirmation_time": None,
+        "last_request_id": None,
+        "started_at": segment["start_time"],
+        "ended_at": segment["end_time"],
+        "duration_min": (end - start).total_seconds() / 60.0,
+        "start_name": None,
+        "end_name": None,
+        "route_name": None,
+    }
+
+
+def build_confirmed_trip_placeholder(
+    *,
+    event,
+    segments: list[dict],
+    total_distance_m: float,
+    total_carbon_kg: float,
+    policy: dict,
+    model_version: str,
+    confirmed_at: str,
+) -> dict:
+    """Compatibility projection for the established canopy.confirmed-trip.v1 shape.
+
+    This intentionally contains no future confirmation/business rules.  It mirrors
+    the former system-confirmed projection so downstream consumers keep their
+    existing contract while the real confirmation logic can be plugged in later.
+    """
+    mode_distances = {
+        mode: sum(float(segment["distance_m"]) for segment in segments if segment["mode"] == mode)
+        for mode in ("walk", "bike", "car", "bus", "rail")
+    }
+    return {
+        "schema_version": "canopy.confirmed-trip.v1",
+        "trip_id": event.trip_id,
+        "user_id": event.user_id,
+        "campaign_id": event.campaign_id,
+        "started_at": _iso(event.started_at),
+        "ended_at": _iso(event.ended_at),
+        "confirmed_at": confirmed_at,
+        "revision": 1,
+        "confirmation_status": "confirmed",
+        "confirmation_source": "system",
+        "total_distance_m": total_distance_m,
+        "total_carbon_kg": total_carbon_kg,
+        **{f"{mode}_distance_m": distance for mode, distance in mode_distances.items()},
+        "carbon_unit": str(policy["output"]["emission_unit"]),
+        "carbon_policy_version": str(policy["policy_version"]),
+        "factor_version": str(policy["factor_version"]),
+        "mode_source": "model_prediction",
+        "model_version": model_version,
+        "is_mock": False,
+    }
 
 
 def build_complete_payload(
@@ -118,11 +182,53 @@ def build_complete_payload(
         },
         "sealed_at": sealed_at_iso,
     }
-    semantic = dict(payload)
+    # Keep Gold's typed schema compact, but restore the established phone/Cosmos
+    # document contract as a compatibility projection.  Cosmos is written from
+    # document_json, so this does not require a Spark schema migration.
+    document = deepcopy(payload)
+    document["segments"] = [_legacy_segment_projection(segment) for segment in segments]
+    document["is_mock"] = False
+    document["failed_step"] = None
+    document["error_message"] = None
+    document["lease_until"] = ""
+    document["process_after"] = ""
+    document["carbon"] = {
+        **document["carbon"],
+        "recalculated_kg_co2e": None,
+    }
+
+    if segments:
+        # occurred_at is stable across retries, unlike processing wall-clock time.
+        confirmed_at = _iso(event.occurred_at)
+        document.update(
+            revision=1,
+            confirmed_at=confirmed_at,
+            confirmation_status="confirmed",
+            confirmation_source="system",
+            confirmed_trip=build_confirmed_trip_placeholder(
+                event=event,
+                segments=segments,
+                total_distance_m=payload["total_distance_m"],
+                total_carbon_kg=payload["carbon"]["kg_co2e"],
+                policy=policy,
+                model_version=model_version,
+                confirmed_at=confirmed_at,
+            ),
+        )
+    else:
+        # Preserve terminal mode-detection semantics without claiming that an
+        # empty/insufficient result was successfully confirmed.
+        document.update(
+            revision=0,
+            confirmation_status="pending",
+        )
+
+    semantic = deepcopy(document)
     semantic.pop("updated_at")
     semantic.pop("sealed_at")
     payload["finalization_hash"] = hashlib.sha256(
         canonical(semantic).encode("utf-8")
     ).hexdigest()
-    payload["document_json"] = canonical(payload)
+    document["finalization_hash"] = payload["finalization_hash"]
+    payload["document_json"] = canonical(document)
     return payload
