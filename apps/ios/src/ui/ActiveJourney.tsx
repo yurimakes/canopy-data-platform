@@ -26,7 +26,7 @@ export function ActiveJourney({p,direction,replayDistance,replayMode,showInfo=tr
    <View style={S.between}><View style={{maxWidth:'46%',flexDirection:'row',alignItems:'center',gap:6}}><Icon name={direction==='return'?'business-outline':'home-outline'} size={20}/><Text numberOfLines={1} style={[S.label,{flexShrink:1,fontSize:12}]}>{p.route?.from.name??'출발지'}</Text></View><View style={{maxWidth:'46%',flexDirection:'row',alignItems:'center',gap:6}}><Icon name={direction==='return'?'home-outline':'business-outline'} size={20}/><Text numberOfLines={1} style={[S.label,{flexShrink:1,fontSize:12}]}>{p.route?.to.name??'자유 여정'}</Text></View></View>
    <Text style={[S.note,{textAlign:'center',marginTop:10,fontSize:11}]}>{!p.route?'자유롭게 이동하세요':busy&&last?`목적지까지 직선거리 ${km(metersBetween(last,p.route.to))} · 약 ${Math.round(progress*100)}% 접근`:'출발 준비가 되었어요'}</Text>
   </View>
-  {!busy&&(p.route?<PopulationPreview route={p.route} baseline={p.baseline}/>:<View style={{padding:16}}><Note>목적지 없이 기록해요. 보상 기준은 도착 후 계산됩니다.</Note></View>)}
+  {!busy&&(p.route?<PopulationPreview compact route={p.route} baseline={p.baseline}/>:<View style={{padding:16}}><Note>목적지 없이 기록해요. 보상 기준은 도착 후 계산됩니다.</Note></View>)}
 
   <View style={{overflow:'hidden',...(busy?{flex:1,flexBasis:0,minHeight:0}:{height:300})}}><View style={{position:'absolute',inset:0}}><JourneyMap walking={walking} points={busy?points:[]} route={p.route} fill/></View></View>
   {showInfo&&<JourneyInfoPanel p={p} replayDistance={replayDistance} replayMode={replayMode}/>}

@@ -1,25 +1,20 @@
 import Text from './AppText';
-import React from 'react';
-import {View} from 'react-native';
+import React,{useState} from 'react';
+import {Modal,Pressable,ScrollView,View} from 'react-native';
+import {SafeAreaView,SafeAreaProvider} from 'react-native-safe-area-context';
 import type {PlannedRoute} from '../service';
-import {routeBaselineRate} from '../routeQuote';
+import {routeCarbon} from '../routeCarbon';
 import type {BaselineView,RemotePanel} from './CommunityPanels';
-import {C,S,Note,Icon} from './theme';
-import {Disclosure,Eyebrow} from './DesignPrimitives';
-const labels:Record<string,string>={walk:'걷기',bike:'자전거',bicycle:'자전거',car:'자동차',bus:'버스',rail:'철도',subway:'지하철'};
-export function PopulationPreview({route,baseline}:{route:PlannedRoute;baseline?:RemotePanel<BaselineView>}){
- const rows=Object.entries(route.modeProbabilities??{}).sort((a,b)=>b[1]-a[1]);
- const personal=baseline?.state==='ready'?baseline.data.personalKg:null;
- const rate=personal??routeBaselineRate(route);
- return <View style={{backgroundColor:'#EAF3DE',borderRadius:22,padding:20,gap:12}}>
- <View style={S.between}><Eyebrow>출발 전 보상 기준</Eyebrow><Icon name="leaf-outline" size={21}/></View>
- <Text style={S.heading}>탄소를 줄이고, 토큰을 모아요.</Text>
- <View style={{flexDirection:'row',alignItems:'baseline',gap:6}}><Text style={{fontSize:34,fontWeight:'700',letterSpacing:-1.3,color:C.deep}}>{rate===undefined?'확인 중':rate.toFixed(1)}</Text><Text style={S.note}>g / km</Text></View>
- <Note>1km마다 이 기준보다 적게 배출하면 보상 대상이에요.</Note>
- <Disclosure title="어떻게 계산하나요?">
- <Note>{personal!=null?'이번 주 나의 이동 기록으로 정한 기준이에요.':'기록이 없는 첫날에는 교통 통계로 기준을 정해요.'}</Note>
- {rate!==undefined&&<Note>선택한 경로 {(route.distance_m/1000).toFixed(1)}km의 예상 기준은 {(rate*route.distance_m/1000).toFixed(1)}g이에요.</Note>}
- <Note>실제 이동거리로 최종 계산해요. 절감량이 적으면 토큰이 없을 수 있어요.</Note>
- {personal==null&&<><Note>출처: 국가교통DB(KTDB) 이동 예측. 아래 비율은 실제 이용 통계가 아닌 모델 예상값이에요.</Note>{rows.map(([mode,n])=><View key={mode} style={S.between}><Text style={S.note}>{labels[mode]??mode}</Text><Text style={S.label}>{(n*100).toFixed(1)}%</Text></View>)}</>}
- </Disclosure></View>;
+import {C,S,Note,Icon,Button} from './theme';
+export function PopulationPreview({route,baseline,compact=false}:{route:PlannedRoute;baseline?:RemotePanel<BaselineView>;compact?:boolean}){
+ const [open,setOpen]=useState(false);
+ const data=routeCarbon(route,baseline?.state==='ready'?baseline.data.personalKg:null);
+ const amount=(n:number|null)=>n==null?'확인 중':`${(n*1000).toFixed(0)} g`;
+ const percent=data.percent==null?'비교 준비 중':`${Math.abs(data.percent)}% ${data.percent>=0?'덜':'더'} 배출 예상`;
+ const max=Math.max(data.baseline??0,data.estimate??0,.001);
+ const graph=<View style={{gap:12}}>{[{label:data.source,value:data.baseline,color:'#CCD6BE'},{label:'이 경로 예상',value:data.estimate,color:'#87AF65'}].map(row=><View key={row.label} style={{gap:5}}><View style={S.between}><Text style={{fontSize:12,color:C.muted}}>{row.label}</Text><Text style={{fontSize:15,fontFamily:'Jua',color:C.deep}}>{amount(row.value)}</Text></View><View style={{height:9,borderRadius:8,backgroundColor:'#E5ECD9'}}><View style={{height:9,borderRadius:8,width:`${(row.value??0)/max*100}%`,backgroundColor:row.color}}/></View></View>)}</View>;
+ return <><Pressable accessibilityRole="button" accessibilityLabel="경로 탄소 비교 기준 자세히 보기" onPress={event=>{event.stopPropagation();setOpen(true);}} style={{backgroundColor:'#EFF4E4',borderRadius:20,padding:compact?12:15,gap:12}}>
+ <View style={S.between}><View style={{flex:1,gap:4}}><Text style={{fontSize:12,color:C.muted}}>이 경로의 예상 탄소 · CO₂e</Text><View style={{flexDirection:'row',alignItems:'baseline',gap:8,flexWrap:'wrap'}}><Text style={{fontFamily:'Jua',fontSize:compact?22:25,color:C.deep}}>{amount(data.estimate)}</Text><Text style={{fontSize:13,color:data.percent!=null&&data.percent<0?'#96603F':C.green}}>{percent}</Text></View></View><Icon name="leaf-outline" size={25}/></View>
+ {!compact&&graph}<Text style={{fontSize:12,color:C.muted}}>{data.source}과 비교 · 자세히 보기 ›</Text>
+ </Pressable><Modal transparent visible={open} animationType="slide" onRequestClose={()=>setOpen(false)}><SafeAreaProvider><View style={{flex:1,backgroundColor:'#183A3266',justifyContent:'flex-end'}}><SafeAreaView edges={['bottom']} style={{backgroundColor:C.paper,borderTopLeftRadius:28,borderTopRightRadius:28,maxHeight:'75%'}}><ScrollView contentContainerStyle={{padding:24,gap:18}}><Text style={S.title}>이 길은 얼마나 가벼울까요?</Text>{graph}<Text style={S.heading}>{percent}</Text><Note>비교 대상은 {data.source}입니다. 1km당 {data.rate==null?'확인 중':data.rate.toFixed(1)+'g'} × 선택한 경로 {(route.distance_m/1000).toFixed(2)}km로 계산합니다.</Note><Note>같은 출발·도착지의 교통 통계 기준은 경로마다 같을 수 있어요. 경로의 예상 탄소는 도보·버스·지하철 각 구간 거리로 따로 계산합니다.</Note>{data.estimate==null&&<Note>이 경로는 이동 구간 정보가 없어 예상 탄소를 계산할 수 없어요.</Note>}<Note>출발 전 예상값이며 실제 GPS 기록과 다를 수 있어요. 보상은 실제 여정 분석과 지급 조건 확인 후 확정됩니다.</Note><Button title="확인했어요" onPress={()=>setOpen(false)}/></ScrollView></SafeAreaView></View></SafeAreaProvider></Modal></>;
 }
