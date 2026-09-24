@@ -75,3 +75,19 @@ def test_predictions_must_arrive_in_time_order():
     state.apply(adjusted(120, "bus"))
     with pytest.raises(ValueError, match="strictly increasing"):
         state.apply(adjusted(120, "walk"))
+
+
+def test_gap_closes_current_segment_and_later_prediction_restarts_coverage():
+    state = SegmentState(BASE)
+    state.apply(adjusted(120, "bus"))
+    state.mark_gap(BASE + timedelta(seconds=130))
+    state.apply(adjusted(160, "walk"))
+
+    assert [(s.mode, s.start_time, s.end_time) for s in state.segments] == [
+        ("bus", BASE, BASE + timedelta(seconds=120)),
+        (
+            "walk",
+            BASE + timedelta(seconds=160),
+            BASE + timedelta(seconds=160),
+        ),
+    ]
