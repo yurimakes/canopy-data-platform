@@ -66,12 +66,8 @@ targets:
     resources:
       pipelines:
         mode_detection_pipeline:
-          name: 5dt016-mode-detection-sandbox
           configuration:
             pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
-      jobs:
-        mode_detection_continuous:
-          name: 5dt016-mode-detection-sandbox-job-wrapper
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
@@ -98,8 +94,12 @@ targets:
     resources:
       pipelines:
         mode_detection_pipeline:
+          name: 5dt016-mode-detection-sandbox
           configuration:
             pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
+      jobs:
+        mode_detection_continuous:
+          name: 5dt016-mode-detection-sandbox-job-wrapper
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
