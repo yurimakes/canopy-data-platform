@@ -9,10 +9,10 @@ resources:
       root_path: ${workspace.file_path}
       environment:
         environment_version: "4"
+        # Environment v4 already provides joblib, numpy, pandas, scipy, and
+        # threadpoolctl. Only override scikit-learn to match the serialized
+        # canonical HGBC artifact's training/runtime version.
         dependencies:
-          - joblib>=1.3
-          - numpy>=1.26
-          - pandas>=2.2,<3.0
           - scikit-learn==1.9.0
       libraries:
         - file:
