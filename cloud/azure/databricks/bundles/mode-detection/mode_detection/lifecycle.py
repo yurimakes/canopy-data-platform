@@ -108,9 +108,9 @@ class TripLifecycleState:
         )
         self.emitted_generations.add(event.processing_generation)
         status = (
-            "completed_partial"
+            "partial"
             if processor.skipped_prediction_windows > 0
-            else "ready"
+            else "complete"
         )
         reason = (
             "prediction_gaps"
