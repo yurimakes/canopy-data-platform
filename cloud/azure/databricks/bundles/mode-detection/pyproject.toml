@@ -18,3 +18,8 @@ test = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+
+[tool.setuptools.packages.find]
+include = ["mode_detection*"]
+exclude = ["assets*", "resources*", "scripts*", "tests*"]
