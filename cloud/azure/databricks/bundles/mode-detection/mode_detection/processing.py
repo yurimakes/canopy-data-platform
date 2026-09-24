@@ -46,9 +46,25 @@ class ModeDetectionProcessor:
         emitted: list[TransitAdjustedPrediction] = []
 
         for window_end in self.trip.due_prediction_ends(model, through=through):
-            points = self.trip.observations
+            preceding_outages = [gap for gap in self.trip.outages if gap[0] < window_end]
+            if preceding_outages:
+                gap_start, recovered_at = preceding_outages[-1]
+                if self.segments.current is None and self.segments.resume_start_time != recovered_at:
+                    self.segments.mark_gap(gap_start, resume_at=recovered_at)
+                elif self.segments.current is not None and self.segments.current.end_time <= gap_start and not self.segments.resume_after_gap:
+                    self.segments.mark_gap(gap_start, resume_at=recovered_at)
+            supported = self.trip.supported_points(window_end, model.metadata.window_seconds)
+            if supported is None:
+                if not self.segments.resume_after_gap:
+                    self.segments.mark_gap(window_end)
+                self.trip.last_prediction_end = window_end
+                self.trip._prune(model)
+                self.skipped_prediction_windows += 1
+                continue
+            points = supported
             if not model.prediction_ready(points, window_end=window_end):
-                self.segments.mark_gap(window_end)
+                if not self.segments.resume_after_gap:
+                    self.segments.mark_gap(window_end)
                 self.trip.last_prediction_end = window_end
                 self.trip._prune(model)
                 self.skipped_prediction_windows += 1
@@ -74,7 +90,8 @@ class ModeDetectionProcessor:
                     raw_point_count=raw_point_count,
                 )
             except ValueError:
-                self.segments.mark_gap(window_end)
+                if not self.segments.resume_after_gap:
+                    self.segments.mark_gap(window_end)
                 self.trip.last_prediction_end = window_end
                 self.trip._prune(model)
                 self.skipped_prediction_windows += 1

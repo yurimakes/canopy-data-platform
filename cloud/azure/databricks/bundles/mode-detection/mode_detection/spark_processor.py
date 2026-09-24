@@ -171,6 +171,18 @@ def _snapshot(
             "last_prediction_end": _iso(processor.trip.last_prediction_end),
             "max_contiguous_sequence": processor.trip.max_contiguous_sequence,
             "pending_sequences": sorted(processor.trip.pending_sequences),
+            "gps_gap_tolerance_seconds": processor.trip.gps_gap_tolerance_seconds,
+            "last_contiguous_point": (
+                None if processor.trip.last_contiguous_point is None else {
+                    "sequence": processor.trip.last_contiguous_point.sequence,
+                    "event_time": _iso(processor.trip.last_contiguous_point.event_time),
+                    "lat": processor.trip.last_contiguous_point.lat,
+                    "lon": processor.trip.last_contiguous_point.lon,
+                    "accuracy_m": processor.trip.last_contiguous_point.accuracy_m,
+                    "altitude_m": processor.trip.last_contiguous_point.altitude_m,
+                }
+            ),
+            "outages": [[_iso(start), _iso(end)] for start, end in processor.trip.outages],
             "observations": [
                 {
                     "sequence": p.sequence,
@@ -190,6 +202,7 @@ def _snapshot(
             ),
             "segments_sealed": processor.segments.sealed,
             "segments_resume_after_gap": processor.segments.resume_after_gap,
+            "segments_resume_start_time": _iso(processor.segments.resume_start_time),
             "skipped_prediction_windows": processor.skipped_prediction_windows,
             "distance_last_point": (
                 None
@@ -251,6 +264,8 @@ def _restore(payload: str | None):
         last_prediction_end=_dt(saved.get("last_prediction_end")),
         max_contiguous_sequence=int(saved.get("max_contiguous_sequence", 0)),
         pending_sequences=set(int(v) for v in saved.get("pending_sequences", [])),
+        gps_gap_tolerance_seconds=int(saved.get("gps_gap_tolerance_seconds", 15)),
+        outages=[(_dt(start), _dt(end)) for start, end in saved.get("outages", [])],
     )
     for value in saved.get("observations", []):
         point = Observation(
@@ -266,6 +281,18 @@ def _restore(payload: str | None):
             ),
         )
         trip.observations_by_sequence[point.sequence] = point
+    last_contiguous = saved.get("last_contiguous_point")
+    if last_contiguous is not None:
+        trip.last_contiguous_point = Observation(
+            sequence=int(last_contiguous["sequence"]),
+            event_time=_dt(last_contiguous["event_time"]),
+            lat=float(last_contiguous["lat"]),
+            lon=float(last_contiguous["lon"]),
+            accuracy_m=None if last_contiguous.get("accuracy_m") is None else float(last_contiguous["accuracy_m"]),
+            altitude_m=None if last_contiguous.get("altitude_m") is None else float(last_contiguous["altitude_m"]),
+        )
+    elif trip.max_contiguous_sequence:
+        trip.last_contiguous_point = trip.observations_by_sequence.get(trip.max_contiguous_sequence)
 
     transit = TransitContextState(
         station_history=[
@@ -286,6 +313,7 @@ def _restore(payload: str | None):
         ),
         sealed=bool(saved.get("segments_sealed", False)),
         resume_after_gap=bool(saved.get("segments_resume_after_gap", False)),
+        resume_start_time=_dt(saved.get("segments_resume_start_time")),
     )
     def restore_point(value):
         if value is None:
@@ -347,6 +375,7 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
         ttl_duration_ms: int,
         artifact_path: str,
         prediction_stride_seconds: int,
+        gps_gap_tolerance_seconds: int = 15,
         reference_root: str,
         transit_reference_dir: str,
         carbon_policy_path: str,
@@ -358,6 +387,9 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
         self._ttl_duration_ms = ttl_duration_ms
         self._artifact_path = artifact_path
         self._prediction_stride_seconds = prediction_stride_seconds
+        if gps_gap_tolerance_seconds <= 0:
+            raise ValueError("gps_gap_tolerance_seconds must be positive")
+        self._gps_gap_tolerance_seconds = gps_gap_tolerance_seconds
         self._reference_root = reference_root
         self._transit_reference_dir = transit_reference_dir
         self._carbon_policy_path = carbon_policy_path
@@ -421,12 +453,13 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
                     trip_id,
                     sequence_one.event_time,
                 )
+                processor.trip.gps_gap_tolerance_seconds = self._gps_gap_tolerance_seconds
                 processor.trip.add_observations(buffered)
-                processor.distances.add_observations(buffered)
+                processor.distances.add_observations(buffered, gps_gap_tolerance_seconds=processor.trip.gps_gap_tolerance_seconds)
                 buffered = []
         else:
             processor.trip.add_observations(gps)
-            processor.distances.add_observations(gps)
+            processor.distances.add_observations(gps, gps_gap_tolerance_seconds=processor.trip.gps_gap_tolerance_seconds)
 
         if processor is not None:
             for event in trip_ends:
@@ -518,6 +551,7 @@ def stateful_mode_detection_rows(
     ttl_duration_ms: int,
     artifact_path: str,
     prediction_stride_seconds: int,
+    gps_gap_tolerance_seconds: int = 15,
     reference_root: str,
     transit_reference_dir: str,
     carbon_policy_path: str,
@@ -528,6 +562,7 @@ def stateful_mode_detection_rows(
             ttl_duration_ms=ttl_duration_ms,
             artifact_path=artifact_path,
             prediction_stride_seconds=prediction_stride_seconds,
+            gps_gap_tolerance_seconds=gps_gap_tolerance_seconds,
             reference_root=reference_root,
             transit_reference_dir=transit_reference_dir,
             carbon_policy_path=carbon_policy_path,

@@ -91,3 +91,13 @@ def test_gap_closes_current_segment_and_later_prediction_restarts_coverage():
             BASE + timedelta(seconds=160),
         ),
     ]
+
+
+def test_outage_stitches_pre_gap_tail_and_recovers_from_first_gps():
+    state = SegmentState(BASE)
+    state.apply(adjusted(120, "bus"))
+    state.mark_gap(BASE + timedelta(seconds=130), resume_at=BASE + timedelta(seconds=190))
+    state.apply(adjusted(300, "walk"))
+    assert [(s.mode, int((s.start_time - BASE).total_seconds()), int((s.end_time - BASE).total_seconds())) for s in state.segments] == [
+        ("bus", 0, 130), ("walk", 190, 300),
+    ]

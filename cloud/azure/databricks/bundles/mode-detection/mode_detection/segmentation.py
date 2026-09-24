@@ -27,6 +27,7 @@ class SegmentState:
     current: ModeSegment | None = None
     sealed: bool = False
     resume_after_gap: bool = False
+    resume_start_time: datetime | None = None
 
     def apply(self, prediction: TransitAdjustedPrediction) -> None:
         if self.sealed:
@@ -40,7 +41,7 @@ class SegmentState:
             raise ValueError("prediction precedes trip start")
 
         if self.current is None:
-            start_time = decision_time if self.resume_after_gap else self.trip_start
+            start_time = (self.resume_start_time or decision_time) if self.resume_after_gap else self.trip_start
             self.current = ModeSegment(
                 mode=mode,
                 start_time=start_time,
@@ -49,6 +50,7 @@ class SegmentState:
                 prediction_count=1,
             )
             self.resume_after_gap = False
+            self.resume_start_time = None
             return
 
         if decision_time <= self.current.end_time:
@@ -81,7 +83,7 @@ class SegmentState:
             prediction_count=1,
         )
 
-    def mark_gap(self, gap_start: datetime) -> None:
+    def mark_gap(self, gap_start: datetime, *, resume_at: datetime | None = None) -> None:
         """Close inferred coverage at a missing prediction boundary."""
         if self.sealed:
             raise ValueError("cannot mark a gap after segments are sealed")
@@ -90,13 +92,14 @@ class SegmentState:
                 ModeSegment(
                     mode=self.current.mode,
                     start_time=self.current.start_time,
-                    end_time=min(self.current.end_time, gap_start),
+                    end_time=max(self.current.end_time, gap_start) if resume_at is not None else min(self.current.end_time, gap_start),
                     confidence=self.current.confidence,
                     prediction_count=self.current.prediction_count,
                 )
             )
             self.current = None
         self.resume_after_gap = True
+        self.resume_start_time = resume_at
 
     def seal(self, trip_end: datetime, *, stride_seconds: int) -> tuple[ModeSegment, ...]:
         if self.sealed:

@@ -25,6 +25,9 @@ class TripProcessingState:
     last_prediction_end: datetime | None = None
     max_contiguous_sequence: int = 0
     pending_sequences: set[int] = field(default_factory=set)
+    gps_gap_tolerance_seconds: int = 15
+    last_contiguous_point: Observation | None = None
+    outages: list[tuple[datetime, datetime]] = field(default_factory=list)
 
     @property
     def observations(self) -> tuple[Observation, ...]:
@@ -69,6 +72,14 @@ class TripProcessingState:
     def _advance_contiguous_sequence(self) -> None:
         next_sequence = self.max_contiguous_sequence + 1
         while next_sequence in self.pending_sequences:
+            point = self.observations_by_sequence[next_sequence]
+            if self.last_contiguous_point is not None:
+                elapsed = (point.event_time - self.last_contiguous_point.event_time).total_seconds()
+                if elapsed < 0:
+                    raise ValueError("GPS event_time moves backwards across contiguous sequence")
+                if elapsed > self.gps_gap_tolerance_seconds:
+                    self.outages.append((self.last_contiguous_point.event_time, point.event_time))
+            self.last_contiguous_point = point
             self.pending_sequences.remove(next_sequence)
             self.max_contiguous_sequence = next_sequence
             next_sequence += 1
@@ -84,7 +95,9 @@ class TripProcessingState:
         *,
         through: datetime | None = None,
     ) -> list[datetime]:
-        latest = self.latest_observation_time
+        # Future rows may arrive before earlier sequences. Only seal predictions
+        # through the contiguous event-time prefix to avoid retroactive changes.
+        latest = self.last_contiguous_point.event_time if self.last_contiguous_point else None
         if latest is None:
             return []
         horizon = min(latest, through) if through is not None else latest
@@ -104,8 +117,8 @@ class TripProcessingState:
     ) -> list[ModePrediction]:
         emitted: list[ModePrediction] = []
         for window_end in self.due_prediction_ends(model):
-            points = self.observations
-            if not model.prediction_ready(points, window_end=window_end):
+            points = self.supported_points(window_end, model.metadata.window_seconds)
+            if points is None or not model.prediction_ready(points, window_end=window_end):
                 self.last_prediction_end = window_end
                 self._prune(model)
                 continue
@@ -133,6 +146,19 @@ class TripProcessingState:
             self._prune(model)
 
         return emitted
+
+    def supported_points(self, window_end: datetime, window_seconds: int) -> tuple[Observation, ...] | None:
+        """Select a continuous, recent inference window without changing model features."""
+        preceding_outages = [gap for gap in self.outages if gap[0] < window_end]
+        recovery = preceding_outages[-1][1] if preceding_outages else None
+        if recovery is not None and (window_end - recovery).total_seconds() < window_seconds - self.gps_gap_tolerance_seconds:
+            return None
+        start = window_end - timedelta(seconds=window_seconds)
+        points = tuple(p for p in self.observations if recovery is None or p.event_time >= recovery)
+        selected = tuple(p for p in points if start <= p.event_time <= window_end)
+        if not selected or (window_end - selected[-1].event_time).total_seconds() > self.gps_gap_tolerance_seconds:
+            return None
+        return points
 
     def _prune(self, model: ModeDetectingModel) -> None:
         """Retain only observations that can affect the next prediction window."""

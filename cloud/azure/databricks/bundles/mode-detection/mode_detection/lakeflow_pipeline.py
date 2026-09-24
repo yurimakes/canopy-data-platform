@@ -56,6 +56,7 @@ TRANSIT_REFERENCE_ROOT = _conf("transit_reference_root")
 TRANSIT_REFERENCE_DIR = _conf("transit_reference_dir")
 CARBON_POLICY_PATH = _conf("carbon_policy_path")
 PREDICTION_STRIDE_SECONDS = _positive_int_conf("prediction_stride_seconds")
+GPS_GAP_TOLERANCE_SECONDS = _positive_int_conf("gps_gap_tolerance_seconds")
 STATE_TTL_MS = _positive_int_conf("state_ttl_ms")
 STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 DIRECT_COSMOS_SINK_ENABLED = _bool_conf("direct_cosmos_sink_enabled")
@@ -82,6 +83,7 @@ def complete_payloads():
         ttl_duration_ms=STATE_TTL_MS,
         artifact_path=MODEL_ARTIFACT_PATH,
         prediction_stride_seconds=PREDICTION_STRIDE_SECONDS,
+        gps_gap_tolerance_seconds=GPS_GAP_TOLERANCE_SECONDS,
         reference_root=TRANSIT_REFERENCE_ROOT,
         transit_reference_dir=TRANSIT_REFERENCE_DIR,
         carbon_policy_path=CARBON_POLICY_PATH,

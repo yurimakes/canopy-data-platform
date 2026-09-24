@@ -70,6 +70,18 @@ def raw_count(_start, _end, points):
     return len(points)
 
 
+def test_trip_end_during_recovery_returns_partial_without_extending_old_mode():
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    lifecycle = TripLifecycleState()
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    processor.drain_due_mode_updates(FakeModel(), raw_point_count_for_window=raw_count, transit_resolver=transit_resolver)
+    processor.trip.add_observations(observation(132 + i, 190 + i) for i in range(71))
+    lifecycle.register_trip_end(trip_end(ended_seconds=260, expected_last_sequence=202), processor=processor)
+    result = lifecycle.seal_if_ready(processor, FakeModel(), raw_point_count_for_window=raw_count, transit_resolver=transit_resolver)
+    assert result.status == "partial"
+    assert [(s.start_time, s.end_time) for s in result.segments] == [(BASE, BASE + timedelta(seconds=130))]
+
+
 def trip_end(*, ended_seconds: int, expected_last_sequence: int, generation: int = 1):
     return TripEnded(
         event_id="event-1",

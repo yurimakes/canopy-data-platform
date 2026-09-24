@@ -26,17 +26,22 @@ def resolve_mode(
     probs = {mode: value / total for mode, value in probs.items()}
     ml_mode = max(CANOPY_MODES, key=probs.get)
     ml_confidence = probs[ml_mode]
-    bus_score = float(context.get("bus_context_score", 0.0) or 0.0)
-    subway_score = float(context.get("subway_context_score", 0.0) or 0.0)
-    train_score = float(context.get("train_context_score", 0.0) or 0.0)
+    bus_score = min(1.0, max(0.0, float(context.get("bus_context_score", 0.0) or 0.0)))
+    subway_score = min(1.0, max(0.0, float(context.get("subway_context_score", 0.0) or 0.0)))
+    train_score = min(1.0, max(0.0, float(context.get("train_context_score", 0.0) or 0.0)))
     rail_score = max(subway_score, train_score)
     strong = settings.resolver["strong_context_score"]
     minimum = settings.resolver["minimum_context_score"]
     margin = settings.resolver["ambiguity_margin"]
-    candidates = {"bus": bus_score, "rail": rail_score}
-    evidence_mode, evidence_score = max(candidates.items(), key=lambda item: item[1])
     bus_applicability = str(context.get("bus_applicability", "APPLICABLE"))
     rail_applicability = str(context.get("rail_applicability", "APPLICABLE"))
+    boost = settings.resolver.get("context_decision_boost", 0.0)
+    if not 0.0 <= boost <= 1.0:
+        raise ValueError("context_decision_boost must be between 0 and 1")
+    bus_decision_score = min(1.0, bus_score + boost) if bus_score > 0 and bus_applicability == "APPLICABLE" else bus_score
+    rail_decision_score = min(1.0, rail_score + boost) if rail_score > 0 and rail_applicability == "APPLICABLE" else rail_score
+    decision_scores = {"bus": bus_decision_score, "rail": rail_decision_score}
+    evidence_mode, evidence_score = max(decision_scores.items(), key=lambda item: item[1])
     subway_sequence = float(context.get("subway_sequence_score", 0.0) or 0.0)
     subway_line = float(context.get("subway_line_score", 0.0) or 0.0)
     subway_station_count = int(context.get("subway_observed_station_count", 0) or 0)
@@ -82,7 +87,7 @@ def resolve_mode(
         correction_reason = "trajectory showed ordered stations on one subway line"
     elif (
         evidence_score >= strong
-        and evidence_score > probs[evidence_mode] + margin
+        and evidence_score > ml_confidence + margin
         and ((evidence_mode == "bus" and bus_applicability == "APPLICABLE") or (evidence_mode == "rail" and rail_applicability == "APPLICABLE"))
     ):
         final_mode = evidence_mode
@@ -136,6 +141,8 @@ def resolve_mode(
         "rail_subtype": rail_subtype,
         "correction_applied": correction_applied,
         "decision_status": decision_status,
-        "decision_confidence": max(probs[final_mode], evidence_score),
+        "decision_confidence": max(
+            probs[final_mode], decision_scores[final_mode] if final_mode in decision_scores else 0.0
+        ),
         "correction_reason": correction_reason,
     }

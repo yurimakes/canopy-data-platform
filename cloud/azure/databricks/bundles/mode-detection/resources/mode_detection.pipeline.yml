@@ -29,6 +29,7 @@ resources:
         canopy.output_schema: ${var.output_schema}
         canopy.complete_payloads_table: ${var.complete_payloads_table}
         canopy.prediction_stride_seconds: ${var.prediction_stride_seconds}
+        canopy.gps_gap_tolerance_seconds: ${var.gps_gap_tolerance_seconds}
         canopy.state_ttl_ms: ${var.state_ttl_ms}
         canopy.state_store_partitions: ${var.state_store_partitions}
         canopy.model_artifact_path: ${var.model_artifact_path}

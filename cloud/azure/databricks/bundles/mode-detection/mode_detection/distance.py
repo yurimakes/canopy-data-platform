@@ -36,7 +36,7 @@ class DistanceState:
     pending: dict[int, Observation] = field(default_factory=dict)
     legs: list[DistanceLeg] = field(default_factory=list)
 
-    def add_observations(self, observations) -> None:
+    def add_observations(self, observations, *, gps_gap_tolerance_seconds: int = 15) -> None:
         for point in observations:
             if self.last_point is not None and point.sequence <= self.last_point.sequence:
                 continue
@@ -58,12 +58,13 @@ class DistanceState:
                 break
             if current.event_time < self.last_point.event_time:
                 raise ValueError("GPS event_time moves backwards across contiguous sequence")
-            self.legs.append(
-                DistanceLeg(
-                    end_time=current.event_time,
-                    distance_m=haversine_m(self.last_point, current),
+            if (current.event_time - self.last_point.event_time).total_seconds() <= gps_gap_tolerance_seconds:
+                self.legs.append(
+                    DistanceLeg(
+                        end_time=current.event_time,
+                        distance_m=haversine_m(self.last_point, current),
+                    )
                 )
-            )
             self.last_point = current
 
     def distances_for(self, segments: tuple[ModeSegment, ...]) -> tuple[float, ...]:

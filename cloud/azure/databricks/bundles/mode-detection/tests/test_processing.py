@@ -167,3 +167,89 @@ def test_processor_isolates_prediction_value_error_and_continues():
     ]
     assert processor.skipped_prediction_windows == 1
     assert processor.trip.last_prediction_end == BASE + timedelta(seconds=140)
+
+
+def test_long_outage_skips_stale_windows_and_backlabels_recovery_only():
+    class PermissiveModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            start = window_end - timedelta(seconds=120)
+            return len([p for p in observations if start <= p.event_time <= window_end]) >= 2
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    model = PermissiveModel()
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    processor.trip.add_observations(observation(132 + i, 190 + i) for i in range(111))
+
+    updates = processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+
+    assert [int((u.raw_prediction.window_end - BASE).total_seconds()) for u in updates] == [300]
+    assert [(s.mode, int((s.start_time - BASE).total_seconds()), int((s.end_time - BASE).total_seconds())) for s in processor.segments.segments] == [
+        ("bus", 0, 130), ("walk", 190, 300),
+    ]
+
+
+def test_recovery_start_survives_skipped_windows_across_batches():
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    model = FakeModel()
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    processor.trip.add_observations([observation(132, 190)])
+    processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    assert processor.segments.resume_start_time == BASE + timedelta(seconds=190)
+
+
+def test_tolerated_gap_does_not_interrupt_mode():
+    class PermissiveModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            start = window_end - timedelta(seconds=120)
+            return len([p for p in observations if start <= p.event_time <= window_end]) >= 2
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    model = PermissiveModel()
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    processor.trip.add_observations(observation(132 + i, 145 + i) for i in range(16))
+    updates = processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    assert [int((u.raw_prediction.window_end - BASE).total_seconds()) for u in updates] == [140, 150, 160]
+    assert processor.skipped_prediction_windows == 0
+
+
+def test_out_of_order_future_gps_does_not_advance_scheduler():
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    processor.drain_due_mode_updates(FakeModel(), raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    processor.trip.add_observations([observation(133, 190)])
+    assert processor.drain_due_mode_updates(FakeModel(), raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver) == []
+    assert processor.trip.last_prediction_end == BASE + timedelta(seconds=130)
+    processor.trip.add_observations([observation(132, 131)])
+    assert processor.trip.outages == [(BASE + timedelta(seconds=131), BASE + timedelta(seconds=190))]
+
+
+def test_first_prediction_after_initial_outage_starts_at_recovered_gps():
+    class PermissiveModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            return len([p for p in observations if window_end - timedelta(seconds=120) <= p.event_time <= window_end]) >= 2
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations([observation(1, 0), observation(2, 1)])
+    processor.trip.add_observations(observation(3 + i, 60 + i) for i in range(111))
+    updates = processor.drain_due_mode_updates(PermissiveModel(), raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    assert len(updates) == 1
+    assert processor.segments.segments[0].start_time == BASE + timedelta(seconds=60)
+
+
+def test_second_outage_restarts_recovery_clock():
+    class PermissiveModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            return len([p for p in observations if window_end - timedelta(seconds=120) <= p.event_time <= window_end]) >= 2
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations(observation(i + 1, i) for i in range(131))
+    model = PermissiveModel()
+    processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    processor.trip.add_observations(observation(132 + i, 190 + i) for i in range(31))
+    processor.trip.add_observations(observation(163 + i, 260 + i) for i in range(111))
+    updates = processor.drain_due_mode_updates(model, raw_point_count_for_window=lambda a, b, p: len(p), transit_resolver=transit_resolver)
+    assert [int((u.raw_prediction.window_end - BASE).total_seconds()) for u in updates] == [370]
+    assert processor.segments.segments[-1].start_time == BASE + timedelta(seconds=260)

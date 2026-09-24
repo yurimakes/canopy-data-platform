@@ -145,11 +145,7 @@ def test_not_ready_due_window_advances_scheduler_without_prediction():
 def test_raw_point_count_policy_is_external_to_state():
     state = TripProcessingState("trip-1", BASE)
     model = FakeModel()
-    state.add_observations([
-        observation(1, 0),
-        observation(2, 60),
-        observation(3, 120),
-    ])
+    state.add_observations(observation(i + 1, i) for i in range(121))
 
     predictions = state.drain_due_predictions(
         model,
@@ -158,3 +154,18 @@ def test_raw_point_count_policy_is_external_to_state():
 
     assert len(predictions) == 1
     assert model.calls == [(BASE + timedelta(seconds=120), 99)]
+
+
+def test_direct_state_drain_rejects_outage_and_uses_recovered_window():
+    class PermissiveModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            start = window_end - timedelta(seconds=120)
+            return len([p for p in observations if start <= p.event_time <= window_end]) >= 2
+
+    state = TripProcessingState("trip-1", BASE)
+    model = PermissiveModel()
+    state.add_observations(observation(i + 1, i) for i in range(131))
+    state.drain_due_predictions(model, raw_point_count_for_window=raw_count)
+    state.add_observations(observation(132 + i, 190 + i) for i in range(111))
+    predictions = state.drain_due_predictions(model, raw_point_count_for_window=raw_count)
+    assert [int((p.window_end - BASE).total_seconds()) for p in predictions] == [300]

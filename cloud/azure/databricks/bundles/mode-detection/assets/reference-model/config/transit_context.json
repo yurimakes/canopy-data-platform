@@ -24,6 +24,7 @@
     "minimum_context_score": 0.35,
     "minimum_ml_confidence": 0.55,
     "ambiguity_margin": 0.10,
+    "context_decision_boost": 0.20,
     "rail_confirmation_score": 0.70,
     "rail_ml_retention_confidence": 0.85,
     "pre_transit_bike_max_windows": 2,

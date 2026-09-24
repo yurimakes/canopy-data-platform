@@ -10,7 +10,7 @@ Current implementation slices:
 - defines full-window prediction scheduling with a configurable stride;
 - defines trip-end tail semantics without partial-window inference;
 - runs streaming state, transit-context fusion, and incremental segmentation in one stateful path;
-- computes segment distance from the complete contiguous GPS sequence without an intermediate Delta table;
+- computes segment distance from contiguous GPS legs, excluding legs across outages, without an intermediate Delta table;
 - applies the shared carbon policy at trip seal;
 - emits the final durable Gold complete payload directly from the pipeline.
 
@@ -32,7 +32,11 @@ The first prediction is emitted only after a complete 120-second window. Later p
 
 Predictions are decisions at their window end. Later overlapping windows do not relabel their entire historical 120-second windows.
 
-At trip end, all stride-aligned predictions due through the final GPS observation must be drained first. If the trip ends between prediction boundaries, the current segment is extended from the last prediction time to the exact trip end. No partial-window terminal prediction is invented.
+Adjacent GPS points more than `gps_gap_tolerance_seconds` apart (15 seconds by default) create an uncovered outage. The previous mode extends through the last visible GPS point. Inference resumes only after `window_seconds - gps_gap_tolerance_seconds` of post-outage GPS coverage and at the next stride boundary. The first resumed decision labels the observed recovery interval from its first GPS point; it never labels the outage. Outages are not filled from subway context. Cross-outage distance legs are excluded.
+
+At trip end, all stride-aligned predictions due through the final GPS observation must be drained first. An active healthy segment extends to trip end if its tail is shorter than one stride. A trip ending during an outage or unfinished recovery is finalized as partial with uncovered time rather than waiting for more GPS or extending the former mode. No partial-window terminal prediction is invented.
+
+For ordinary windows the transit resolver adds the configurable `context_decision_boost` (default 0.20) to applicable bus/rail evidence for its override decision. Reported raw context scores remain unchanged, and promoting a non-rail model decision to rail still requires the original rail confirmation score.
 
 
 ## Final pipeline boundary

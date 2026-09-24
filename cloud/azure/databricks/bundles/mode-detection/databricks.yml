@@ -32,6 +32,9 @@ variables:
   prediction_stride_seconds:
     description: Normal mode-prediction cadence.
     default: "10"
+  gps_gap_tolerance_seconds:
+    description: Maximum adjacent GPS interval allowed before a recovery window is required.
+    default: "15"
   state_ttl_ms:
     description: Per-trip transformWithState TTL in milliseconds.
     default: "7200000"

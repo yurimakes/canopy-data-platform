@@ -4,9 +4,23 @@ from datetime import datetime, timedelta, timezone
 
 import mode_detection.spark_processor as spark_processor
 from mode_detection.contract import ModeModelMetadata, ModePrediction
+from mode_detection.processing import ModeDetectionProcessor
+from mode_detection.lifecycle import TripLifecycleState
+from mode_detection.contract import Observation
 
 
 BASE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+def test_checkpoint_preserves_gap_detection_and_recovery_boundary():
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations([
+        Observation(sequence=1, event_time=BASE, lat=37, lon=127, accuracy_m=5, altitude_m=10),
+        Observation(sequence=2, event_time=BASE + timedelta(seconds=60), lat=37, lon=127, accuracy_m=5, altitude_m=10),
+    ])
+    restored, _, _ = spark_processor._restore(spark_processor._snapshot(processor, TripLifecycleState(), []))
+    assert restored.trip.last_contiguous_point.event_time == BASE + timedelta(seconds=60)
+    assert restored.trip.outages == [(BASE, BASE + timedelta(seconds=60))]
 
 
 class FakeValueState:
