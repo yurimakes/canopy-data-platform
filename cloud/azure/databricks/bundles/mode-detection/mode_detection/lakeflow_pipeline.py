@@ -5,7 +5,7 @@ from __future__ import annotations
 from pyspark import pipelines as dp
 from pyspark.sql import SparkSession
 
-from mode_detection.spark_contracts import SEALED_OUTPUT_SCHEMA_DDL
+from mode_detection.spark_contracts import COMPLETE_PAYLOAD_SCHEMA_DDL
 from mode_detection.spark_events import unified_events
 from mode_detection.spark_processor import stateful_mode_detection_rows
 
@@ -40,10 +40,11 @@ SILVER_SCHEMA = _conf("silver_schema")
 OUTPUT_SCHEMA = _conf("output_schema")
 GPS_TABLE = f"{CATALOG}.{SILVER_SCHEMA}.{_conf('gps_observations_table')}"
 TRIP_END_TABLE = f"{CATALOG}.{SILVER_SCHEMA}.{_conf('trip_ended_events_table')}"
-OUTPUT_TABLE = f"{CATALOG}.{OUTPUT_SCHEMA}.{_conf('mode_detection_results_table')}"
+OUTPUT_TABLE = f"{CATALOG}.{OUTPUT_SCHEMA}.{_conf('complete_payloads_table')}"
 MODEL_ARTIFACT_PATH = _conf("model_artifact_path")
 TRANSIT_REFERENCE_ROOT = _conf("transit_reference_root")
 TRANSIT_REFERENCE_DIR = _conf("transit_reference_dir")
+CARBON_POLICY_PATH = _conf("carbon_policy_path")
 PREDICTION_STRIDE_SECONDS = _positive_int_conf("prediction_stride_seconds")
 STATE_TTL_MS = _positive_int_conf("state_ttl_ms")
 STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
@@ -51,13 +52,13 @@ STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
 
 @dp.table(
     name=OUTPUT_TABLE,
-    schema=SEALED_OUTPUT_SCHEMA_DDL,
-    comment="Sandbox/debug sealed output from the stateful mode-detection runtime.",
+    schema=COMPLETE_PAYLOAD_SCHEMA_DDL,
+    comment="Final complete trip payload emitted directly by the stateful mode-detection runtime.",
     spark_conf={
         "spark.sql.streaming.stateStore.partitions": str(STATE_STORE_PARTITIONS)
     },
 )
-def mode_detection_results():
+def complete_payloads():
     observations = _spark().readStream.table(GPS_TABLE)
     trip_ends = _spark().readStream.table(TRIP_END_TABLE)
     events = unified_events(observations, trip_ends)
@@ -68,4 +69,5 @@ def mode_detection_results():
         prediction_stride_seconds=PREDICTION_STRIDE_SECONDS,
         reference_root=TRANSIT_REFERENCE_ROOT,
         transit_reference_dir=TRANSIT_REFERENCE_DIR,
+        carbon_policy_path=CARBON_POLICY_PATH,
     )

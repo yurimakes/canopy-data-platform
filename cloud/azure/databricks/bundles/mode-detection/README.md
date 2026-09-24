@@ -9,7 +9,10 @@ Current implementation slices:
 - computes only the 16 surviving robust HGBC features;
 - defines full-window prediction scheduling with a configurable stride;
 - defines trip-end tail semantics without partial-window inference;
-- keeps streaming state, transit-context fusion, segmentation implementation, finalization, and sinks out of scope for the current slices.
+- runs streaming state, transit-context fusion, and incremental segmentation in one stateful path;
+- computes segment distance from the complete contiguous GPS sequence without an intermediate Delta table;
+- applies the shared carbon policy at trip seal;
+- emits the final durable Gold complete payload directly from the pipeline.
 
 The baseline model is the AI-Hub canonical 120-second HistGradientBoostingClassifier artifact currently maintained in the mobility-model runtime repository.
 
@@ -30,3 +33,22 @@ The first prediction is emitted only after a complete 120-second window. Later p
 Predictions are decisions at their window end. Later overlapping windows do not relabel their entire historical 120-second windows.
 
 At trip end, all stride-aligned predictions due through the final GPS observation must be drained first. If the trip ends between prediction boundaries, the current segment is extended from the last prediction time to the exact trip end. No partial-window terminal prediction is invented.
+
+
+## Final pipeline boundary
+
+The production-shaped path has no durable mode-detection intermediate table:
+
+```text
+Silver GPS + trip_end
+        ↓
+stateful mode detection
+  HGBC → transit fusion → segmentation → distance/carbon/finalization
+        ↓
+Gold complete_payloads
+```
+
+For the sandbox target the sink is
+`dbw_canopy_trial.sandbox.jun_016_gold_complete_payloads`.
+The former `jun_016_gold_mode_detection_results` table is no longer managed or
+written by this bundle.

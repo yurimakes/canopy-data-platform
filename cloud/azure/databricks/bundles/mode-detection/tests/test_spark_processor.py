@@ -130,6 +130,49 @@ def test_stateful_processor_emits_sealed_result(monkeypatch):
         lambda *_args: (FakeModel(), resolver),
     )
 
+    monkeypatch.setattr(
+        spark_processor,
+        "build_complete_payload",
+        lambda sealed, distances, **kwargs: {
+            "trip_id": sealed.trip_end.trip_id,
+            "user_id": sealed.trip_end.user_id,
+            "campaign_id": sealed.trip_end.campaign_id,
+            "status": "ready",
+            "started_at": BASE.isoformat(),
+            "ended_at": (BASE + timedelta(seconds=123)).isoformat(),
+            "updated_at": (BASE + timedelta(seconds=124)).isoformat(),
+            "processing_generation": 1,
+            "expected_last_sequence": 124,
+            "segments": [
+                {
+                    "segment_id": "trip-1:segment:1",
+                    "mode": "bus",
+                    "model_prediction": "bus",
+                    "start_time": BASE.isoformat(),
+                    "end_time": (BASE + timedelta(seconds=123)).isoformat(),
+                    "distance_m": 1.0,
+                    "confidence": 0.8,
+                    "prediction_count": 1,
+                    "carbon_kg": 0.0,
+                }
+            ],
+            "model_name": "fake-hgbc",
+            "model_version": "test-v1",
+            "feature_version": "feature-v1",
+            "total_distance_m": 1.0,
+            "carbon": {
+                "kg_co2e": 0.0,
+                "policy_version": "test",
+                "factor_version": "test",
+                "unit": "kgCO2e",
+                "mode_source": "model_prediction",
+                "user_confirmation_applied": False,
+            },
+            "finalization_hash": "hash",
+            "document_json": "{}",
+        },
+    )
+
     value_state = FakeValueState()
     processor = spark_processor.ModeDetectionStatefulProcessor(
         ttl_duration_ms=7200000,
@@ -137,6 +180,7 @@ def test_stateful_processor_emits_sealed_result(monkeypatch):
         prediction_stride_seconds=10,
         reference_root="/unused/reference",
         transit_reference_dir="/unused/transit",
+        carbon_policy_path="/unused/carbon_policy.yaml",
         now=lambda: BASE + timedelta(seconds=124),
         row_factory=lambda **values: values,
     )
@@ -155,8 +199,10 @@ def test_stateful_processor_emits_sealed_result(monkeypatch):
     assert output["trip_id"] == "trip-1"
     assert output["processing_generation"] == 1
     assert output["segments"][0]["mode"] == "bus"
-    assert output["segments"][0]["start_time"] == BASE
-    assert output["segments"][0]["end_time"] == BASE + timedelta(seconds=123)
+    assert output["segments"][0]["start_time"] == BASE.isoformat()
+    assert output["segments"][0]["end_time"] == (BASE + timedelta(seconds=123)).isoformat()
+    assert output["status"] == "ready"
+    assert output["finalization_hash"] == "hash"
     assert value_state.exists()
 
 
@@ -167,6 +213,49 @@ def test_replaying_same_state_does_not_reemit_generation(monkeypatch):
         lambda *_args: (FakeModel(), resolver),
     )
 
+    monkeypatch.setattr(
+        spark_processor,
+        "build_complete_payload",
+        lambda sealed, distances, **kwargs: {
+            "trip_id": sealed.trip_end.trip_id,
+            "user_id": sealed.trip_end.user_id,
+            "campaign_id": sealed.trip_end.campaign_id,
+            "status": "ready",
+            "started_at": BASE.isoformat(),
+            "ended_at": (BASE + timedelta(seconds=123)).isoformat(),
+            "updated_at": (BASE + timedelta(seconds=124)).isoformat(),
+            "processing_generation": 1,
+            "expected_last_sequence": 124,
+            "segments": [
+                {
+                    "segment_id": "trip-1:segment:1",
+                    "mode": "bus",
+                    "model_prediction": "bus",
+                    "start_time": BASE.isoformat(),
+                    "end_time": (BASE + timedelta(seconds=123)).isoformat(),
+                    "distance_m": 1.0,
+                    "confidence": 0.8,
+                    "prediction_count": 1,
+                    "carbon_kg": 0.0,
+                }
+            ],
+            "model_name": "fake-hgbc",
+            "model_version": "test-v1",
+            "feature_version": "feature-v1",
+            "total_distance_m": 1.0,
+            "carbon": {
+                "kg_co2e": 0.0,
+                "policy_version": "test",
+                "factor_version": "test",
+                "unit": "kgCO2e",
+                "mode_source": "model_prediction",
+                "user_confirmation_applied": False,
+            },
+            "finalization_hash": "hash",
+            "document_json": "{}",
+        },
+    )
+
     value_state = FakeValueState()
     processor = spark_processor.ModeDetectionStatefulProcessor(
         ttl_duration_ms=7200000,
@@ -174,6 +263,7 @@ def test_replaying_same_state_does_not_reemit_generation(monkeypatch):
         prediction_stride_seconds=10,
         reference_root="/unused/reference",
         transit_reference_dir="/unused/transit",
+        carbon_policy_path="/unused/carbon_policy.yaml",
         row_factory=lambda **values: values,
     )
     processor.init(FakeHandle(value_state))

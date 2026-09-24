@@ -20,27 +20,46 @@ processing_generation BIGINT,
 result_owner STRING
 """
 
-SEGMENT_STRUCT_DDL = """STRUCT<
+FINAL_SEGMENT_STRUCT_DDL = """STRUCT<
+segment_id: STRING,
 mode: STRING,
-start_time: TIMESTAMP,
-end_time: TIMESTAMP,
+model_prediction: STRING,
+start_time: STRING,
+end_time: STRING,
+distance_m: DOUBLE,
 confidence: DOUBLE,
-prediction_count: BIGINT
+prediction_count: BIGINT,
+carbon_kg: DOUBLE
 >"""
 
-SEALED_OUTPUT_SCHEMA_DDL = f"""
+CARBON_STRUCT_DDL = """STRUCT<
+kg_co2e: DOUBLE,
+policy_version: STRING,
+factor_version: STRING,
+unit: STRING,
+mode_source: STRING,
+user_confirmation_applied: BOOLEAN
+>"""
+
+COMPLETE_PAYLOAD_SCHEMA_DDL = f"""
 trip_id STRING NOT NULL,
 user_id STRING NOT NULL,
 campaign_id STRING NOT NULL,
+status STRING NOT NULL,
+started_at STRING NOT NULL,
+ended_at STRING NOT NULL,
+updated_at STRING NOT NULL,
 processing_generation BIGINT NOT NULL,
-started_at TIMESTAMP NOT NULL,
-ended_at TIMESTAMP NOT NULL,
 expected_last_sequence BIGINT NOT NULL,
-segments ARRAY<{SEGMENT_STRUCT_DDL}> NOT NULL,
+segments ARRAY<{FINAL_SEGMENT_STRUCT_DDL}> NOT NULL,
 model_name STRING NOT NULL,
 model_version STRING NOT NULL,
 feature_version STRING NOT NULL,
-sealed_at TIMESTAMP NOT NULL
+total_distance_m DOUBLE NOT NULL,
+carbon {CARBON_STRUCT_DDL} NOT NULL,
+finalization_hash STRING NOT NULL,
+sealed_at TIMESTAMP NOT NULL,
+document_json STRING NOT NULL
 """
 
 PROCESSOR_STATE_SCHEMA_DDL = """

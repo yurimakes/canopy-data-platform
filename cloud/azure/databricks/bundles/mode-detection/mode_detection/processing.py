@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from .contract import ModeDetectingModel
+from .distance import DistanceState
 from .segmentation import SegmentState
 from .state import RawPointCountProvider, TripProcessingState
 from .transit import (
@@ -20,6 +21,7 @@ class ModeDetectionProcessor:
     trip: TripProcessingState
     transit: TransitContextState
     segments: SegmentState
+    distances: DistanceState
 
     @classmethod
     def for_trip(cls, trip_id, trip_start):
@@ -27,6 +29,7 @@ class ModeDetectionProcessor:
             trip=TripProcessingState(trip_id=trip_id, trip_start=trip_start),
             transit=TransitContextState(),
             segments=SegmentState(trip_start=trip_start),
+            distances=DistanceState(),
         )
 
     def drain_due_mode_updates(

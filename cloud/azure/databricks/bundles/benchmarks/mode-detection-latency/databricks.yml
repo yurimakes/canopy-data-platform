@@ -18,7 +18,7 @@ variables:
   trip_ended_table:
     default: jun_016_silver_trip_ended_events
   mode_detection_results_table:
-    default: jun_016_gold_mode_detection_results
+    default: jun_016_gold_complete_payloads
 
 targets:
   sandbox:

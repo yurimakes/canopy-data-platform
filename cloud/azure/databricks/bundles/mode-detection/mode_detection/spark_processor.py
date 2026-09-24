@@ -9,12 +9,14 @@ from functools import lru_cache
 from typing import Any
 
 from .contract import Observation
+from .distance import DistanceLeg, DistanceState
+from .finalization import build_complete_payload
 from .hgbc import HGBCModeDetectingModel
 from .legacy_transit import LegacyTransitContextResolver
 from .lifecycle import TripEnded, TripLifecycleState
 from .processing import ModeDetectionProcessor
 from .segmentation import ModeSegment, SegmentState
-from .spark_contracts import PROCESSOR_STATE_SCHEMA_DDL, SEALED_OUTPUT_SCHEMA_DDL
+from .spark_contracts import COMPLETE_PAYLOAD_SCHEMA_DDL, PROCESSOR_STATE_SCHEMA_DDL
 from .state import TripProcessingState
 from .transit import TransitContextState
 
@@ -187,6 +189,33 @@ def _snapshot(
                 else _segment_dict(processor.segments.current)
             ),
             "segments_sealed": processor.segments.sealed,
+            "distance_last_point": (
+                None
+                if processor.distances.last_point is None
+                else {
+                    "sequence": processor.distances.last_point.sequence,
+                    "event_time": _iso(processor.distances.last_point.event_time),
+                    "lat": processor.distances.last_point.lat,
+                    "lon": processor.distances.last_point.lon,
+                    "accuracy_m": processor.distances.last_point.accuracy_m,
+                    "altitude_m": processor.distances.last_point.altitude_m,
+                }
+            ),
+            "distance_pending": [
+                {
+                    "sequence": p.sequence,
+                    "event_time": _iso(p.event_time),
+                    "lat": p.lat,
+                    "lon": p.lon,
+                    "accuracy_m": p.accuracy_m,
+                    "altitude_m": p.altitude_m,
+                }
+                for p in processor.distances.pending.values()
+            ],
+            "distance_legs": [
+                {"end_time": _iso(leg.end_time), "distance_m": leg.distance_m}
+                for leg in processor.distances.legs
+            ],
         }
     return json.dumps(payload, separators=(",", ":"), sort_keys=True)
 
@@ -255,7 +284,33 @@ def _restore(payload: str | None):
         ),
         sealed=bool(saved.get("segments_sealed", False)),
     )
-    return ModeDetectionProcessor(trip, transit, segments), lifecycle, buffered
+    def restore_point(value):
+        if value is None:
+            return None
+        return Observation(
+            sequence=int(value["sequence"]),
+            event_time=_dt(value["event_time"]),
+            lat=float(value["lat"]),
+            lon=float(value["lon"]),
+            accuracy_m=None if value.get("accuracy_m") is None else float(value["accuracy_m"]),
+            altitude_m=None if value.get("altitude_m") is None else float(value["altitude_m"]),
+        )
+
+    distances = DistanceState(
+        last_point=restore_point(saved.get("distance_last_point")),
+        pending={
+            int(value["sequence"]): restore_point(value)
+            for value in saved.get("distance_pending", [])
+        },
+        legs=[
+            DistanceLeg(
+                end_time=_dt(value["end_time"]),
+                distance_m=float(value["distance_m"]),
+            )
+            for value in saved.get("distance_legs", [])
+        ],
+    )
+    return ModeDetectionProcessor(trip, transit, segments, distances), lifecycle, buffered
 
 
 @lru_cache(maxsize=4)
@@ -285,6 +340,7 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
         prediction_stride_seconds: int,
         reference_root: str,
         transit_reference_dir: str,
+        carbon_policy_path: str,
         now=None,
         row_factory=None,
     ) -> None:
@@ -295,6 +351,7 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
         self._prediction_stride_seconds = prediction_stride_seconds
         self._reference_root = reference_root
         self._transit_reference_dir = transit_reference_dir
+        self._carbon_policy_path = carbon_policy_path
         self._now = now or (lambda: datetime.now(timezone.utc).replace(tzinfo=None))
         self._row_factory = row_factory
         self._state = None
@@ -356,9 +413,11 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
                     sequence_one.event_time,
                 )
                 processor.trip.add_observations(buffered)
+                processor.distances.add_observations(buffered)
                 buffered = []
         else:
             processor.trip.add_observations(gps)
+            processor.distances.add_observations(gps)
 
         if processor is not None:
             for event in trip_ends:
@@ -397,30 +456,38 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
             )
             if sealed is not None:
                 event = sealed.trip_end
-                output = {
-                    "trip_id": event.trip_id,
-                    "user_id": event.user_id,
-                    "campaign_id": event.campaign_id,
-                    "processing_generation": event.processing_generation,
-                    "started_at": event.started_at,
-                    "ended_at": event.ended_at,
-                    "expected_last_sequence": event.expected_last_sequence,
-                    "segments": [
-                        {
-                            "mode": segment.mode,
-                            "start_time": segment.start_time,
-                            "end_time": segment.end_time,
-                            "confidence": segment.confidence,
-                            "prediction_count": segment.prediction_count,
-                        }
-                        for segment in sealed.segments
-                    ],
-                    "model_name": model.metadata.model_name,
-                    "model_version": model.metadata.model_version,
-                    "feature_version": model.metadata.feature_version,
-                    "sealed_at": self._now(),
-                }
-                outputs.append(output)
+                sealed_at = self._now()
+                payload = build_complete_payload(
+                    sealed,
+                    processor.distances,
+                    model_name=model.metadata.model_name,
+                    model_version=model.metadata.model_version,
+                    feature_version=model.metadata.feature_version,
+                    sealed_at=sealed_at,
+                    carbon_policy_path=self._carbon_policy_path,
+                )
+                outputs.append(
+                    {
+                        "trip_id": payload["trip_id"],
+                        "user_id": payload["user_id"],
+                        "campaign_id": payload["campaign_id"],
+                        "status": payload["status"],
+                        "started_at": payload["started_at"],
+                        "ended_at": payload["ended_at"],
+                        "updated_at": payload["updated_at"],
+                        "processing_generation": payload["processing_generation"],
+                        "expected_last_sequence": payload["expected_last_sequence"],
+                        "segments": payload["segments"],
+                        "model_name": payload["model_name"],
+                        "model_version": payload["model_version"],
+                        "feature_version": payload["feature_version"],
+                        "total_distance_m": payload["total_distance_m"],
+                        "carbon": payload["carbon"],
+                        "finalization_hash": payload["finalization_hash"],
+                        "sealed_at": sealed_at,
+                        "document_json": payload["document_json"],
+                    }
+                )
 
         self._state.update((_snapshot(processor, lifecycle, buffered),))
         for output in outputs:
@@ -442,6 +509,7 @@ def stateful_mode_detection_rows(
     prediction_stride_seconds: int,
     reference_root: str,
     transit_reference_dir: str,
+    carbon_policy_path: str,
     processor: ModeDetectionStatefulProcessor | None = None,
 ):
     return events.groupBy("trip_id").transformWithState(
@@ -451,8 +519,9 @@ def stateful_mode_detection_rows(
             prediction_stride_seconds=prediction_stride_seconds,
             reference_root=reference_root,
             transit_reference_dir=transit_reference_dir,
+            carbon_policy_path=carbon_policy_path,
         ),
-        outputStructType=SEALED_OUTPUT_SCHEMA_DDL,
+        outputStructType=COMPLETE_PAYLOAD_SCHEMA_DDL,
         outputMode="Append",
         timeMode="ProcessingTime",
     )
