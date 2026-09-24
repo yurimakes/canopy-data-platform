@@ -137,3 +137,33 @@ def test_processor_skips_unusable_window_and_recovers_later_predictions():
         ("bus", BASE, BASE + timedelta(seconds=120)),
         ("walk", BASE + timedelta(seconds=140), BASE + timedelta(seconds=140)),
     ]
+
+
+def test_processor_isolates_prediction_value_error_and_continues():
+    class RaisingModel(FakeModel):
+        def predict(self, observations, *, window_end, raw_point_count):
+            if window_end == BASE + timedelta(seconds=130):
+                raise ValueError("bad per-window input")
+            return super().predict(
+                observations,
+                window_end=window_end,
+                raw_point_count=raw_point_count,
+            )
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations(
+        observation(i + 1, sec) for i, sec in enumerate(range(0, 141))
+    )
+
+    updates = processor.drain_due_mode_updates(
+        RaisingModel(),
+        raw_point_count_for_window=lambda _start, _end, points: len(points),
+        transit_resolver=transit_resolver,
+    )
+
+    assert [u.raw_prediction.window_end for u in updates] == [
+        BASE + timedelta(seconds=120),
+        BASE + timedelta(seconds=140),
+    ]
+    assert processor.skipped_prediction_windows == 1
+    assert processor.trip.last_prediction_end == BASE + timedelta(seconds=140)
