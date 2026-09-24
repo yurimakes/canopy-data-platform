@@ -1,0 +1,1 @@
+"""Complete-payload assembly package."""
