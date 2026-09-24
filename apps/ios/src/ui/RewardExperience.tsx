@@ -1,9 +1,10 @@
+import {PreviewIcon} from './PreviewIcon';
 import {displaySegments,recordedDuration} from '../displaySegments';
 import {rewardPresentation,type RewardComparison} from './rewardPresentation';
 import {MODES} from '../types';
 import Text from './AppText';
 import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,Easing,Modal,Platform,ScrollView,View} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Modal,Platform,Pressable,ScrollView,View} from 'react-native';
 import {Button,Card,C,Icon,Note,S,Stat} from './theme';
 import {CanopyMascot} from './CanopyMascot';
 import * as Haptics from 'expo-haptics';
@@ -35,31 +36,48 @@ export function RewardCelebration({amount,title,onClose,confirmLabel='확인 · 
 const celebratedTrips=new Set<string>();
 
 
-export function JourneyComplete({trip,onDetail,onWallet,previewComparison}:{trip:ServerTrip;onDetail():void;onWallet():void;previewComparison?:RewardComparison}){
+export function JourneyComplete({trip,onDetail,onWallet,onHome,previewComparison}:{trip:ServerTrip;onDetail():void;onWallet():void;onHome?():void;previewComparison?:RewardComparison}){
   const [result,setResult]=useState<RewardComparison|null>(null),[error,setError]=useState(''),[celebrate,setCelebrate]=useState(false);
   const active=useRef(trip.trip_id);active.current=trip.trip_id;
   async function refresh(){const id=trip.trip_id;try{setError('');const next=previewComparison??await localAction('/comparison/'+id);if(active.current===id)setResult(next);}catch(e){setError(String(e));}}
   useEffect(()=>{setResult(null);setCelebrate(false);void refresh();},[trip.trip_id]);
   const reward=rewardPresentation(result),waiting=!!error||reward.waiting;
   useEffect(()=>{if(!waiting)return;const timer=setInterval(()=>void refresh(),10000);return()=>clearInterval(timer);},[waiting,trip.trip_id]);
-  useEffect(()=>{if(reward.canCelebrate&&!celebratedTrips.has(trip.trip_id)){celebratedTrips.add(trip.trip_id);setCelebrate(true);}},[reward.canCelebrate,trip.trip_id]);
+  useEffect(()=>{if(!previewComparison&&reward.canCelebrate&&!celebratedTrips.has(trip.trip_id)){celebratedTrips.add(trip.trip_id);setCelebrate(true);}},[reward.canCelebrate,trip.trip_id]);
+  const [expanded,setExpanded]=useState(true),[explain,setExplain]=useState(false);
   const c=trip.confirmed_trip,seconds=trip.ended_at?Math.max(0,Math.round((Date.parse(trip.ended_at)-Date.parse(trip.started_at))/1000)):0;
-  return <><View style={{alignItems:'center',gap:10,paddingTop:6,paddingBottom:8}}><Eyebrow>JOURNEY COMPLETE</Eyebrow><CanopyMascot pose="complete" animated height={155}/>
-    <Text style={[S.title,{textAlign:'center'}]}>잘 도착했어요!</Text><Note>오늘도 더 가벼운 이동을 만들었어요.</Note></View>
-    {trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}{trip.is_mock&&<Note>합성 GPS 재생 테스트입니다. 실제 사용자가 이동한 기록이 아닙니다.</Note>}<Card><View style={S.row}><Stat label="이동 거리" value={c?km(c.total_distance_m):'—'}/><Stat label="소요 시간" value={seconds<60?`${seconds}초`:`${Math.floor(seconds/60)}분 ${seconds%60}초`}/><Stat label="탄소 배출" value={c?`${c.total_carbon_kg.toFixed(3)} kg`:'—'}/></View></Card>
-    {!!trip.segments.length&&<Card><Text style={S.heading}>어떻게 이동했나요?</Text>{displaySegments(trip.confirmed_segments??trip.segments).map((segment,i)=><View key={segment.segment_id} style={S.between}><View style={[S.row,{flex:1}]}><Text style={S.pill}>{String(i+1).padStart(2,'0')}</Text><Text style={S.label}>{MODES.find(m=>m.value===(segment.confirmed_mode??segment.mode))?.title??'확인 중'}</Text></View><Text style={[S.note,{flexShrink:1,maxWidth:"55%",textAlign:"right"}]}>{km(segment.distance_m)} · {recordedDuration(segment.recordedSeconds)}{segment.gapSeconds>0?" · 일부 기록 누락":""}</Text></View>)}</Card>}
-    {result?.baseline_kg!==undefined&&<View style={{backgroundColor:C.deep,borderRadius:24,padding:24,gap:18}}>
-      <View style={S.between}><Text style={{color:'#cbe7d9',fontWeight:'600'}}>내가 줄인 탄소</Text><Icon name="leaf-outline" color="#b9e877"/></View>
-      <Text style={{color:'white',fontSize:36,fontWeight:'800'}}>{((result.saved_kg??0)*1000).toFixed(1)} <Text style={{fontSize:17}}>g 절감</Text></Text>
-      <View style={[S.between,{borderTopWidth:1,borderTopColor:'#366b5e',paddingTop:16}]}><Text style={{color:'#cbe7d9'}}>비교 기준</Text><Text style={{color:'white'}}>{(result.baseline_kg*1000).toFixed(1)} g</Text></View>
-      <View style={S.between}><Text style={{color:'#cbe7d9'}}>실제 이동</Text><Text style={{color:'white'}}>{((result.actual_kg??0)*1000).toFixed(1)} g</Text></View>
-      {!!result.source&&<Text style={{color:'#cbe7d9',fontSize:12,lineHeight:18}}>{result.source}</Text>}
-      {result.development_only&&<Text style={{color:'#cbe7d9',fontSize:11}}>로컬 테스트 보상 · 기준 출처를 확인해주세요.</Text>}
-    </View>}
-    <Card><View style={S.between}><View style={S.row}><Icon name="gift-outline"/><Text style={S.heading}>이번에 모은 토큰</Text></View><Text style={S.pill}>{reward.label}</Text></View>
-      {reward.canCelebrate?<><Text style={[S.metric,{fontSize:32}]}>+{reward.amount} T</Text><Note>적게 배출한 탄소가 작은 보상이 됐어요.</Note><Button title="적립 보상 확인" onPress={()=>setCelebrate(true)}/></>:<Note>{error?'잠시 연결이 끊겼어요. 다시 확인해주세요.':reward.message}</Note>}
-      {waiting&&<Button title="다시 확인" quiet onPress={()=>void refresh()}/>}<Button title="토큰 내역 보기" quiet onPress={onWallet}/>
-    </Card><Button title="이동 타임라인과 피드백" quiet onPress={onDetail}/>
-    {celebrate&&<RewardCelebration amount={reward.amount} title={result?.title??"여정 보상"} onClose={()=>{setCelebrate(false);onWallet();}}/>}
+  const segments=displaySegments(trip.confirmed_segments??trip.segments);
+  const distance=c?.total_distance_m??(segments.length?segments.reduce((sum,s)=>sum+s.distance_m,0):null);
+  const actual=c?.total_carbon_kg??result?.actual_kg;
+  const baseline=result?.baseline_kg;
+  const comparable=typeof baseline==='number'&&Number.isFinite(baseline)&&baseline>0&&typeof actual==='number';
+  const saved=comparable?baseline!-actual!:null;
+  const reduction=comparable?Math.round((saved!/baseline!)*100):null;
+  const label=(mode:string)=>MODES.find(m=>m.value===mode)?.title??'확인 중';
+  const modeIcon=(mode:string)=>mode==='walk'?'sneaker-move':mode==='bike'?'bicycle':mode==='bus'?'bus':mode==='car'?'car':'train';
+  return <>
+   <View style={{alignItems:'center',paddingTop:8,paddingBottom:8,gap:10}}><CanopyMascot pose="complete" animated height={175}/><Text style={[S.title,{fontSize:28,textAlign:'center'}]}>오늘도 한 걸음 해냈어요!</Text><Note>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')||'이번 여정의 이동 기록'}</Note></View>
+   {trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
+   {trip.is_mock&&<Note>합성 GPS 테스트 여정입니다.</Note>}
+   <View style={{backgroundColor:'white',borderWidth:1,borderColor:C.line,borderRadius:27,padding:20,gap:20}}>
+    <View style={S.between}><Text style={S.heading}>이번 여정 요약</Text><Text style={[S.pill,{fontSize:10}]}>분석 완료</Text></View>
+    <View style={{flexDirection:'row',gap:18}}>
+     <View style={{flex:1,gap:9}}><Note>이번 탄소 배출</Note><Text style={{fontSize:32,fontFamily:'Jua',color:C.ink}}>{actual==null?'—':actual.toFixed(2)} <Text style={{fontSize:13}}>kg</Text></Text><Note>CO₂e</Note></View>
+     <View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:18,gap:9}}><Note>{result?.source||'비교 기준 확인 중'}</Note><Text style={{fontSize:30,fontFamily:'Jua',color:C.ink}}>{saved==null?'—':Math.abs(saved).toFixed(2)} <Text style={{fontSize:12}}>{saved==null?'':saved>=0?'kg 절감':'kg 더 배출'}</Text></Text>{reduction!=null&&<Text style={[S.pill,{fontSize:10}]}>{Math.abs(reduction)}% {reduction>=0?'덜':'더'} 배출했어요</Text>}</View>
+    </View>
+    {comparable&&<View style={{gap:8}}><View accessibilityRole="progressbar" accessibilityValue={{min:0,max:100,now:Math.round(Math.min(1,actual!/baseline!)*100)}} style={{height:10,borderRadius:10,backgroundColor:'#E8EDDF',overflow:'hidden'}}><View style={{height:10,borderRadius:10,backgroundColor:'#63866B',width:`${Math.min(1,Math.max(0,actual!/baseline!))*100}%`}}/></View><View style={S.between}><Text style={{fontSize:10,color:C.muted}}>실제 {actual!.toFixed(2)} kg</Text><Text style={{fontSize:10,color:C.muted}}>비교 기준 {baseline!.toFixed(2)} kg</Text></View></View>}
+    <Pressable accessibilityRole="button" accessibilityState={{expanded:explain}} onPress={()=>setExplain(!explain)} style={[S.row,{minHeight:44}]}><PreviewIcon name="info" size={17}/><Text style={[S.note,{flex:1,fontSize:11}]}>어떤 기준으로 비교하나요?</Text><Icon name={explain?'chevron-up':'chevron-forward'} size={16}/></Pressable>
+    {explain&&<Note>{result?.source?`비교 기준: ${result.source}. 이 기준의 배출량과 이번 여정의 배출량을 비교하며, 표시값은 반올림했어요.`:'서버에서 비교 기준을 확인하고 있어요. 개인 기준과 KTDB 기준은 서로 다르며, 확인되지 않은 감축량은 표시하지 않습니다.'}</Note>}
+    <View style={{flexDirection:'row',borderTopWidth:1,borderBottomWidth:1,borderColor:C.line,paddingVertical:20}}><View style={{flex:1,alignItems:'center',gap:7}}><PreviewIcon name="timer"/><Note>이동 시간</Note><Text style={S.metric}>{Math.floor(seconds/60)}<Text style={{fontSize:12}}>분 {seconds%60}초</Text></Text></View><View style={{flex:1,alignItems:'center',gap:7,borderLeftWidth:1,borderColor:C.line}}><PreviewIcon name="map-pin"/><Note>이동 거리</Note><Text style={S.metric}>{distance==null?'—':(distance/1000).toFixed(2)}<Text style={{fontSize:12}}> km</Text></Text></View></View>
+    <Pressable accessibilityRole="button" accessibilityState={{expanded}} onPress={()=>setExpanded(!expanded)} style={[S.between,{minHeight:44}]}><Text style={[S.note,{fontSize:11}]}>감지된 이동수단</Text><View style={[S.row,{flex:1,justifyContent:'flex-end',gap:5}]}><Text style={{flexShrink:1,fontSize:11,color:C.ink,textAlign:'right'}}>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')}</Text><Icon name={expanded?'chevron-up':'chevron-down'} size={14}/></View></Pressable>
+    {expanded&&<View style={{gap:12}}>{segments.map(segment=>{const mode=segment.confirmed_mode??segment.mode;return <View key={segment.segment_id} style={{flexDirection:'row',alignItems:'center',gap:10,padding:13,borderRadius:19,backgroundColor:mode==='rail'?'#EDF2ED':'#F3F5E9'}}><View style={{width:37,height:37,borderRadius:14,alignItems:'center',justifyContent:'center',backgroundColor:'#E7EDD9'}}><PreviewIcon name={modeIcon(mode)} size={23}/></View><View style={{flex:1,gap:5}}><Text style={S.label}>{label(mode)}</Text><Text style={{fontSize:10,color:C.muted}}>{recordedDuration(segment.recordedSeconds)} · {km(segment.distance_m)}</Text>{segment.gapSeconds>0&&<Text style={{fontSize:10,color:C.muted}}>일부 위치 기록 누락</Text>}</View><View style={{alignItems:'flex-end',gap:3}}><Text style={{fontSize:16,fontFamily:'Jua',color:C.deep}}>{segment.carbon_kg==null?'—':(segment.carbon_kg*1000).toFixed(1)} <Text style={{fontSize:10}}>g</Text></Text><Text style={{fontSize:9,color:C.muted}}>CO₂e</Text></View></View>;})}</View>}
+   </View>
+   <Pressable accessibilityRole="button" onPress={onWallet} style={{backgroundColor:'#ECF1D8',borderRadius:23,padding:18,flexDirection:'row',alignItems:'center',gap:14}}><PreviewIcon name="coins" size={34} color="#947528"/><View style={{flex:1,gap:4}}><Note>이번 여정 보상</Note><Text style={{fontFamily:'Jua',fontSize:29,color:C.deep}}>{waiting?'확인 중':`+${reward.amount} T`}</Text></View><Text style={{fontSize:11,color:C.muted}}>{reward.label}</Text><Icon name="chevron-forward" size={17}/></Pressable>
+   {!reward.canCelebrate&&<Note>{error?'보상을 확인하지 못했어요. 다시 확인해주세요.':reward.message}</Note>}
+   {waiting&&<Button title="보상 다시 확인" quiet onPress={()=>void refresh()}/>}
+   {onHome&&<Button title="홈으로 돌아가기" onPress={onHome}/>}
+   {result?.development_only&&<Note>로컬 테스트 보상 · 기준 출처를 확인해주세요.</Note>}
+   <Button title="이동 상세와 피드백" quiet onPress={onDetail}/>
+   {celebrate&&<RewardCelebration amount={reward.amount} title={result?.title??'이번 여정 보상'} onClose={()=>{setCelebrate(false);onWallet();}}/>}
   </>;
 }
