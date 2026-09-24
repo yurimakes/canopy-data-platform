@@ -25,13 +25,20 @@ source .venv/bin/activate
 python -m pip install -e tools/sandbox-replay
 ```
 
-Set the credential only in your local environment:
+Create a repo-local `.env` from the committed example:
 
 ```bash
-export EVENT_HUB_CONNECTION_STRING='...'
+cp tools/sandbox-replay/.env.example .env
 ```
 
-The sender defaults to `evh-canopy-sandbox-5dt016`.
+Then set the connection string in `.env`:
+
+```dotenv
+EVENT_HUB_CONNECTION_STRING=...
+EVENT_HUB_NAME=evh-canopy-sandbox-5dt016
+```
+
+The sender automatically loads the repository-root `.env`. The actual connection string is never committed. If `EVENT_HUB_NAME` is omitted, the sender defaults to `evh-canopy-sandbox-5dt016`.
 
 ## Replay residual-tail fixture
 
