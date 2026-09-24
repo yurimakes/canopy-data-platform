@@ -77,6 +77,17 @@ targets:
   trial:
     default: true
     mode: production
+    variables:
+      silver_schema: silver
+      gps_observations_table: gps_observations
+      trip_ended_events_table: trip_ended_events
+      output_schema: gold
+      complete_payloads_table: complete_payloads
+      prediction_stride_seconds: "10"
+      mode_detection_pause_status: PAUSED
+      mode_detection_trigger_interval: 1 second
+      direct_cosmos_sink_enabled: "true"
+      allow_missing_cosmos_create: "false"
     presets:
       tags:
         environment: trial
