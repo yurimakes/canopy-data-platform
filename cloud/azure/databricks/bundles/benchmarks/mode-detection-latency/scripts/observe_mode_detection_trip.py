@@ -17,6 +17,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gps-table", required=True)
     parser.add_argument("--trip-ended-table", required=True)
     parser.add_argument("--complete-payloads-table", required=True)
+    parser.add_argument("--cosmos-endpoint", required=True)
+    parser.add_argument("--cosmos-database", required=True)
+    parser.add_argument("--cosmos-container", required=True)
+    parser.add_argument("--cosmos-secret-scope", required=True)
+    parser.add_argument("--cosmos-key", required=True)
     parser.add_argument("--trip-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=600)
     parser.add_argument("--poll-seconds", type=float, default=0.5)
@@ -44,8 +49,19 @@ def main() -> None:
     trip_end_name = f"{args.catalog}.{args.schema}.{args.trip_ended_table}"
     complete_payloads_name = f"{args.catalog}.{args.schema}.{args.complete_payloads_table}"
 
+    from azure.cosmos import CosmosClient
+    from azure.cosmos.exceptions import CosmosResourceNotFoundError
+    from databricks.sdk.runtime import dbutils
+
+    credential = dbutils.secrets.get(args.cosmos_secret_scope, args.cosmos_key)
+    cosmos = (
+        CosmosClient(args.cosmos_endpoint, credential=credential)
+        .get_database_client(args.cosmos_database)
+        .get_container_client(args.cosmos_container)
+    )
+
     deadline = time.monotonic() + args.timeout_seconds
-    print("EH_TO_GOLD_OBSERVER_READY", json.dumps({"trip_id": args.trip_id}))
+    print("EH_TO_COSMOS_OBSERVER_READY", json.dumps({"trip_id": args.trip_id}))
 
     while time.monotonic() < deadline:
         trip_end_rows = (
@@ -96,6 +112,26 @@ def main() -> None:
 
         result = result_rows[0]
 
+        try:
+            cosmos_doc = cosmos.read_item(
+                item=args.trip_id,
+                partition_key=result["user_id"],
+            )
+        except CosmosResourceNotFoundError:
+            time.sleep(args.poll_seconds)
+            continue
+
+        if cosmos_doc.get("finalization_hash") != result["finalization_hash"]:
+            time.sleep(args.poll_seconds)
+            continue
+        projected_raw = cosmos_doc.get("cosmos_projected_at")
+        if not projected_raw:
+            time.sleep(args.poll_seconds)
+            continue
+        cosmos_projected_at = datetime.fromisoformat(
+            projected_raw.replace("Z", "+00:00")
+        ).astimezone(timezone.utc).replace(tzinfo=None)
+
         gps_latency = gps_frame.select(
             (
                 (F.col("validated_at").cast("double")
@@ -138,6 +174,7 @@ def main() -> None:
                 "trip_end_event_hub_enqueued_at": str(trip_end_enqueued),
                 "trip_end_parsed_at": str(trip_end_parsed),
                 "gold_final_at": str(sealed_at),
+                "cosmos_projected_at": str(cosmos_projected_at),
                 "observer_visible_at": str(visible_at),
                 "final_segment_end": str(final_segment_end),
             },
@@ -154,6 +191,14 @@ def main() -> None:
                 "last_gps_validated_to_gold_final": ms(
                     sealed_at, gps_state["last_gps_validated_at"]
                 ),
+                "gold_final_to_cosmos": ms(cosmos_projected_at, sealed_at),
+                "trip_end_eventhub_to_cosmos": ms(
+                    cosmos_projected_at, trip_end_enqueued
+                ),
+                "last_gps_eventhub_to_cosmos": ms(
+                    cosmos_projected_at,
+                    gps_state["last_gps_event_hub_enqueued_at"],
+                ),
             },
             "observer_delay_ms": {
                 "gold_final_to_observer_visible": ms(visible_at, sealed_at),
@@ -165,11 +210,11 @@ def main() -> None:
                 "feature_version": result["feature_version"],
             },
         }
-        print("EH_TO_GOLD_LATENCY_REPORT", json.dumps(report, default=str))
+        print("EH_TO_COSMOS_LATENCY_REPORT", json.dumps(report, default=str))
         return
 
     raise TimeoutError(
-        f"timed out waiting for final Gold payload trip_id={args.trip_id}"
+        f"timed out waiting for matching final Gold + Cosmos payload trip_id={args.trip_id}"
     )
 
 

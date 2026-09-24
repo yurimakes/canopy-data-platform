@@ -15,6 +15,7 @@ resources:
         dependencies:
           - scikit-learn==1.9.0
           - PyYAML==6.0.3
+          - azure-cosmos==4.17.1
       libraries:
         - file:
             path: ${workspace.file_path}/mode_detection/lakeflow_pipeline.py
@@ -33,3 +34,10 @@ resources:
         canopy.transit_reference_root: ${var.transit_reference_root}
         canopy.transit_reference_dir: ${var.transit_reference_dir}
         canopy.carbon_policy_path: ${var.carbon_policy_path}
+        canopy.direct_cosmos_sink_enabled: ${var.direct_cosmos_sink_enabled}
+        canopy.cosmos_endpoint: ${var.cosmos_endpoint}
+        canopy.cosmos_database: ${var.cosmos_database}
+        canopy.cosmos_container: ${var.cosmos_container}
+        canopy.cosmos_secret_scope: ${var.cosmos_secret_scope}
+        canopy.cosmos_key: ${var.cosmos_key}
+        canopy.allow_missing_cosmos_create: ${var.allow_missing_cosmos_create}

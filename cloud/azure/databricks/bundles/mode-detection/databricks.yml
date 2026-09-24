@@ -50,6 +50,22 @@ variables:
   carbon_policy_path:
     description: Bundle-local carbon policy used during final payload assembly.
     default: ${workspace.file_path}/assets/carbon_policy.yaml
+  direct_cosmos_sink_enabled:
+    description: Enable Lakeflow Gold-to-Cosmos ForEachBatch append flow.
+    default: "false"
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+  cosmos_key:
+    default: cosmos-key
+  allow_missing_cosmos_create:
+    description: Sandbox-only creation when no lifecycle Trip exists.
+    default: "false"
   mode_detection_pause_status:
     description: Pause status for the continuous wrapper job.
     default: PAUSED
@@ -89,6 +105,8 @@ targets:
       prediction_stride_seconds: "10"
       mode_detection_pause_status: PAUSED
       mode_detection_trigger_interval: 1 second
+      direct_cosmos_sink_enabled: "true"
+      allow_missing_cosmos_create: "true"
     presets:
       tags:
         environment: trial

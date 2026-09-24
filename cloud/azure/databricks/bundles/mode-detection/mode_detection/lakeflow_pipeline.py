@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 from pyspark import pipelines as dp
 from pyspark.sql import SparkSession
 
 from mode_detection.spark_contracts import COMPLETE_PAYLOAD_SCHEMA_DDL
 from mode_detection.spark_events import unified_events
 from mode_detection.spark_processor import stateful_mode_detection_rows
+from mode_detection.cosmos_sink import open_container, project_payload
 
 
 def _spark() -> SparkSession:
@@ -22,6 +25,13 @@ def _conf(name: str) -> str:
     if not value or not value.strip():
         raise ValueError(f"missing configuration canopy.{name}")
     return value.strip()
+
+
+def _bool_conf(name: str) -> bool:
+    raw = _conf(name).lower()
+    if raw not in ("true", "false"):
+        raise ValueError(f"invalid canopy.{name}: {raw!r}")
+    return raw == "true"
 
 
 def _positive_int_conf(name: str) -> int:
@@ -48,6 +58,13 @@ CARBON_POLICY_PATH = _conf("carbon_policy_path")
 PREDICTION_STRIDE_SECONDS = _positive_int_conf("prediction_stride_seconds")
 STATE_TTL_MS = _positive_int_conf("state_ttl_ms")
 STATE_STORE_PARTITIONS = _positive_int_conf("state_store_partitions")
+DIRECT_COSMOS_SINK_ENABLED = _bool_conf("direct_cosmos_sink_enabled")
+COSMOS_ENDPOINT = _conf("cosmos_endpoint")
+COSMOS_DATABASE = _conf("cosmos_database")
+COSMOS_CONTAINER = _conf("cosmos_container")
+COSMOS_SECRET_SCOPE = _conf("cosmos_secret_scope")
+COSMOS_KEY = _conf("cosmos_key")
+ALLOW_MISSING_COSMOS_CREATE = _bool_conf("allow_missing_cosmos_create")
 
 
 @dp.table(
@@ -71,3 +88,40 @@ def complete_payloads():
         transit_reference_dir=TRANSIT_REFERENCE_DIR,
         carbon_policy_path=CARBON_POLICY_PATH,
     )
+
+
+if DIRECT_COSMOS_SINK_ENABLED:
+    @dp.foreach_batch_sink(name="complete_payloads_to_cosmos")
+    def complete_payloads_to_cosmos(batch_df, batch_id):
+        del batch_id
+
+        # Resolve the secret inside the managed pipeline runtime; only the
+        # secret scope/key names are bundle configuration.
+        from databricks.sdk.runtime import dbutils
+
+        credential = dbutils.secrets.get(
+            COSMOS_SECRET_SCOPE,
+            COSMOS_KEY,
+        )
+        container = open_container(
+            COSMOS_ENDPOINT,
+            COSMOS_DATABASE,
+            COSMOS_CONTAINER,
+            credential,
+        )
+
+        for row in batch_df.select("document_json").toLocalIterator():
+            payload = json.loads(row["document_json"])
+            project_payload(
+                container,
+                payload,
+                allow_missing_create=ALLOW_MISSING_COSMOS_CREATE,
+            )
+
+
+    @dp.append_flow(
+        target="complete_payloads_to_cosmos",
+        name="complete_payloads_to_cosmos_flow",
+    )
+    def complete_payloads_to_cosmos_flow():
+        return _spark().readStream.table(OUTPUT_TABLE)

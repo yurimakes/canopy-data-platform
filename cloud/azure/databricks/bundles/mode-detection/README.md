@@ -52,3 +52,18 @@ For the sandbox target the sink is
 `dbw_canopy_trial.sandbox.jun_016_gold_complete_payloads`.
 The former `jun_016_gold_mode_detection_results` table is no longer managed or
 written by this bundle.
+
+
+## Optional direct Cosmos sink
+
+The pipeline can fan out the durable Gold stream to Cosmos using Lakeflow
+`foreach_batch_sink` + `append_flow`. Gold remains the durable system of
+record; the external write is idempotent by `processing_generation` and
+`finalization_hash`.
+
+The `sandbox` target enables this direct sink and permits creation of missing
+lifecycle documents so Event Hub replay fixtures can exercise the full path.
+The normal `trial` target leaves the direct sink disabled by default.
+
+Do not run the separate `cosmos-projection` worker against the same sandbox
+while this direct sink is enabled; use the two implementations as A/B variants.

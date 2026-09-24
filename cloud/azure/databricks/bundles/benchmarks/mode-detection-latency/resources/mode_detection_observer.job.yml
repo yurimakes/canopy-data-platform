@@ -18,6 +18,11 @@ resources:
               - --gps-table=${var.gps_table}
               - --trip-ended-table=${var.trip_ended_table}
               - --complete-payloads-table=${var.complete_payloads_table}
+              - --cosmos-endpoint=${var.cosmos_endpoint}
+              - --cosmos-database=${var.cosmos_database}
+              - --cosmos-container=${var.cosmos_container}
+              - --cosmos-secret-scope=${var.cosmos_secret_scope}
+              - --cosmos-key=${var.cosmos_key}
               - --trip-id={{job.parameters.trip_id}}
               - --timeout-seconds={{job.parameters.timeout_seconds}}
               - --poll-seconds=0.5
@@ -26,3 +31,5 @@ resources:
         - environment_key: benchmark_env
           spec:
             environment_version: "4"
+            dependencies:
+              - azure-cosmos==4.17.1

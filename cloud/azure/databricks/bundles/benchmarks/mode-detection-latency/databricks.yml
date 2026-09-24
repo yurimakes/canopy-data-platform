@@ -19,6 +19,16 @@ variables:
     default: jun_016_silver_trip_ended_events
   complete_payloads_table:
     default: jun_016_gold_complete_payloads
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+  cosmos_key:
+    default: cosmos-key
 
 targets:
   sandbox:
