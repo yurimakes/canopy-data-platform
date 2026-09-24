@@ -67,11 +67,18 @@ class ModeDetectionProcessor:
                 window_end,
                 window_points,
             )
-            raw_prediction = model.predict(
-                points,
-                window_end=window_end,
-                raw_point_count=raw_point_count,
-            )
+            try:
+                raw_prediction = model.predict(
+                    points,
+                    window_end=window_end,
+                    raw_point_count=raw_point_count,
+                )
+            except ValueError:
+                self.segments.mark_gap(window_end)
+                self.trip.last_prediction_end = window_end
+                self.trip._prune(model)
+                self.skipped_prediction_windows += 1
+                continue
             adjusted = self.transit.apply(
                 raw_prediction,
                 window_points,
