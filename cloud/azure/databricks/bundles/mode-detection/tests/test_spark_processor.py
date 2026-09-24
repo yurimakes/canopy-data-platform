@@ -138,6 +138,8 @@ def test_stateful_processor_emits_sealed_result(monkeypatch):
             "user_id": sealed.trip_end.user_id,
             "campaign_id": sealed.trip_end.campaign_id,
             "status": "ready",
+            "mode_detection_status": "complete",
+            "mode_detection_reason": None,
             "started_at": BASE.isoformat(),
             "ended_at": (BASE + timedelta(seconds=123)).isoformat(),
             "updated_at": (BASE + timedelta(seconds=124)).isoformat(),
@@ -221,6 +223,8 @@ def test_replaying_same_state_does_not_reemit_generation(monkeypatch):
             "user_id": sealed.trip_end.user_id,
             "campaign_id": sealed.trip_end.campaign_id,
             "status": "ready",
+            "mode_detection_status": "complete",
+            "mode_detection_reason": None,
             "started_at": BASE.isoformat(),
             "ended_at": (BASE + timedelta(seconds=123)).isoformat(),
             "updated_at": (BASE + timedelta(seconds=124)).isoformat(),
@@ -296,7 +300,8 @@ def test_short_trip_emits_terminal_payload_instead_of_raising(monkeypatch):
             "trip_id": sealed.trip_end.trip_id,
             "user_id": sealed.trip_end.user_id,
             "campaign_id": sealed.trip_end.campaign_id,
-            "status": sealed.status,
+            "status": "ready",
+            "mode_detection_status": sealed.status,
             "mode_detection_reason": sealed.reason,
             "started_at": BASE.isoformat(),
             "ended_at": (BASE + timedelta(seconds=60)).isoformat(),
@@ -341,6 +346,7 @@ def test_short_trip_emits_terminal_payload_instead_of_raising(monkeypatch):
     outputs = list(processor.handleInputRows(("trip-1",), iter(rows)))
 
     assert len(outputs) == 1
-    assert outputs[0]["status"] == "insufficient_data"
+    assert outputs[0]["status"] == "ready"
+    assert outputs[0]["mode_detection_status"] == "insufficient_data"
     assert outputs[0]["mode_detection_reason"] == "trip_shorter_than_model_window"
     assert outputs[0]["segments"] == []
