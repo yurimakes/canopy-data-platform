@@ -150,7 +150,7 @@ def test_terminal_tail_extends_last_mode_to_exact_trip_end():
     assert sealed.segments[-1].end_time == BASE + timedelta(seconds=723)
 
 
-def test_short_trip_is_rejected_without_partial_window_prediction():
+def test_short_trip_returns_terminal_insufficient_data_result():
     processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
     lifecycle = TripLifecycleState()
     processor.trip.add_observations(
@@ -162,13 +162,44 @@ def test_short_trip_is_rejected_without_partial_window_prediction():
         processor=processor,
     )
 
-    with pytest.raises(ValueError, match="shorter than the model window"):
-        lifecycle.seal_if_ready(
-            processor,
-            FakeModel(),
-            raw_point_count_for_window=raw_count,
-            transit_resolver=transit_resolver,
-        )
+    sealed = lifecycle.seal_if_ready(
+        processor,
+        FakeModel(),
+        raw_point_count_for_window=raw_count,
+        transit_resolver=transit_resolver,
+    )
+
+    assert sealed is not None
+    assert sealed.status == "insufficient_data"
+    assert sealed.reason == "trip_shorter_than_model_window"
+    assert sealed.segments == ()
+
+
+def test_no_complete_prediction_returns_terminal_insufficient_data_result():
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    lifecycle = TripLifecycleState()
+    processor.trip.add_observations(
+        [
+            observation(1, 0),
+            observation(2, 121),
+        ]
+    )
+    lifecycle.register_trip_end(
+        trip_end(ended_seconds=121, expected_last_sequence=2),
+        processor=processor,
+    )
+
+    sealed = lifecycle.seal_if_ready(
+        processor,
+        FakeModel(),
+        raw_point_count_for_window=raw_count,
+        transit_resolver=transit_resolver,
+    )
+
+    assert sealed is not None
+    assert sealed.status == "insufficient_data"
+    assert sealed.reason == "no_complete_model_prediction"
+    assert sealed.segments == ()
 
 
 def test_generation_is_emitted_only_once():
