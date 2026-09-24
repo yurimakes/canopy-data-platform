@@ -189,6 +189,8 @@ def _snapshot(
                 else _segment_dict(processor.segments.current)
             ),
             "segments_sealed": processor.segments.sealed,
+            "segments_resume_after_gap": processor.segments.resume_after_gap,
+            "skipped_prediction_windows": processor.skipped_prediction_windows,
             "distance_last_point": (
                 None
                 if processor.distances.last_point is None
@@ -283,6 +285,7 @@ def _restore(payload: str | None):
             else _segment_from_dict(saved["current_segment"])
         ),
         sealed=bool(saved.get("segments_sealed", False)),
+        resume_after_gap=bool(saved.get("segments_resume_after_gap", False)),
     )
     def restore_point(value):
         if value is None:
@@ -310,7 +313,13 @@ def _restore(payload: str | None):
             for value in saved.get("distance_legs", [])
         ],
     )
-    return ModeDetectionProcessor(trip, transit, segments, distances), lifecycle, buffered
+    return ModeDetectionProcessor(
+        trip,
+        transit,
+        segments,
+        distances,
+        skipped_prediction_windows=int(saved.get("skipped_prediction_windows", 0)),
+    ), lifecycle, buffered
 
 
 @lru_cache(maxsize=4)
@@ -472,6 +481,7 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
                         "user_id": payload["user_id"],
                         "campaign_id": payload["campaign_id"],
                         "status": payload["status"],
+                        "mode_detection_reason": payload.get("mode_detection_reason"),
                         "started_at": payload["started_at"],
                         "ended_at": payload["ended_at"],
                         "updated_at": payload["updated_at"],
