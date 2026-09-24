@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from azure.eventhub import EventData, EventHubProducerClient
 from dotenv import load_dotenv
+from tqdm import tqdm
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -156,14 +157,28 @@ def main() -> None:
         before = partition_positions(producer)
 
         if args.replay_cadence_ms:
-            for obj in events:
+            cadence_seconds = args.replay_cadence_ms / 1000
+            for obj in tqdm(
+                events,
+                desc="Publishing GPS",
+                unit="event",
+                dynamic_ncols=True,
+            ):
                 send_batch(producer, [obj], trip_id)
-                time.sleep(args.replay_cadence_ms / 1000)
+                time.sleep(cadence_seconds)
         else:
-            send_batch(producer, events, trip_id)
+            with tqdm(
+                total=len(events),
+                desc="Publishing GPS",
+                unit="event",
+                dynamic_ncols=True,
+            ) as progress:
+                send_batch(producer, events, trip_id)
+                progress.update(len(events))
 
         if lifecycle_event is not None:
             send_batch(producer, [lifecycle_event], trip_id)
+            tqdm.write("Published trip_end")
 
         after, appended = wait_for_append(
             producer,
