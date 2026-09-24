@@ -1,10 +1,11 @@
 import type { Storage } from './storage';
 import type { GpsEvent } from './types';
 
-export type ApiConfig = { url: string; functionKey: string };
+export type ApiConfig = { url: string; functionKey: string; allowLocalHttp?:boolean };
 export function validateApi(config: ApiConfig): ApiConfig {
   const url = new URL(config.url);
-  if (url.protocol!=='https:' || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/api/gps'))
+  const local=config.allowLocalHttp===true&&url.protocol==='http:'&&/^(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(url.hostname);
+  if ((!local&&url.protocol!=='https:') || url.username || url.password || url.search || url.hash || !url.pathname.endsWith('/api/gps'))
     throw new Error('GPS API는 인증정보 없는 HTTPS /api/gps 주소여야 합니다.');
   if (!config.functionKey.trim()) throw new Error('GPS 함수 키가 설정되지 않았습니다.');
   return config;
@@ -13,7 +14,8 @@ export class Uploader {
   private busy = false;
   error = '';
   constructor(private db: Storage, private config: () => ApiConfig | null,
-    private uuid: () => string, private now = Date.now, private request: typeof fetch = fetch) {}
+    private uuid: () => string, private now = Date.now, private request: typeof fetch = fetch,
+    private authorize?: (event: GpsEvent, url: string) => Promise<string>) {}
   async tick(limit=20) {
     if (this.busy) return;
     this.busy=true;
@@ -26,10 +28,11 @@ export class Uploader {
         const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),5000);
         let blocked=false;
         try {
+          const token=this.authorize?await this.authorize(event,config.url):undefined;
           const response=await this.request(config.url,{method:'POST',redirect:'error',signal:controller.signal,
-            headers:{'Content-Type':'application/json','x-functions-key':config.functionKey},body:job.payload});
+            headers:{'Content-Type':'application/json','x-functions-key':config.functionKey,...(token?{Authorization:'Bearer '+token}:{})},body:job.payload});
           if(response.status!==202) {
-            blocked=response.status!==408 && response.status!==429 && response.status<500;
+            blocked=response.status!==401 && response.status!==408 && response.status!==429 && response.status<500;
             throw new Error('GPS API HTTP '+response.status);
           }
           let ack: {status?:string;event_id?:string;trip_id?:string};

@@ -89,7 +89,7 @@ export class Collector {
   }
   private receive(trip: Trip, raw: LocationObject, finalFix=false) {
     if ((!this.accepting && !finalFix) || this.trip !== trip) return;
-    if (raw.timestamp < Date.parse(trip.button_started_at ?? trip.started_at)) return;
+    if (raw.timestamp < Math.max(Date.parse(trip.started_at),Date.parse(trip.button_started_at ?? trip.started_at))) return;
     this.lastReceived = this.p.now(); this.changed();
     if (this.pending >= 256) { this.fail('저장 대기열 한도 초과: 수집 중단, 일부 수신 데이터 미저장'); return; }
     const received = this.lastReceived;
@@ -97,6 +97,7 @@ export class Collector {
     // before the asynchronous save so a button change cannot relabel queued GPS.
     const label = trip.collection_mode === "user" ? null : [...this.labels].reverse().find(x => x.at <= raw.timestamp)?.mode ?? this.mode!;
     this.enqueue(async () => {
+      if (this.latest && raw.timestamp <= Date.parse(this.latest.event_time)) return;
       let event: GpsEvent;
       try { event = normalize(raw, trip, this.count + 1, this.p.uuid(), received, this.latest, label); }
       catch (e) { await this.db.diagnostic(trip.trip_id, { recorded_at: received, kind: 'invalid_location', detail: { reason: String(e), raw_location: raw } }); return; }
@@ -144,7 +145,7 @@ export class Collector {
       await this.queue;
       if (this.trip) {
         const final: Trip = { ...this.trip, status: this.fault ? 'interrupted' : 'completed',
-          ended_at: this.fault ? null : new Date(this.stopAt!).toISOString(), interruption_reason: this.fault };
+          ended_at: this.fault ? null : new Date(Math.max(this.stopAt!,Date.parse(this.latest?.event_time ?? this.trip.started_at))).toISOString(), interruption_reason: this.fault };
         await this.db.diagnostic(final.trip_id, { recorded_at: this.p.now(), kind: 'collection_end', detail: { reason: this.fault, saved_count: this.count } });
         await this.db.saveTrip(final); this.trip = final;
         this.count = (await this.db.summary(final.trip_id)).gps_count;

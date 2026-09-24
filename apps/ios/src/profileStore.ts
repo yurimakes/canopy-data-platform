@@ -28,7 +28,7 @@ export async function restoreProfile():Promise<Profile|null>{
 export async function updateProfile(profile:Profile){
   const saved=session();if(!saved||saved.profile.id!==profile.id)throw Error('다시 로그인해주세요.');
   const result=checkedProfile(await accountRequest(accountConfig(),'me','PATCH',{
-    nickname:profile.nickname,home:profile.home,work:profile.work,
+    nickname:profile.nickname,home:profile.home,work:profile.work,department_name:profile.department_name??'',avatarDataUri:profile.avatarDataUri??null,
   },saved.access_token));
   await saveSession({...saved,profile:result});return result;
 }
@@ -36,4 +36,12 @@ export async function logoutProfile(){
   const saved=await loadSession();
   if(saved){try{await accountRequest(accountConfig(),'logout','POST',{},saved.access_token);}catch(e){if(!(e instanceof AccountError&&e.status===401))throw e;}}
   await saveSession(null);
+}
+
+export async function validateCampaign(code:string):Promise<string>{
+  const normalized=code.trim().toUpperCase();
+  if(!normalized)throw Error('캠페인 코드를 입력해주세요.');
+  const result=await accountRequest(accountConfig(),'campaign','POST',{campaign_code:normalized});
+  if(result?.valid!==true||result.campaign_code!==normalized)throw Error('캠페인 코드를 확인할 수 없습니다. 다시 시도해주세요.');
+  return normalized;
 }

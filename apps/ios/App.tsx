@@ -1,3 +1,4 @@
+import {FontGate} from './src/ui/FontGate';
 import React, { useEffect, useState, useRef } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -5,6 +6,7 @@ import * as Network from 'expo-network';
 import { getStorage, getUploader, getTripApi } from './src/backgroundLocationTask';
 import { AuthScreen } from './src/ui/AuthScreen';
 import { ServiceScreen } from './src/ui/ServiceScreen';
+import {useCommunity,prepareJourney} from './src/communityClient';
 import { updateProfile,restoreProfile,logoutProfile } from './src/profileStore';
 import type { Profile, PlannedRoute } from './src/service';
 import { Collector } from './src/collector';
@@ -27,10 +29,11 @@ function initialize() { return runtime ??= (async () => {
   }}); await collector.refresh();
   return {db, collector};
 })(); }
-export default function App() {
+function CanopyApp() {
   const [service,setService]=useState<Awaited<ReturnType<typeof initialize>>>();
   const [,redraw]=useState(0); const [trips,setTrips]=useState<Summary[]>([]);
   const [profile,setProfile]=useState<Profile|null>(null);
+  const community=useCommunity(profile?.id);
   const [entered,setEntered]=useState(false);
   const [route,setRoute]=useState<PlannedRoute|null>(null);
   const trackRef=useRef<{id:string;events:GpsEvent[]}>({id:'',events:[]});
@@ -66,14 +69,22 @@ export default function App() {
   },[]);
   useEffect(()=>{
     if(!service)return;
-    let alive=true,refreshing=false;
+    let alive=true,refreshing=false,networkRefreshing=false;
+    async function syncNetwork(wake:boolean){
+      if(networkRefreshing)return;networkRefreshing=true;
+      try{
+        await (await getUploader()).tick();
+        const api=await getTripApi();await api.tick(wake);
+        if(profile&&screen==='user')try{await api.syncHistory();}catch{/* Retry history later without blocking the current result. */}
+      }catch(e){if(alive)setUploadError(String(e));}finally{networkRefreshing=false;}
+    }
     async function tick(wake=false){
       if(refreshing)return;refreshing=true;
       try {
         if(wake)await service!.db.wakeDelivery();
         await service!.collector.refresh();
-        const uploader=await getUploader(); await uploader.tick();
-        const tripApi=await getTripApi(); await tripApi.tick(wake);
+        const uploader=await getUploader();
+        const tripApi=await getTripApi();
         const list=await service!.db.list();
         const owned=list.filter(t=>t.user_id===profile?.id);
         const activeId=service!.collector.trip?.user_id===profile?.id?service!.collector.trip?.trip_id:undefined;
@@ -84,10 +95,12 @@ export default function App() {
         const extra=id?await service!.db.eventPage(id,previous.at(-1)?.sequence??0,2000):[];
         const track=extra.length?[...previous,...extra]:previous;trackRef.current.events=track;
         if(alive){setTrips(list);setOwnedTrips(owned);setEvents(track);}
+        void syncNetwork(wake);
+
         const status=await service!.db.deliveryStatus(id??null);
         const proof=await service!.db.deliveryEvidence(id??null);
         const remote=id ? await tripApi.result(id) : null;
-        if(alive){setServerTrip(remote?.result);setFeedbackPending(remote?.feedback);setTripError(remote?.error??tripApi.error);}
+        if(alive){setServerTrip(remote?.result);setFeedbackPending(remote?.feedback);setTripError(remote?.error??'');}
         if(alive){setResultTrip(summary);setDelivery(status);setEvidence(proof);setUploadError(proof.head?.last_error || uploader.error);}
       }catch(e){if(alive)setError(String(e));}finally{refreshing=false;}
     }
@@ -96,7 +109,7 @@ export default function App() {
     const app=AppState.addEventListener('change',state=>{if(state==='active')void tick(true);});
     const network=Network.addNetworkStateListener(state=>{if(state.isConnected && state.isInternetReachable!==false)void tick(true);});
     return ()=>{alive=false;clearInterval(timer);app.remove();network.remove();};
-  },[service,selectedTrip,profile?.id]);
+  },[service,selectedTrip,profile?.id,screen]);
   useEffect(()=>{if(service && c?.phase!=='recording' && c?.phase!=='starting') void service.db.list().then(setTrips).catch(e=>setError(String(e)));},[service,c?.phase]);
   const ownsCurrent=!!profile&&c?.trip?.user_id===profile.id;
   const latest=ownsCurrent?c?.latest:undefined;
@@ -168,10 +181,11 @@ export default function App() {
     setError('');setScreen(c?.collectionMode??'user');setEntered(true);
   }
   async function changeProfile(p:Profile){const saved=await updateProfile(p);await service?.db.saveSync('ui:session',saved);setProfile(saved);}
-  async function startJourney(){
+  async function startJourney(direction:'outbound'|'return'='outbound'){
     if(!service||!c||!profile||['starting','recording','stopping'].includes(c.phase)||c.trip?.status==='recording')return;
     setError('');setTripError('');setSelectedTrip(undefined);setServerTrip(undefined);setResultTrip(undefined);setEvents([]);
     await service.db.saveSync('ui:pending-journey',{profile_id:profile.id,route});
+    await prepareJourney(route?.quoteId,direction);
     await c?.start();
   }
   function select(id:string){
@@ -183,6 +197,7 @@ export default function App() {
   if(!entered||!profile||screen===null) return <SafeAreaProvider><StatusBar barStyle="dark-content"/><AuthScreen ready={!!c} error={error} savedProfile={profile} onContinue={()=>{if(profile)void enter(profile).catch(e=>setError(String(e)));}}
     onEnter={p=>{void enter(p).catch(e=>setError(String(e)));}}/></SafeAreaProvider>;
   return <SafeAreaProvider><StatusBar barStyle="dark-content"/><ServiceScreen key={profile.id}
+    {...community}
     profile={profile} onProfile={changeProfile} route={route} onRoute={setRoute} events={events}
     trips={ownedTrips} onSelect={select}
     onCollectionMode={mode=>{if(mode==='developer'&&profile.role!=='developer')return;c?.selectCollectionMode(mode);setScreen(c?.collectionMode??mode);}}
@@ -204,3 +219,5 @@ export default function App() {
     onRetry={()=>{void service?.db.retryDelivery().then(async()=>{await (await getUploader()).tick();}).catch(e=>setError(String(e)));}}
     /></SafeAreaProvider>;
 }
+
+export default function App(){return <FontGate><CanopyApp/></FontGate>;}

@@ -14,3 +14,4 @@ android/
 *.avro
 *.ipa
 *.xcarchive
+.local-ui-export/

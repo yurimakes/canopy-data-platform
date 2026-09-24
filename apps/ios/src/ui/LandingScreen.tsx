@@ -1,5 +1,7 @@
+import Text from './AppText';
 import React,{useEffect,useRef} from 'react';
-import {AccessibilityInfo,Animated,Easing,Platform,ScrollView,Text,View} from 'react-native';
+import {AccessibilityInfo,Animated,Easing,Image,Platform,ScrollView,View} from 'react-native';
+import {LinearGradient} from 'expo-linear-gradient';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {CanopyMascot} from './CanopyMascot';
 import {Button,C,Note,S} from './theme';
@@ -22,10 +24,13 @@ export function LandingScreen({onLogin,onSignup,onContinue,nickname,ready,error}
         <View style={{height:3,width:180,borderRadius:3,backgroundColor:'#e9b85c'}}/>
         <Text style={{fontSize:14,color:'#58766b'}}>작은 이동이 만드는 더 큰 변화</Text>
       </View>
-      <View style={{height:275,alignItems:'center',justifyContent:'center'}}>
-        <View pointerEvents="none" style={{position:'absolute',width:248,height:248,borderRadius:124,borderWidth:1,borderColor:'#d5e9dd'}}/>
-        <View pointerEvents="none" style={{position:'absolute',width:305,height:126,borderRadius:100,borderWidth:1,borderColor:'#ece2cb',transform:[{rotate:'-16deg'}]}}/>
-        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot height={235}/></Animated.View>
+      <View style={{height:300,alignItems:'center',justifyContent:'center'}}>
+        <View pointerEvents="none" style={{position:'absolute',left:-16,right:-16,top:0,bottom:0,overflow:'hidden'}}>
+          <Image source={require('../../assets/canopy-ui/landing-city-v2.png')} resizeMode="cover" style={{position:'absolute',width:'100%',height:500,bottom:-45,opacity:.8}}/>
+          <LinearGradient colors={['#f1f9f5','#f1f9f500','#f1f9f500','#f1f9f5']} locations={[0,.28,.68,1]} style={{position:'absolute',inset:0}}/>
+          <LinearGradient colors={['#f1f9f5','#f1f9f500','#f1f9f500','#f1f9f5']} locations={[0,.24,.76,1]} start={{x:0,y:0}} end={{x:1,y:0}} style={{position:'absolute',inset:0}}/>
+        </View>
+        <Animated.View style={{width:'100%',opacity:entrance,transform:[{translateY:entrance.interpolate({inputRange:[0,1],outputRange:[36,0]})},{scale:entrance.interpolate({inputRange:[0,1],outputRange:[.85,1]})}]}}><CanopyMascot pose="start" height={300}/></Animated.View>
       </View>
       <View style={{gap:10}}>
         {!!error&&<Note error>{error}</Note>}

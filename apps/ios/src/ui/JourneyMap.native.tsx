@@ -1,22 +1,28 @@
+import {CanopyMascot} from './CanopyMascot';
+import * as Location from 'expo-location';
+import {bearing,metersBetween} from '../journeyGeometry';
 import React,{useEffect,useRef,useState} from 'react';
-import {View,Pressable} from 'react-native';
+import {View,Pressable,Platform} from 'react-native';
 import MapView,{Marker,Polyline} from 'react-native-maps';
 import {Icon,Note,C} from './theme';
 import type {MapProps} from './JourneyMap';
-export default function JourneyMap({points,route,height=310,places,selectedPlace=0,onSelectPlace}:MapProps) {
+export default function JourneyMap({walking=false,points,route,height=310,fill=false,places,selectedPlace=0,onSelectPlace}:MapProps) {
   const ref=useRef<MapView>(null),last=points.at(-1),first=points[0]??route?.from;
-  const [follow,setFollow]=useState(true);
-  useEffect(()=>{if(last&&follow)ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);},[last?.latitude,last?.longitude,follow]);
+  const [follow,setFollow]=useState(true),[deviceHeading,setDeviceHeading]=useState<number|null>(null);
+  useEffect(()=>{if(!last)return;let alive=true,sub:Location.LocationSubscription|undefined,lastUpdate=0;void Location.getForegroundPermissionsAsync().then(async permission=>{if(!permission.granted||!alive)return;const watch=await Location.watchHeadingAsync(h=>{const value=h.trueHeading>=0?h.trueHeading:h.magHeading;if(alive&&h.accuracy>=0&&Date.now()-lastUpdate>300){lastUpdate=Date.now();setDeviceHeading(value);}});if(alive)sub=watch;else watch.remove();}).catch(()=>{});return()=>{alive=false;sub?.remove();};},[!!last]);
+  const heading=useRef(0);const anchor=useRef(points[0]);if(last&&!anchor.current)anchor.current=last;if(last&&anchor.current&&metersBetween(anchor.current,last)>2){heading.current=bearing(anchor.current,last);anchor.current=last;}
+  useEffect(()=>{if(last&&follow)ref.current?.animateCamera({center:last,heading:deviceHeading??heading.current,pitch:0,zoom:17,altitude:750},{duration:300});},[last?.latitude,last?.longitude,follow,deviceHeading]);
   useEffect(()=>{if(places?.length)ref.current?.fitToCoordinates(places,{edgePadding:{top:35,right:35,bottom:35,left:35},animated:true});},[places]);
   useEffect(()=>{const p=places?.[selectedPlace];if(p)ref.current?.animateToRegion({...p,latitudeDelta:.008,longitudeDelta:.008},350);},[selectedPlace,places]);
-  if(places?.length)return <MapView ref={ref} style={{height,width:'100%'}} initialRegion={{...places[0],latitudeDelta:.025,longitudeDelta:.025}} onMapReady={()=>ref.current?.fitToCoordinates(places,{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false})}>{places.map((p,i)=><Marker key={`${p.id??p.name}-${i}`} coordinate={p} title={p.name} description={p.address} pinColor={selectedPlace===i?C.green:'#87958e'} onPress={()=>onSelectPlace?.(i)}/>)}</MapView>;
-  if(!first)return <View style={{height,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
-  return <View><MapView ref={ref} onPanDrag={()=>setFollow(false)} style={{height,width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
-    onMapReady={()=>{if(route)ref.current?.fitToCoordinates([route.from,route.to,...route.legs.flatMap(l=>l.points)],{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false});}}>
+  if(places?.length)return <MapView mapType={Platform.OS==='ios'?'mutedStandard':'standard'} showsBuildings={false} showsPointsOfInterests={false} pitchEnabled={false} ref={ref} style={{...(fill?{flex:1,minHeight:0}:{height}),width:'100%'}} initialRegion={{...places[0],latitudeDelta:.025,longitudeDelta:.025}} onMapReady={()=>ref.current?.fitToCoordinates(places,{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false})}>{places.map((p,i)=><Marker key={`${p.id??p.name}-${i}`} coordinate={p} title={p.name} description={p.address} pinColor={selectedPlace===i?C.green:'#87958e'} onPress={()=>onSelectPlace?.(i)}/>)}</MapView>;
+  if(!first)return <View style={{height:fill?'100%':height,backgroundColor:C.mint,alignItems:'center',justifyContent:'center',gap:16}}><Icon name="navigate-outline" size={40}/><Note>위치를 받으면 지도가 표시됩니다.</Note></View>;
+  return <View style={fill?{flex:1,minHeight:0}:undefined}><MapView mapType={Platform.OS==='ios'?'mutedStandard':'standard'} showsBuildings={false} showsPointsOfInterests={false} pitchEnabled={false} ref={ref} onPanDrag={()=>setFollow(false)} style={{...(fill?{flex:1,minHeight:0}:{height}),width:'100%'}} initialRegion={{...first,latitudeDelta:.025,longitudeDelta:.025}}
+    onMapReady={()=>{if(last&&follow)ref.current?.animateCamera({center:last,heading:deviceHeading??heading.current,pitch:0,zoom:17,altitude:750},{duration:0});else if(route)ref.current?.fitToCoordinates([route.from,route.to,...route.legs.flatMap(l=>l.points)],{edgePadding:{top:35,right:35,bottom:35,left:35},animated:false});}}>
+    {route?.provider==='local-test'&&<Polyline coordinates={[route.from,route.to]} strokeWidth={3} strokeColor='#799b92' lineDashPattern={[6,6]}/>}
     {route?.legs.filter(l=>l.points.length>1).map((leg,i)=><Polyline key={i} coordinates={leg.points} strokeWidth={5} strokeColor={leg.mode==='WALK'?'#9baba5':'#5279d1'} lineDashPattern={leg.mode==='WALK'?[5,5]:undefined}/>)}
-    {points.length>1&&<Polyline coordinates={points} strokeColor={C.green} strokeWidth={4}/>}
+    {points.length>1&&<Polyline coordinates={points} strokeColor={C.green} strokeWidth={6}/>}
     <Marker coordinate={route?.from??first} title="출발" pinColor={C.green}/>
     {route&&<Marker coordinate={route.to} title="도착" pinColor="#5279d1"/>}
-    {last&&<Marker coordinate={last} title="최근 GPS 위치" pinColor={C.deep}/>}
-  </MapView>{last&&<Pressable accessibilityRole="button" accessibilityLabel="내 위치로 지도 이동" onPress={()=>{setFollow(true);ref.current?.animateToRegion({...last,latitudeDelta:.008,longitudeDelta:.008},400);}} style={{position:'absolute',bottom:16,right:16,padding:14,borderRadius:30,backgroundColor:C.white,elevation:3}}><Icon name="locate-outline"/></Pressable>}</View>;
+    {last&&!follow&&<Marker coordinate={last} title="현재 위치" anchor={{x:.5,y:.5}}><View collapsable={false} style={{width:36,height:36,borderRadius:18,backgroundColor:'white',alignItems:'center',justifyContent:'center'}}><View style={{width:0,height:0,borderLeftWidth:9,borderRightWidth:9,borderBottomWidth:24,borderLeftColor:'transparent',borderRightColor:'transparent',borderBottomColor:C.green}}/></View></Marker>}
+  </MapView>{last&&follow&&walking&&<View pointerEvents="none" style={{position:'absolute',top:'50%',left:'50%',width:76,height:100,marginLeft:-38,marginTop:-85}}><CanopyMascot pose="walk" animated height={100}/></View>}{last&&follow&&!walking&&<View pointerEvents="none" style={{position:'absolute',top:'50%',left:'50%',marginLeft:-24,marginTop:-24,width:48,height:48,borderRadius:24,backgroundColor:'#10845420',alignItems:'center',justifyContent:'center'}}><View style={{width:34,height:34,borderRadius:17,backgroundColor:'white',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px #183d3540'}}><View style={{width:0,height:0,borderLeftWidth:9,borderRightWidth:9,borderBottomWidth:23,borderLeftColor:'transparent',borderRightColor:'transparent',borderBottomColor:C.green}}/></View></View>}{route?.provider==='local-test'&&<View style={{position:'absolute',top:12,left:12,right:12,padding:8,borderRadius:12,backgroundColor:'#ffffffee'}}><Note>점선은 직선거리 비교 기준입니다. 실제 도로 길 안내가 아닙니다.</Note></View>}{last&&<Pressable accessibilityRole="button" accessibilityLabel="내 위치로 지도 이동" onPress={()=>{setFollow(true);ref.current?.animateCamera({center:last,heading:deviceHeading??heading.current,pitch:0,zoom:17,altitude:750},{duration:300});}} style={{position:'absolute',bottom:16,right:16,padding:14,borderRadius:30,backgroundColor:C.white,elevation:3}}><Icon name="locate-outline"/></Pressable>}</View>;
 }

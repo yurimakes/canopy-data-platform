@@ -1,0 +1,26 @@
+{
+  "wave": {
+    "source_poses": 36,
+    "encoded_frames": 108,
+    "unique_frames": 108,
+    "seconds": 3.6,
+    "bytes": 1813537,
+    "loop": 0
+  },
+  "walk": {
+    "source_poses": 36,
+    "encoded_frames": 108,
+    "unique_frames": 108,
+    "seconds": 3.6,
+    "bytes": 1838701,
+    "loop": 0
+  },
+  "celebrate": {
+    "source_poses": 36,
+    "encoded_frames": 108,
+    "unique_frames": 108,
+    "seconds": 3.6,
+    "bytes": 1806177,
+    "loop": 0
+  }
+}
