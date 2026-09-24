@@ -6,6 +6,10 @@ from datetime import datetime,timezone
 from pathlib import Path
 from uuid import uuid4
 from azure.eventhub import EventData,EventHubProducerClient
+from dotenv import load_dotenv
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(REPO_ROOT / ".env")
 
 def ts(s): return datetime.fromisoformat(s.replace("Z","+00:00")).timestamp()
 
