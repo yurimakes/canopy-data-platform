@@ -107,3 +107,33 @@ def test_transit_corrected_mode_is_what_segmentation_consumes():
 
     assert processor.segments.segments[0].mode == "rail"
     assert processor.transit.station_history == [("201", "2"), ("202", "2")]
+
+
+def test_processor_skips_unusable_window_and_recovers_later_predictions():
+    class GapModel(FakeModel):
+        def prediction_ready(self, observations, *, window_end):
+            if window_end == BASE + timedelta(seconds=130):
+                return False
+            return super().prediction_ready(observations, window_end=window_end)
+
+    processor = ModeDetectionProcessor.for_trip("trip-1", BASE)
+    processor.trip.add_observations(
+        observation(i + 1, sec) for i, sec in enumerate(range(0, 141))
+    )
+
+    updates = processor.drain_due_mode_updates(
+        GapModel(),
+        raw_point_count_for_window=lambda _start, _end, points: len(points),
+        transit_resolver=transit_resolver,
+    )
+
+    assert [u.raw_prediction.window_end for u in updates] == [
+        BASE + timedelta(seconds=120),
+        BASE + timedelta(seconds=140),
+    ]
+    assert processor.skipped_prediction_windows == 1
+    assert processor.trip.last_prediction_end == BASE + timedelta(seconds=140)
+    assert [(s.mode, s.start_time, s.end_time) for s in processor.segments.segments] == [
+        ("bus", BASE, BASE + timedelta(seconds=120)),
+        ("walk", BASE + timedelta(seconds=140), BASE + timedelta(seconds=140)),
+    ]
