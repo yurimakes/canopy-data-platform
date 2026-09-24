@@ -59,7 +59,25 @@ it('updates only profile fields and keeps campaign assignment server-owned',asyn
   const api=await import('../src/profileStore');
   vi.mocked(fetch).mockResolvedValueOnce(reply(signed()));await api.loginProfile('u@example.com','password');
   vi.mocked(fetch).mockResolvedValueOnce(reply({...profile,nickname:'수정'}));
-  await api.updateProfile({...profile,role:'developer',campaignCode:'FAKE',nickname:'수정'});
+  await api.updateProfile({...profile,role:'developer',campaignCode:'FAKE',nickname:'수정',department_name:'개발팀'});
   const body=JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body));
-  expect(body).toEqual({nickname:'수정',home:null,work:null});
+  expect(body).toEqual({nickname:'수정',home:null,work:null,department_name:'개발팀',avatarDataUri:null});
+});
+
+it('checks campaign with the server before signup without creating a session',async()=>{
+  const {validateCampaign}=await import('../src/profileStore');
+  vi.mocked(fetch).mockResolvedValueOnce(reply({valid:true,campaign_code:'MSDS'}));
+  expect(await validateCampaign(' msds ')).toBe('MSDS');
+  expect(vi.mocked(fetch).mock.calls[0][0]).toBe('https://example.com/api/auth/campaign');
+  expect(stored.size).toBe(0);
+});
+it('rejects unknown codes, offline validation, and malformed success responses',async()=>{
+  const {validateCampaign}=await import('../src/profileStore');
+  vi.mocked(fetch).mockResolvedValueOnce(reply({message:'존재하지 않는 캠페인입니다.'},400));
+  await expect(validateCampaign('FAKE')).rejects.toThrow('캠페인');
+  vi.mocked(fetch).mockRejectedValueOnce(Error('offline'));
+  await expect(validateCampaign('MSDS')).rejects.toThrow('offline');
+  vi.mocked(fetch).mockResolvedValueOnce(reply({valid:true,campaign_code:'OTHER'}));
+  await expect(validateCampaign('MSDS')).rejects.toThrow('캠페인');
+  expect(stored.size).toBe(0);
 });

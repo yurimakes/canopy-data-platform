@@ -59,6 +59,17 @@ function database(path=':memory:') {
   return {db:new Storage(adapter),native};
 }
 function config():TripConfig{return {url:base,token,allowLocalHttp:true};}
+it('restores only completed owned server history without uploading GPS or stopping a remote recording',async()=>{
+  const {db}=database();await db.init(randomUUID,new Date().toISOString());
+  const row={trip_id:'remote-trip',user_id:'alice',device_id:'other-phone',started_at:'2026-09-19T00:00:00Z',ended_at:'2026-09-19T00:20:00Z',status:'ready',segments:[],is_mock:false};
+  const request=vi.fn(async()=>new Response(JSON.stringify({trips:[row,{...row,trip_id:'other-user',user_id:'bob'},{...row,trip_id:'active',status:'collecting',ended_at:null}]}),{status:200}));
+  const api=new TripApi(db,()=>({...config(),userId:'alice'}),randomUUID,request);
+  await api.syncHistory();
+  expect((await db.list()).map(t=>t.trip_id)).toEqual(['remote-trip']);
+  expect((await api.result('remote-trip'))?.result?.status).toBe('ready');
+  expect((await db.deliveryStatus('remote-trip')).pending).toBe(0);
+  await api.tick(true);expect(request).toHaveBeenCalledTimes(1);
+});
 async function finish(s:Awaited<ReturnType<typeof setup>>) {
   await s.collector.start();s.emit();await s.collector.stop();await acceptGps(s.db);
   await vi.waitFor(async()=>{await s.api.tick(true);expect((await s.api.result(s.collector.trip!.trip_id))?.result?.status).toBe('ready');},
@@ -248,7 +259,8 @@ it('retries a lost stop response without losing the stored Trip or starting a ne
   await s.api.tick(true);expect((await s.api.result(id))?.error).toContain('response lost');
   const recovered=new TripApi(s.db,config,randomUUID,request);await recovered.tick(true);
   expect((await recovered.result(id))?.result?.trip_id).toBe(id);
-  expect(stopCount).toBe(2);expect(await s.db.list()).toHaveLength(1);
+  expect(stopCount).toBe(1);expect(await s.db.list()).toHaveLength(1);
+  expect((await recovered.result(id))?.error).toBeUndefined();
 });
 
 it('user screen collects unlabeled GPS and cannot switch to developer during a Trip',async()=>{
@@ -277,7 +289,7 @@ it('user background Trip refresh preserves null labels',async()=>{
 
 it('excludes cached fixes from before the start button and appends a fresh stop fix',async()=>{
   const s=await setup();await s.collector.start();
-  const start=Date.parse(s.collector.trip!.button_started_at!);
+  const start=Math.max(Date.parse(s.collector.trip!.started_at),Date.parse(s.collector.trip!.button_started_at!));
   s.emit({...location(),timestamp:start-33000});
   s.emit({...location(),timestamp:start+1});
   let stopFix=0;
@@ -287,7 +299,7 @@ it('excludes cached fixes from before the start button and appends a fresh stop 
   expect(sent).toHaveLength(2);
   expect(sent.map(e=>e.sequence)).toEqual([1,2]);
   expect(sent[1].event_time).toBe(new Date(stopFix).toISOString());
-  expect(Date.parse(s.collector.trip!.ended_at!)).toBeLessThan(stopFix);
+  expect(Date.parse(s.collector.trip!.ended_at!)).toBeGreaterThanOrEqual(stopFix);
 });
 
 it('keeps the saved GPS and stops after the final fix deadline',async()=>{
@@ -330,4 +342,20 @@ it('does not reuse a start request from another logged-in account',async()=>{
   const request=vi.fn();
   const other=new TripApi(db,()=>({...config(),userId:'bob'}),randomUUID,request);
   await expect(other.start(identity)).rejects.toThrow('이전 계정');expect(request).not.toHaveBeenCalled();
+});
+
+it('recovers a native cancelled Stop request that never reached the server',async()=>{
+  let cancel=true;
+  const request=(async(url,options)=>{
+    if(String(url).endsWith('/stop')&&cancel){cancel=false;throw Error('FetchRequestCanceledException: Fetch request has been canceled');}
+    return fetch(url,options);
+  }) as typeof fetch;
+  const s=await setup(':memory:',request);await s.collector.start();await s.collector.stop();
+  const id=s.collector.trip!.trip_id;await s.api.tick(true);
+  expect((await s.api.result(id))?.error).toContain('자동으로 다시 확인');
+  expect((await s.api.result(id))?.error).not.toContain('FetchRequestCanceledException');
+  await s.api.tick(true);
+  expect((await s.api.result(id))?.result?.status).not.toBe('collecting');
+  expect((await s.api.result(id))?.error).toBeUndefined();
+  expect(await s.db.list()).toHaveLength(1);
 });

@@ -1,5 +1,8 @@
+import Text from './AppText';
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Constants from 'expo-constants';
+import {LivePrediction,LocalWeekly} from './LocalTools';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MODES, currentMode, type TransportMode, type GpsEvent, type Summary } from '../types';
 import type { FeedbackInput, ServerTrip } from '../tripApi';
@@ -8,7 +11,7 @@ export type MeasurementProps = {
   collectionMode?: "user" | "developer"; onBack(): void;
   mode: TransportMode | null; phase: string; ready: boolean; count: number; duration: string;
   accuracy: number | null; latestLabel?: GpsEvent['label']; tripId?: string; error: string;
-  onMode(mode: TransportMode): void; onStart(): void; onStop(): void;
+  onMode(mode: TransportMode): void; onStart(direction?:'outbound'|'return'):void; onStop(): void;
   onExport(): void; canExport: boolean; sharing: boolean;
   active?: boolean; backgroundRunning?: boolean; lastReceived?: string|null; sequence?: number;
   pending?: number; lastSuccess?: string|null; uploadError?: string;
@@ -27,6 +30,7 @@ export function MeasurementScreen(p: MeasurementProps) {
   return <SafeAreaView style={s.root}>
     <ScrollView contentContainerStyle={s.content}>
       <Pressable accessibilityRole="button" disabled={!!busy} onPress={p.onBack} style={busy&&s.disabled}><Text style={s.modeText}>← 서비스 화면</Text></Pressable>
+      <LivePrediction tripId={p.tripId}/>{developer&&<LocalWeekly/>}
       <Text style={s.title}>{developer?'개발자 GPS 데이터 수집':'나의 이동 기록'}</Text>
       {!busy && <Pressable accessibilityRole="button" onPress={p.onHistory}><Text style={s.modeText}>이전 이동 결과 보기</Text></Pressable>}
       {!developer && <Text style={s.note}>이동을 시작할 때 시작 버튼을 누르고, 도착하면 종료하세요.</Text>}
@@ -63,8 +67,8 @@ export function MeasurementScreen(p: MeasurementProps) {
         <Text>API 접수: {p.sent??0} / {p.resultTrip.gps_count}건</Text>
         <Text>미접수: {Math.max(0,p.resultTrip.gps_count-(p.sent??0))}건 / 오류로 대기: {p.blocked??0}건</Text>
         <Text style={s.note}>{p.resultTrip.gps_count>0 && p.sent===p.resultTrip.gps_count ? '이 Trip은 서버 접수까지 확인됐습니다.' : '미전송 GPS는 보관되며 인터넷 복구 후 전송을 이어갑니다. 오류로 대기 중이면 원인을 해결한 뒤 재시도하세요.'}</Text>
-        <Text>Event Hubs / Raw: 원본 대조 대기</Text>
-        <Text style={s.note}>측정 결과 파일을 Capture 담당자에게 공유하세요. 저장된 Avro 파일과 대조하면 같은 ID와 모든 원본 값의 보존 여부를 확인할 수 있습니다. 이 화면의 API 접수만으로 2단계 전체 완료로 판정하지 않습니다.</Text>
+        {Constants.expoConfig?.extra?.localOnly!==true&&<Text>Event Hubs / Raw: 원본 대조 대기</Text>}
+        {Constants.expoConfig?.extra?.localOnly!==true&&<Text style={s.note}>측정 결과 파일을 Capture 담당자에게 공유하세요. 저장된 Avro 파일과 대조하면 같은 ID와 모든 원본 값의 보존 여부를 확인할 수 있습니다. 이 화면의 API 접수만으로 2단계 전체 완료로 판정하지 않습니다.</Text>}
         <Pressable accessibilityRole="button" disabled={p.sharing} onPress={p.onShareCheck} style={s.export}><Text style={s.modeText}>2단계 확인용 측정 결과 공유</Text></Pressable>
       </View>}
       {!busy && p.resultTrip?.server && <View style={s.card}>
@@ -92,7 +96,7 @@ export function MeasurementScreen(p: MeasurementProps) {
       </>}
     </ScrollView>
     <View style={s.footer}><Pressable accessibilityRole="button" disabled={!p.ready || switching || p.sharing || (!busy && developer && !p.mode)}
-      onPress={busy ? p.onStop : p.onStart} style={[s.action, busy && s.stop, (!p.ready || switching || p.sharing || (!busy && developer && !p.mode)) && s.disabled]}>
+      onPress={()=>busy?p.onStop():p.onStart()} style={[s.action, busy && s.stop, (!p.ready || switching || p.sharing || (!busy && developer && !p.mode)) && s.disabled]}>
       <Text style={s.actionText}>{p.phase === 'stopping' ? '저장 중…' : busy ? '측정 종료' : '측정 시작'}</Text>
     </Pressable></View>
   </SafeAreaView>;

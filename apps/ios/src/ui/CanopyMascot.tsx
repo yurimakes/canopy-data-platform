@@ -1,20 +1,18 @@
-import React,{useEffect,useRef,useState} from 'react';
-import {AccessibilityInfo,Animated,AppState,Easing,Platform,View} from 'react-native';
-
-// PoC의 입체 캐릭터 이미지 사용. 프레임 교체 없이 네이티브 연속 보간으로 움직임 처리
-export function CanopyMascot({pose='walk',height=200,animated=true}:{pose?:'walk'|'start'|'complete';height?:number;animated?:boolean}){
-  const motion=useRef(new Animated.Value(0)).current;
-  const [reduced,setReduced]=useState(true),[active,setActive]=useState(AppState.currentState==='active');
-  useEffect(()=>{let alive=true;void AccessibilityInfo.isReduceMotionEnabled().then(v=>{if(alive)setReduced(v);}).catch(()=>{});
-    const a=AccessibilityInfo.addEventListener('reduceMotionChanged',setReduced),b=AppState.addEventListener('change',v=>setActive(v==='active'));
-    return()=>{alive=false;a.remove();b.remove();};},[]);
-  useEffect(()=>{motion.setValue(0);if(!animated||reduced||!active)return;
-    const timing=(toValue:number)=>Animated.timing(motion,{toValue,duration:2400,easing:Easing.inOut(Easing.sin),useNativeDriver:Platform.OS!=='web'});
-    const loop=Animated.loop(Animated.sequence([timing(1),timing(0)]));loop.start();return()=>loop.stop();
-  },[animated,reduced,active]);
-  const complete=pose==='complete';
-  return <View pointerEvents="none" accessible accessibilityLabel="캐노피 캐릭터" style={{height,width:'100%',alignItems:'center',justifyContent:'center'}}>
-    <Animated.Image source={complete?require('../../assets/canopy-ui/journey-complete-frame-4.png'):require('../../assets/canopy-ui/landing-mascot-point.png')} resizeMode="contain"
-      style={{width:'100%',height:'100%',transform:[{perspective:900},{translateY:motion.interpolate({inputRange:[0,1],outputRange:[0,-7]})},{rotateY:motion.interpolate({inputRange:[0,1],outputRange:['-3deg','3deg']})},{rotateZ:motion.interpolate({inputRange:[0,1],outputRange:['-1deg','1deg']})},{scale:motion.interpolate({inputRange:[0,1],outputRange:complete?[1.55,1.58]:[1,1.018]})}]}}/>
-  </View>;
+import React,{useEffect,useState} from 'react';
+import {AppState,Image,View} from 'react-native';
+import {useReducedMotion} from './DesignPrimitives';
+import ActorCanvas from './ActorCanvas';
+import type {SheetOptions,sheetMotions} from './sheetRig';
+export type MascotPose=typeof sheetMotions[number]['id']|'start'|'coin'|'trophy'|'garden';
+const motion={wave:require('../../assets/canopy-ui/backpack/wave.gif'),walk:require('../../assets/canopy-ui/backpack/walk.gif'),celebrate:require('../../assets/canopy-ui/backpack/celebrate.gif')};
+const posters={wave:require('../../assets/canopy-ui/backpack/wave-poster.png'),walk:require('../../assets/canopy-ui/backpack/walk-poster.png'),celebrate:require('../../assets/canopy-ui/backpack/celebrate-poster.png')};
+export function CanopyMascot({pose='start',height=200,animated=true}:{pose?:MascotPose;height?:number;animated?:boolean}&SheetOptions){
+ const reduced=useReducedMotion();
+ const [foreground,setForeground]=useState(AppState.currentState==='active');
+ useEffect(()=>{const sub=AppState.addEventListener('change',v=>setForeground(v==='active'));return()=>sub.remove();},[]);
+ if(pose==='coin'||pose==='trophy')return <View accessibilityLabel={pose==='coin'?'캐노피 토큰':'트로피'} pointerEvents="none" style={{height,width:'100%'}}><ActorCanvas pose={pose} animated={animated&&!reduced&&foreground}/></View>;
+ const action=['complete','celebrate','jump','happy'].includes(pose)?'celebrate':['walk','run','cycle'].includes(pose)?'walk':'wave';
+ return <View pointerEvents="none" style={{height,width:'100%',alignItems:'center',justifyContent:'flex-end'}}>
+  <Image accessibilityLabel={action==='celebrate'?'기뻐하며 뛰는 배낭 캐노피':action==='walk'?'걸어가는 배낭 캐노피':'손을 흔드는 배낭 캐노피'} source={reduced||!foreground||!animated?posters[action]:motion[action]} resizeMode="contain" style={{width:'100%',height:'100%'}}/>
+ </View>;
 }
