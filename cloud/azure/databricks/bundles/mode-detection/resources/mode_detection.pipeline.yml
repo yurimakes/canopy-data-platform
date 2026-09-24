@@ -13,6 +13,7 @@ resources:
         # threadpoolctl. Only override scikit-learn to match the serialized
         # canonical HGBC artifact's training/runtime version.
         dependencies:
+          - -e ${workspace.file_path}
           - scikit-learn==1.9.0
           - PyYAML==6.0.3
           - azure-cosmos==4.17.1
