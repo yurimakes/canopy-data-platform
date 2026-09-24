@@ -78,11 +78,11 @@ targets:
     # same sandbox resources instead of creating per-user bundle identities.
     mode: production
     variables:
-      silver_schema: sandbox
-      gps_observations_table: silver_gps_observations
-      trip_ended_events_table: silver_trip_ended_events
+      silver_schema: silver
+      gps_observations_table: gps_observations
+      trip_ended_events_table: trip_ended_events
       output_schema: sandbox
-      mode_detection_results_table: mode_detection_results
+      mode_detection_results_table: jun_016_gold_mode_detection_results
       prediction_stride_seconds: "10"
       mode_detection_pause_status: PAUSED
       mode_detection_trigger_interval: 1 second
