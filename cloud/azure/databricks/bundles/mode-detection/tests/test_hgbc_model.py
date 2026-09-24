@@ -59,13 +59,43 @@ def test_metadata_uses_configured_stride():
     assert model.metadata.model_version == "c3_hgb_robust_cadence"
 
 
-def test_prediction_requires_full_scheduled_window():
+def test_prediction_requires_data_through_scheduled_window():
     model = build()
     points = [observation(1, 0), observation(2, 119)]
     assert not model.prediction_ready(points, window_end=BASE + timedelta(seconds=120))
 
     points.append(observation(3, 120))
     assert model.prediction_ready(points, window_end=BASE + timedelta(seconds=120))
+
+
+def test_prediction_tolerates_phone_jitter_inside_complete_window():
+    model = build()
+    window_end = BASE + timedelta(seconds=120)
+
+    # Reproduce the real-phone shape: the last point selected for the first
+    # 120-second window lands 379 ms before the scheduled boundary, while a
+    # later observation proves that the boundary has actually elapsed.
+    points = [
+        Observation(
+            sequence=sequence + 1,
+            event_time=BASE + timedelta(seconds=seconds),
+            lat=37.0 + sequence * 0.00001,
+            lon=127.0 + sequence * 0.00001,
+            accuracy_m=5.0,
+            altitude_m=10.0,
+        )
+        for sequence, seconds in enumerate(
+            [*(float(value) for value in range(120)), 119.621, 120.5]
+        )
+    ]
+
+    assert model.prediction_ready(points, window_end=window_end)
+    prediction = model.predict(
+        points,
+        window_end=window_end,
+        raw_point_count=121,
+    )
+    assert prediction.window_end == window_end
 
 
 def test_predict_uses_exact_16_feature_order_and_scheduled_window_end():
