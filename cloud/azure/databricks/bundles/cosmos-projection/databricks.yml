@@ -1,0 +1,84 @@
+bundle:
+  name: canopy-cosmos-projection
+
+include:
+  - resources/*.yml
+  - ../../shared/*.yml
+
+sync:
+  include:
+    - cosmos_projection/**
+    - tests/**
+    - pyproject.toml
+
+variables:
+  gold_schema:
+    description: Schema containing final complete trip payloads.
+    default: gold
+  complete_payloads_table:
+    description: Durable final Gold payload source.
+    default: complete_payloads
+  projection_status_schema:
+    description: Schema containing asynchronous projection operational state.
+    default: gold
+  projection_status_table:
+    description: Durable idempotency/retry state for Cosmos projection.
+    default: cosmos_projection_status
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+  cosmos_key:
+    default: cosmos-key
+  cosmos_projection_pause_status:
+    description: Continuous projection wrapper pause state.
+    default: PAUSED
+  poll_seconds:
+    default: "0.5"
+  batch_size:
+    default: "20"
+  allow_missing_create:
+    description: Permit creation when no lifecycle Trip exists. Sandbox replay only.
+    default: "false"
+
+targets:
+  trial:
+    default: true
+    mode: production
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production
+        component: cosmos-projection
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
+
+  sandbox:
+    mode: production
+    variables:
+      gold_schema: sandbox
+      complete_payloads_table: jun_016_gold_complete_payloads
+      projection_status_schema: sandbox
+      projection_status_table: jun_016_cosmos_projection_status
+      cosmos_projection_pause_status: PAUSED
+      allow_missing_create: "true"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: experimental
+        component: cosmos-projection
+        owner: 5dt016
+    resources:
+      jobs:
+        cosmos_projection_continuous:
+          name: 5dt016-cosmos-projection-sandbox-job-wrapper
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
