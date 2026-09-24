@@ -79,6 +79,10 @@ class HGBCModeDetectingModel(ModeDetectingModel):
         if len(observations) < 2:
             raise ValueError("HGBC prediction requires at least two observations")
 
+        latest_observation_time = max(point.event_time for point in observations)
+        if latest_observation_time < window_end:
+            raise ValueError("HGBC prediction requires observations through the scheduled window end")
+
         window_start = window_end - timedelta(seconds=self._metadata.window_seconds)
         selected = tuple(sorted(
             (
@@ -91,11 +95,6 @@ class HGBCModeDetectingModel(ModeDetectingModel):
         if len(selected) < 2:
             raise ValueError("full HGBC window does not contain enough observations")
 
-        observed_span = (selected[-1].event_time - selected[0].event_time).total_seconds()
-        if observed_span < self._metadata.window_seconds:
-            raise ValueError(
-                "HGBC prediction requires observations spanning the complete 120-second window"
-            )
         return selected
 
     def prediction_ready(
