@@ -101,7 +101,7 @@ def gps_row(sequence: int, seconds: int):
     }
 
 
-def trip_end_row():
+def trip_end_row(*, ended_seconds: int = 123, expected_last_sequence: int = 124):
     return {
         "event_kind": "trip_end",
         "event_id": "trip-end-1",
@@ -115,9 +115,9 @@ def trip_end_row():
         "altitude_m": None,
         "campaign_id": "campaign-1",
         "started_at": BASE,
-        "ended_at": BASE + timedelta(seconds=123),
-        "expected_last_sequence": 124,
-        "occurred_at": BASE + timedelta(seconds=123),
+        "ended_at": BASE + timedelta(seconds=ended_seconds),
+        "expected_last_sequence": expected_last_sequence,
+        "occurred_at": BASE + timedelta(seconds=ended_seconds),
         "processing_generation": 1,
         "result_owner": "mode-detection",
     }
@@ -281,3 +281,66 @@ def test_replaying_same_state_does_not_reemit_generation(monkeypatch):
             iter([trip_end_row()]),
         )
     ) == []
+
+
+def test_short_trip_emits_terminal_payload_instead_of_raising(monkeypatch):
+    monkeypatch.setattr(
+        spark_processor,
+        "_runtime",
+        lambda *_args: (FakeModel(), resolver),
+    )
+
+    def fake_payload(sealed, distances, **kwargs):
+        del distances, kwargs
+        return {
+            "trip_id": sealed.trip_end.trip_id,
+            "user_id": sealed.trip_end.user_id,
+            "campaign_id": sealed.trip_end.campaign_id,
+            "status": sealed.status,
+            "mode_detection_reason": sealed.reason,
+            "started_at": BASE.isoformat(),
+            "ended_at": (BASE + timedelta(seconds=60)).isoformat(),
+            "updated_at": (BASE + timedelta(seconds=61)).isoformat(),
+            "processing_generation": 1,
+            "expected_last_sequence": 61,
+            "segments": [],
+            "model_name": "fake-hgbc",
+            "model_version": "test-v1",
+            "feature_version": "feature-v1",
+            "total_distance_m": 0.0,
+            "carbon": {
+                "kg_co2e": 0.0,
+                "policy_version": "test",
+                "factor_version": "test",
+                "unit": "kgCO2e",
+                "mode_source": "unavailable",
+                "user_confirmation_applied": False,
+            },
+            "finalization_hash": "short-hash",
+            "document_json": "{}",
+        }
+
+    monkeypatch.setattr(spark_processor, "build_complete_payload", fake_payload)
+
+    value_state = FakeValueState()
+    processor = spark_processor.ModeDetectionStatefulProcessor(
+        ttl_duration_ms=7200000,
+        artifact_path="/unused/model.joblib",
+        prediction_stride_seconds=10,
+        reference_root="/unused/reference",
+        transit_reference_dir="/unused/transit",
+        carbon_policy_path="/unused/carbon_policy.yaml",
+        now=lambda: BASE + timedelta(seconds=61),
+        row_factory=lambda **values: values,
+    )
+    processor.init(FakeHandle(value_state))
+
+    rows = [gps_row(i + 1, i) for i in range(61)]
+    rows.append(trip_end_row(ended_seconds=60, expected_last_sequence=61))
+
+    outputs = list(processor.handleInputRows(("trip-1",), iter(rows)))
+
+    assert len(outputs) == 1
+    assert outputs[0]["status"] == "insufficient_data"
+    assert outputs[0]["mode_detection_reason"] == "trip_shorter_than_model_window"
+    assert outputs[0]["segments"] == []
