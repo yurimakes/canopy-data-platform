@@ -4,7 +4,7 @@ import React,{useEffect,useState} from 'react';
 import {Pressable,ScrollView,View,useWindowDimensions} from 'react-native';
 import {localAction} from '../communityClient';
 import {gpsDistance,km} from '../service';
-import {liveMotionLabel,liveSpeedKmh} from '../liveMotion';
+import {liveSpeedKmh} from '../liveMotion';
 import {MODES} from '../types';
 import type {ServiceProps} from './ServiceScreen';
 import {C,S,Note,Icon} from './theme';
@@ -18,7 +18,8 @@ export function JourneyInfoPanel({p,replayDistance,replayMode}:JourneyInfoProps)
  const speed=p.active?liveSpeedKmh(p.events,now):null;
  const speedText=speed==null?'수신 대기':`${speed.toFixed(1)} km/h`;
  const freshPrediction=prediction&&now-Date.parse(prediction.observed_at)<=30000&&now-Date.parse(prediction.observed_at)>=-5000;
- const mode=freshPrediction?(MODES.find(m=>m.value===prediction.mode)?.title??'이동 감지 중')+' · 확인 중':speed==null?'위치 수신 대기':liveMotionLabel(p.events);
+ const predictedTitle=freshPrediction?MODES.find(m=>m.value===prediction.mode)?.title:undefined;
+ const mode=predictedTitle?predictedTitle+' · 확인 중':'이동수단 분석 대기';
  const busy=!!p.active,distance=busy?(replayDistance??gpsDistance(p.events)):0;
  const {height}=useWindowDimensions();
  useEffect(()=>{
