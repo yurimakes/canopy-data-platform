@@ -9,4 +9,5 @@ description = "Portable Event Hubs replay fixtures for Canopy sandbox integratio
 requires-python = ">=3.10"
 dependencies = [
     "azure-eventhub>=5.12,<6",
+    "python-dotenv>=1.0,<2",
 ]
