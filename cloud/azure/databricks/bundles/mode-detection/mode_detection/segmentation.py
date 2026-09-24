@@ -20,12 +20,13 @@ class ModeSegment:
 
 @dataclass
 class SegmentState:
-    """Build contiguous mode segments without smoothing or retroactive relabeling."""
+    """Build mode segments while preserving explicit inference gaps."""
 
     trip_start: datetime
     completed: list[ModeSegment] = field(default_factory=list)
     current: ModeSegment | None = None
     sealed: bool = False
+    resume_after_gap: bool = False
 
     def apply(self, prediction: TransitAdjustedPrediction) -> None:
         if self.sealed:
@@ -39,13 +40,15 @@ class SegmentState:
             raise ValueError("prediction precedes trip start")
 
         if self.current is None:
+            start_time = decision_time if self.resume_after_gap else self.trip_start
             self.current = ModeSegment(
                 mode=mode,
-                start_time=self.trip_start,
+                start_time=start_time,
                 end_time=decision_time,
                 confidence=confidence,
                 prediction_count=1,
             )
+            self.resume_after_gap = False
             return
 
         if decision_time <= self.current.end_time:
@@ -78,10 +81,30 @@ class SegmentState:
             prediction_count=1,
         )
 
+    def mark_gap(self, gap_start: datetime) -> None:
+        """Close inferred coverage at a missing prediction boundary."""
+        if self.sealed:
+            raise ValueError("cannot mark a gap after segments are sealed")
+        if self.current is not None:
+            self.completed.append(
+                ModeSegment(
+                    mode=self.current.mode,
+                    start_time=self.current.start_time,
+                    end_time=min(self.current.end_time, gap_start),
+                    confidence=self.current.confidence,
+                    prediction_count=self.current.prediction_count,
+                )
+            )
+            self.current = None
+        self.resume_after_gap = True
+
     def seal(self, trip_end: datetime, *, stride_seconds: int) -> tuple[ModeSegment, ...]:
         if self.sealed:
             return self.segments
         if self.current is None:
+            if self.completed:
+                self.sealed = True
+                return self.segments
             raise ValueError("cannot seal trip without a mode prediction")
 
         terminal_segment_end(
