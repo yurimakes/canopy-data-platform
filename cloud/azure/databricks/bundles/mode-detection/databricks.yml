@@ -74,7 +74,9 @@ targets:
       root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
 
   sandbox:
-    mode: development
+    # Shared experimental target: collaborators intentionally deploy/manage the
+    # same sandbox resources instead of creating per-user bundle identities.
+    mode: production
     variables:
       silver_schema: sandbox
       gps_observations_table: silver_gps_observations
@@ -97,4 +99,4 @@ targets:
     workspace:
       host: https://adb-7405612422597045.5.azuredatabricks.net
       profile: CANOPY_TRIAL
-      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
