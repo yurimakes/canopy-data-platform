@@ -481,6 +481,7 @@ class ModeDetectionStatefulProcessor(_StatefulProcessor):
                         "user_id": payload["user_id"],
                         "campaign_id": payload["campaign_id"],
                         "status": payload["status"],
+                        "mode_detection_status": payload["mode_detection_status"],
                         "mode_detection_reason": payload.get("mode_detection_reason"),
                         "started_at": payload["started_at"],
                         "ended_at": payload["ended_at"],
