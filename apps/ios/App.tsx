@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+import DesignPreview from './src/ui/DesignPreview';
 import {FontGate} from './src/ui/FontGate';
 import React, { useEffect, useState, useRef } from 'react';
 import { Alert, AppState, StatusBar, Linking } from 'react-native';
@@ -220,4 +222,4 @@ function CanopyApp() {
     /></SafeAreaProvider>;
 }
 
-export default function App(){return <FontGate><CanopyApp/></FontGate>;}
+export default function App(){return <FontGate>{__DEV__&&Constants.expoConfig?.extra?.uiPreview===true?<DesignPreview/>:<CanopyApp/>}</FontGate>;}
