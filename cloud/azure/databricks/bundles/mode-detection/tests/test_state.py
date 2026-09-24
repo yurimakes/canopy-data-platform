@@ -121,7 +121,7 @@ def test_future_batch_can_continue_from_last_prediction():
     ]
 
 
-def test_not_ready_due_window_is_not_skipped():
+def test_not_ready_due_window_advances_scheduler_without_prediction():
     state = TripProcessingState("trip-1", BASE)
     model = FakeModel()
 
@@ -139,7 +139,7 @@ def test_not_ready_due_window_is_not_skipped():
     )
 
     assert predictions == []
-    assert state.last_prediction_end is None
+    assert state.last_prediction_end == BASE + timedelta(seconds=130)
 
 
 def test_raw_point_count_policy_is_external_to_state():
