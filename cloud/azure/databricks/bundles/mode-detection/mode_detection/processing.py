@@ -22,6 +22,7 @@ class ModeDetectionProcessor:
     transit: TransitContextState
     segments: SegmentState
     distances: DistanceState
+    skipped_prediction_windows: int = 0
 
     @classmethod
     def for_trip(cls, trip_id, trip_start):
@@ -47,7 +48,11 @@ class ModeDetectionProcessor:
         for window_end in self.trip.due_prediction_ends(model, through=through):
             points = self.trip.observations
             if not model.prediction_ready(points, window_end=window_end):
-                break
+                self.segments.mark_gap(window_end)
+                self.trip.last_prediction_end = window_end
+                self.trip._prune(model)
+                self.skipped_prediction_windows += 1
+                continue
 
             window_start = window_end - timedelta(
                 seconds=model.metadata.window_seconds
