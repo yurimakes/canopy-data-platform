@@ -30,7 +30,7 @@ class TripEnded:
 class SealedModeDetection:
     trip_end: TripEnded
     segments: tuple[ModeSegment, ...]
-    status: str = "ready"
+    status: str = "complete"
     reason: str | None = None
 
 
