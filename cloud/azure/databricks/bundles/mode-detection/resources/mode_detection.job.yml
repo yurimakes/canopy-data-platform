@@ -1,0 +1,14 @@
+resources:
+  jobs:
+    mode_detection_continuous:
+      name: canopy-mode-detection-continuous-${bundle.target}
+      continuous:
+        pause_status: ${var.mode_detection_pause_status}
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      tasks:
+        - task_key: mode_detection
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.mode_detection_pipeline.id}
+            full_refresh: false

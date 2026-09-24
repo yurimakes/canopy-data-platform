@@ -5,3 +5,4 @@
 **/build/
 **/dist/
 .superpowers/sdd/
+.env

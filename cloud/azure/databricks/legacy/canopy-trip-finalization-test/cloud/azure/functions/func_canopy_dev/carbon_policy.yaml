@@ -1,0 +1,93 @@
+policy_version: "carbon-policy-v1"
+factor_version: "2026_v1"
+
+calculation_boundary:
+  name: "Canopy MVP operational-use-phase"
+  description: >
+    이동 과정의 운행/사용 단계 배출량을 계산한다.
+    차량·자전거 제조, 도로·철도 인프라, 식품 섭취 등 전과정(LCA) 배출은 제외한다.
+    GOV.UK 2026 bus/car/rail 계수는 서울 서비스의 MVP 프록시로 사용한다.
+  wtt_included: false
+  lifecycle_included: false
+
+supported_modes:
+  - "walk"
+  - "bike"
+  - "car"
+  - "bus"
+  - "rail"
+
+excluded_modes:
+  - "motorcycle"
+  - "motorbike"
+  - "e-bike"
+  - "e-scooter"
+
+distance:
+  input_unit: "m"
+  calculation_unit: "km"
+  meters_per_km: 1000
+
+output:
+  emission_unit: "kgCO2e"
+  storage_decimals: 6
+  display_decimals: 3
+
+mode_source:
+  field: "predicted_mode"
+  user_confirmation_applied: false
+  note: >
+    사용자 확인/수정값을 탄소 계산에 반영하는 정책은 팀 합의 전이므로 현재 계산에서는 사용하지 않는다.
+    현재 탄소량은 predicted_mode만 기준으로 계산한다.
+
+missing_value_policy:
+  missing_distance: "error"
+  negative_distance: "error"
+  missing_mode: "error"
+  unsupported_mode: "error"
+  missing_factor: "error"
+
+azure_identity:
+  resource_authentication: "managed_identity"
+  note: >
+    Azure 리소스 간 연결은 Managed Identity/RBAC를 사용한다.
+    탄소 계산기는 자체 계산 로직이므로 Azure credential을 직접 요구하지 않는다.
+    이후 Cosmos DB 등 Azure 리소스 접근은 DefaultAzureCredential을 통해
+    func-canopy-dev의 System Assigned Managed Identity를 사용하고 connection string이나 account key를 사용하지 않는다.
+
+factors:
+  walk:
+    value: 0.0
+    unit: "kgCO2e/person.km"
+    basis: "person"
+    source: "Canopy MVP policy"
+    note: "Operational-use-phase = 0; lifecycle emissions excluded."
+
+  bike:
+    value: 0.0
+    unit: "kgCO2e/person.km"
+    basis: "person"
+    source: "Canopy MVP policy"
+    note: "Human-powered bicycle only; operational-use-phase = 0; lifecycle emissions excluded."
+
+  car:
+    value: 0.16591
+    unit: "kgCO2e/vehicle.km"
+    basis: "vehicle"
+    occupancy_assumption: 1.0
+    source: "GOV.UK DESNZ 2026 GHG conversion factors - Passenger vehicles"
+    note: "Average car: Unknown fuel type. Canopy MVP assumes 1 vehicle = 1 user."
+
+  bus:
+    value: 0.12552
+    unit: "kgCO2e/passenger.km"
+    basis: "passenger"
+    source: "GOV.UK DESNZ 2026 GHG conversion factors - Business travel: land"
+    note: "Local bus (not London); used as Seoul MVP proxy."
+
+  rail:
+    value: 0.01549
+    unit: "kgCO2e/passenger.km"
+    basis: "passenger"
+    source: "GOV.UK DESNZ 2026 GHG conversion factors - Business travel: land"
+    note: "London Underground proxy for urban rail; used as Seoul MVP proxy."

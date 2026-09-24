@@ -1,0 +1,18 @@
+[project]
+name = "canopy-cosmos-projection"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "azure-cosmos==4.17.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9"]
+
+[tool.setuptools.packages.find]
+include = ["cosmos_projection*"]
+exclude = ["resources*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

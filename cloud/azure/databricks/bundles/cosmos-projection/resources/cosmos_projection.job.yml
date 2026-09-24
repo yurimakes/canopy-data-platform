@@ -1,0 +1,32 @@
+resources:
+  jobs:
+    cosmos_projection_continuous:
+      name: canopy-cosmos-projection-continuous-${bundle.target}
+      continuous:
+        pause_status: ${var.cosmos_projection_pause_status}
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+      tasks:
+        - task_key: project_complete_payloads
+          spark_python_task:
+            python_file: ${workspace.file_path}/cosmos_projection/worker.py
+            parameters:
+              - --gold-table=${var.catalog}.${var.gold_schema}.${var.complete_payloads_table}
+              - --status-table=${var.catalog}.${var.projection_status_schema}.${var.projection_status_table}
+              - --cosmos-endpoint=${var.cosmos_endpoint}
+              - --cosmos-database=${var.cosmos_database}
+              - --cosmos-container=${var.cosmos_container}
+              - --cosmos-secret-scope=${var.cosmos_secret_scope}
+              - --cosmos-key=${var.cosmos_key}
+              - --poll-seconds=${var.poll_seconds}
+              - --batch-size=${var.batch_size}
+              - --allow-missing-create=${var.allow_missing_create}
+          environment_key: projection_env
+      environments:
+        - environment_key: projection_env
+          spec:
+            environment_version: "4"
+            dependencies:
+              - azure-cosmos==4.17.1
