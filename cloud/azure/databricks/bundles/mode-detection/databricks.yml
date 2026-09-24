@@ -13,6 +13,13 @@ sync:
     - tests/**
     - pyproject.toml
 
+  exclude:
+    - .venv/**
+    - .pytest_cache/**
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - canopy_mode_detection.egg-info/**
+
 variables:
   silver_schema:
     description: Schema containing validated GPS and trip-end inputs.
