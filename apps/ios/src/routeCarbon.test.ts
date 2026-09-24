@@ -6,7 +6,7 @@ import type {PlannedRoute} from './service';
 const route={id:'r',provider:'tmap',distance_m:1000,baselineRateG:139.5,legs:[{mode:'BUS',distance_m:1000}]} as PlannedRoute;
 describe('route carbon comparison',()=>{
  it('compares distinct route modes against the same baseline',()=>{const bus=routeCarbon(route);const rail=routeCarbon({...route,legs:[{...route.legs[0],mode:'SUBWAY'}]});expect(bus.baseline).toBe(.1395);expect(bus.estimate).toBe(.12552);expect(rail.estimate).toBe(.01549);expect(rail.percent).toBeGreaterThan(bus.percent!);});
- it('keeps missing routes unknown and zero emission walks valid',()=>{expect(routeCarbon({...route,legs:[]}).estimate).toBeNull();expect(routeCarbon({...route,legs:[{...route.legs[0],mode:'UNKNOWN'}]}).estimate).toBeNull();expect(routeCarbon({...route,legs:[{...route.legs[0],mode:'WALK'}]}).percent).toBe(100);});
+ it('keeps missing routes unknown and zero emission walks valid',()=>{expect(routeCarbon({...route,legs:[]}).estimate).toBeNull();expect(routeCarbon({...route,legs:[{...route.legs[0],distance_m:0}]}).estimate).toBeNull();expect(routeCarbon({...route,legs:[{...route.legs[0],mode:'UNKNOWN'}]}).estimate).toBeNull();expect(routeCarbon({...route,legs:[{...route.legs[0],mode:'WALK'}]}).percent).toBe(100);});
  it('adds emissions per leg and scales the reference by route distance',()=>{
   const mixed=routeCarbon({...route,distance_m:3200,legs:[{...route.legs[0],mode:'WALK',distance_m:500},{...route.legs[0],mode:'SUBWAY',distance_m:2700}]});
   expect(mixed.estimate).toBeCloseTo(.041823);expect(mixed.baseline).toBeCloseTo(.4464);
