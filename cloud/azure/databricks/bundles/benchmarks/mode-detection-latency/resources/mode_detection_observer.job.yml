@@ -9,7 +9,7 @@ resources:
         - name: timeout_seconds
           default: "600"
       tasks:
-        - task_key: observe_mode_detection
+        - task_key: observe_eh_to_gold
           spark_python_task:
             python_file: ${workspace.file_path}/scripts/observe_mode_detection_trip.py
             parameters:
@@ -17,7 +17,7 @@ resources:
               - --schema=${var.schema}
               - --gps-table=${var.gps_table}
               - --trip-ended-table=${var.trip_ended_table}
-              - --results-table=${var.mode_detection_results_table}
+              - --complete-payloads-table=${var.complete_payloads_table}
               - --trip-id={{job.parameters.trip_id}}
               - --timeout-seconds={{job.parameters.timeout_seconds}}
               - --poll-seconds=0.5

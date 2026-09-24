@@ -1,4 +1,4 @@
-"""Observe one trip through sandbox ingestion and mode-detection sealing."""
+"""Observe one trip from Event Hubs through the final Gold complete payload."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--schema", required=True)
     parser.add_argument("--gps-table", required=True)
     parser.add_argument("--trip-ended-table", required=True)
-    parser.add_argument("--results-table", required=True)
+    parser.add_argument("--complete-payloads-table", required=True)
     parser.add_argument("--trip-id", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=600)
     parser.add_argument("--poll-seconds", type=float, default=0.5)
@@ -42,10 +42,10 @@ def main() -> None:
 
     gps_name = f"{args.catalog}.{args.schema}.{args.gps_table}"
     trip_end_name = f"{args.catalog}.{args.schema}.{args.trip_ended_table}"
-    results_name = f"{args.catalog}.{args.schema}.{args.results_table}"
+    complete_payloads_name = f"{args.catalog}.{args.schema}.{args.complete_payloads_table}"
 
     deadline = time.monotonic() + args.timeout_seconds
-    print("MODE_DETECTION_OBSERVER_READY", json.dumps({"trip_id": args.trip_id}))
+    print("EH_TO_GOLD_OBSERVER_READY", json.dumps({"trip_id": args.trip_id}))
 
     while time.monotonic() < deadline:
         trip_end_rows = (
@@ -84,7 +84,7 @@ def main() -> None:
             continue
 
         result_rows = (
-            spark.table(results_name)
+            spark.table(complete_payloads_name)
             .where(F.col("trip_id") == args.trip_id)
             .orderBy(F.col("sealed_at").desc())
             .limit(1)
@@ -137,7 +137,7 @@ def main() -> None:
                 "last_gps_validated_at": str(gps_state["last_gps_validated_at"]),
                 "trip_end_event_hub_enqueued_at": str(trip_end_enqueued),
                 "trip_end_parsed_at": str(trip_end_parsed),
-                "sealed_at": str(sealed_at),
+                "gold_final_at": str(sealed_at),
                 "observer_visible_at": str(visible_at),
                 "final_segment_end": str(final_segment_end),
             },
@@ -146,17 +146,17 @@ def main() -> None:
                 "gps_eventhub_to_validated_p95": float(gps_metrics["p95"]),
                 "gps_eventhub_to_validated_max": float(gps_metrics["max"]),
                 "trip_end_eventhub_to_parsed": ms(trip_end_parsed, trip_end_enqueued),
-                "trip_end_parsed_to_sealed": ms(sealed_at, trip_end_parsed),
-                "trip_end_eventhub_to_sealed": ms(sealed_at, trip_end_enqueued),
-                "last_gps_eventhub_to_sealed": ms(
+                "trip_end_parsed_to_gold_final": ms(sealed_at, trip_end_parsed),
+                "trip_end_eventhub_to_gold_final": ms(sealed_at, trip_end_enqueued),
+                "last_gps_eventhub_to_gold_final": ms(
                     sealed_at, gps_state["last_gps_event_hub_enqueued_at"]
                 ),
-                "last_gps_validated_to_sealed": ms(
+                "last_gps_validated_to_gold_final": ms(
                     sealed_at, gps_state["last_gps_validated_at"]
                 ),
             },
             "observer_delay_ms": {
-                "sealed_to_observer_visible": ms(visible_at, sealed_at),
+                "gold_final_to_observer_visible": ms(visible_at, sealed_at),
                 "trip_end_eventhub_to_observer_visible": ms(visible_at, trip_end_enqueued),
             },
             "model": {
@@ -165,11 +165,11 @@ def main() -> None:
                 "feature_version": result["feature_version"],
             },
         }
-        print("MODE_DETECTION_LATENCY_REPORT", json.dumps(report, default=str))
+        print("EH_TO_GOLD_LATENCY_REPORT", json.dumps(report, default=str))
         return
 
     raise TimeoutError(
-        f"timed out waiting for mode-detection result trip_id={args.trip_id}"
+        f"timed out waiting for final Gold payload trip_id={args.trip_id}"
     )
 
 
