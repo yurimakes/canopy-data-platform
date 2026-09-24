@@ -37,7 +37,7 @@ def baseline(data,user,at=None):
         frozen=snapshots(data).read_item(identity('reward-baseline',user,bound))
         if frozen['personal'] is not None:
             return {**(frozen.get('personal_snapshot') or {}),'week':bound,'status':'ready','baseline_g_co2e_per_km':frozen['personal'],'global_baseline_g_co2e_per_km':frozen['global']}
-        return {'week':bound,'status':'collecting','baseline_g_co2e_per_km':None}
+        return {'week':bound,'status':'collecting','baseline_g_co2e_per_km':None,'global_baseline_g_co2e_per_km':frozen.get('global')}
     except CosmosResourceNotFoundError:pass
     records=read_rows(Path(data)/'weekly/personal_baseline.json')
     records=[r for r in records if r.get('user_id')==user['user_id'] and r.get('campaign_id')==user['campaign_id'] and r.get('week','')==bound]
@@ -107,7 +107,7 @@ def settle_ranking(data):
     from weekly_publication import resolve
     report=resolve(Path(data)/'weekly/run.json')
     run=read_rows(Path(data)/'weekly/run.json') or {}
-    if not run:return
+    if not run or run.get('synthetic'):return
     stages=run.get('stages',{})
     if not stages or stages.get('ranking',{}).get('status')!='passed' or any(s.get('status')!='passed' for s in stages.values()):return
     from services.reward_rules import ranking_points

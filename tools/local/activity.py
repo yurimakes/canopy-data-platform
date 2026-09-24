@@ -37,8 +37,11 @@ def mark_read(data,user,nid,allowed):
 
 def cumulative_ranking(data,user,users):
     from reward_baselines import paid_trip_history
+    from business import read_rows
     totals={}
-    for r in paid_trip_history(data):
+    run=read_rows(Path(data)/'weekly/run.json') or {}
+    source=read_rows(Path(data)/'weekly/reward_ledger.json') if run.get('synthetic') else paid_trip_history(data)
+    for r in source:
         if r['campaign_id']!=user['campaign_id']:continue
         totals[r['user_id']]=totals.get(r['user_id'],0)+r['points']
     people={u['user_id']:u for u in users if u.get('campaign_id')==user['campaign_id']}

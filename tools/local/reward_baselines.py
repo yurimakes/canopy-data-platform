@@ -56,6 +56,8 @@ def freeze(data,user,at=None):
     personal=next((r for r in candidates if r.get('week')==week and r.get('user_id')==user['user_id'] and r.get('campaign_id')==user['campaign_id']),None)
     global_row=next((r for r in read_rows(Path(data)/'weekly/global_baseline.json') if r.get('week')==week and r.get('campaign_id')==user['campaign_id']),None)
     global_row=(personal or {}).get('_global_snapshot') or global_row
+    if global_row is None:
+        global_row=next((r.get('_global_snapshot') for r in candidates if r.get('week')==week and r.get('campaign_id')==user['campaign_id'] and r.get('_global_snapshot')),None)
     # A Trip keeps its own immutable copy of this fallback. A read before the
     # publisher runs must not create a permanent empty weekly publication.
     if old is not None and personal is None and global_row is None:return old
