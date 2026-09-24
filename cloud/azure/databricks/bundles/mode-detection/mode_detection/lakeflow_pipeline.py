@@ -62,8 +62,6 @@ DIRECT_COSMOS_SINK_ENABLED = _bool_conf("direct_cosmos_sink_enabled")
 COSMOS_ENDPOINT = _conf("cosmos_endpoint")
 COSMOS_DATABASE = _conf("cosmos_database")
 COSMOS_CONTAINER = _conf("cosmos_container")
-COSMOS_SECRET_SCOPE = _conf("cosmos_secret_scope")
-COSMOS_KEY = _conf("cosmos_key")
 ALLOW_MISSING_COSMOS_CREATE = _bool_conf("allow_missing_cosmos_create")
 
 
@@ -95,14 +93,10 @@ if DIRECT_COSMOS_SINK_ENABLED:
     def complete_payloads_to_cosmos(batch_df, batch_id):
         del batch_id
 
-        # Resolve the secret inside the managed pipeline runtime; only the
-        # secret scope/key names are bundle configuration.
-        from databricks.sdk.runtime import dbutils
-
-        credential = dbutils.secrets.get(
-            COSMOS_SECRET_SCOPE,
-            COSMOS_KEY,
-        )
+        # ForEachBatch runs in a cloned streaming worker where dbutils/dbruntime
+        # is not guaranteed to exist. Read the Databricks secret-backed Spark
+        # configuration through the batch DataFrame's SparkSession instead.
+        credential = batch_df.sparkSession.conf.get("canopy.cosmos_credential")
         container = open_container(
             COSMOS_ENDPOINT,
             COSMOS_DATABASE,

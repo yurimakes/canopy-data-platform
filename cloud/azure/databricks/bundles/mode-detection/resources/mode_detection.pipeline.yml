@@ -41,4 +41,5 @@ resources:
         canopy.cosmos_container: ${var.cosmos_container}
         canopy.cosmos_secret_scope: ${var.cosmos_secret_scope}
         canopy.cosmos_key: ${var.cosmos_key}
+        canopy.cosmos_credential: "{{secrets/${var.cosmos_secret_scope}/${var.cosmos_key}}}"
         canopy.allow_missing_cosmos_create: ${var.allow_missing_cosmos_create}
