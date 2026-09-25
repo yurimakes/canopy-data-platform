@@ -21,11 +21,12 @@ let rendered:ReactTestRenderer;
 afterEach(async()=>{if(rendered)await act(()=>rendered.unmount());});
 const rows=Array.from({length:21},(_,i)=>({id:String(i).padStart(2,'0'),name:`user${i}`,rank:i<3?1:i+1,points:i<3?100:100-i,carbonKg:0,isMe:i===20}));
 const data:RankingView={week:'2026-W38',updatedAt:'',personal:[...rows].reverse(),department:[]};
-it('sorts unsorted results, shows tied podium ranks and reveals ten more rows',async()=>{
+it('sorts unsorted results, shows three individual podium places and reveals ten more rows',async()=>{
  await act(()=>{rendered=create(<RankingPanel value={{state:'ready',data}}/>);});
  const avatars=()=>rendered.root.findAllByType('ProfileAvatar' as any).map(n=>n.props.name);
  expect(avatars().slice(3)).toEqual(rows.slice(0,10).map(r=>r.name));
- expect(JSON.stringify(rendered.toJSON())).toContain('공동 ');
+ expect(JSON.stringify(rendered.toJSON())).not.toContain('공동 ');
+ expect(avatars().slice(0,3)).toEqual(['user1','user0','user2']);
  expect(JSON.stringify(rendered.toJSON())).not.toContain('도전자를 기다려요');
  await act(()=>rendered.root.findByProps({title:'10명 더 보기'}).props.onPress());
  expect(avatars().slice(3)).toEqual(rows.slice(0,20).map(r=>r.name));

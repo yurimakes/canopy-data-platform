@@ -1,3 +1,4 @@
+import {rankingPresentation} from './rankingPresentation';
 import {RankMedal} from './RankMedal';
 import {MissionCard} from './MissionCard';
 import {IllustratedIcon} from './IllustratedIcon';
@@ -72,16 +73,16 @@ export function MissionPanel({value=unavailable,onRetry,preview=false,nickname='
 
 export function RankingPanel({value=unavailable,onRetry}:{value?:RemotePanel<RankingView>;onRetry?:()=>void}) {
  const [group,setGroup]=useState<'personal'|'department'>('personal'),[season,setSeason]=useState(false),[page,setPage]=useState(0);
- const data=value.state==='ready'?value.data:null,rows=[...((season?data?.cumulative?.[group]:data?.[group])??[])].sort((a,b)=>a.rank-b.rank||a.id.localeCompare(b.id));
+ const data=value.state==='ready'?value.data:null,rows=rankingPresentation((season?data?.cumulative?.[group]:data?.[group])??[],group==='personal');
  const pages=Math.max(1,Math.ceil(rows.length/10)),currentPage=Math.min(page,pages-1);
- const podium=Array.from(new Set(rows.map(r=>r.rank))).slice(0,3).map(rank=>({rank,members:rows.filter(r=>r.rank===rank)}));
+ const podium=rows.slice(0,3);
  useEffect(()=>setPage(0),[group,season,data?.week]);
  const me=rows.find(r=>'isMe' in r&&r.isMe);
  return <><View style={S.between}><View style={{gap:8}}><Eyebrow>THE GREEN LEAGUE</Eyebrow><Text style={S.title}>랭킹</Text></View></View>
  <Segmented items={[{id:'week',label:'이번 주'},{id:'season',label:'캠페인 전체'}]} value={season?'season':'week'} onChange={v=>setSeason(v==='season')}/>
  <View style={S.row}>{(['personal','department'] as const).map(g=><Pressable key={g} accessibilityRole="button" accessibilityState={{selected:group===g}} onPress={()=>setGroup(g)} style={{minHeight:44,paddingHorizontal:16,justifyContent:'center',borderBottomWidth:2,borderBottomColor:group===g?C.green:'transparent'}}><Text style={[S.label,{color:group===g?C.green:C.muted}]}>{g==='personal'?'개인':'부서'}</Text></Pressable>)}</View>
  {value.state!=='ready'?<Status value={value} onRetry={onRetry}/>:<>
- {rows.length>0&&<View style={{flexDirection:'row',alignItems:'flex-end',gap:8,paddingTop:10,paddingBottom:4}}>{[1,0,2].map(position=>{const entry=podium[position];if(!entry)return <View key={position} style={{flex:1}}/>;const row=entry.members[0],tied=entry.members.length>1;return <View key={position} style={{flex:1,alignItems:'center',gap:8}}><ProfileAvatar size={position===0?72:56} name={row.name} uri={'avatarDataUri' in row&&typeof row.avatarDataUri==='string'?row.avatarDataUri:null}/><Text numberOfLines={1} style={[S.label,{fontSize:12}]}>{tied?`${row.name} 외 ${entry.members.length-1}명`:row.name}</Text><View style={{width:'90%',height:position===0?140:position===1?110:86,borderTopLeftRadius:16,borderTopRightRadius:16,backgroundColor:position===0?C.deep:'#E5EDDD',alignItems:'center',justifyContent:'center',gap:6}}>{entry.rank===1&&<Icon name="trophy" size={38} color="#E8C65B"/>}<Text style={{fontSize:17,color:position===0?'white':C.deep}}>{tied?'공동 ':''}{entry.rank}위</Text><Text style={{fontSize:11,color:position===0?'white':C.green}}>{(row.points??0).toLocaleString()} P</Text></View></View>;})}</View>}
+ {rows.length>0&&<View style={{flexDirection:'row',alignItems:'flex-end',gap:8,paddingTop:10,paddingBottom:4}}>{[1,0,2].map(position=>{const entry=podium[position];if(!entry)return <View key={position} style={{flex:1}}/>;const row=entry;return <View key={position} style={{flex:1,alignItems:'center',gap:8}}><ProfileAvatar size={position===0?72:56} name={row.name} uri={'avatarDataUri' in row&&typeof row.avatarDataUri==='string'?row.avatarDataUri:null}/><Text numberOfLines={1} style={[S.label,{fontSize:12}]}>{row.name}</Text><View style={{width:'90%',height:position===0?140:position===1?110:86,borderTopLeftRadius:16,borderTopRightRadius:16,backgroundColor:position===0?C.deep:'#E5EDDD',alignItems:'center',justifyContent:'center',gap:6}}>{entry.rank===1&&<Icon name="trophy" size={38} color="#E8C65B"/>}<Text style={{fontSize:17,color:position===0?'white':C.deep}}>{entry.rank}위</Text><Text style={{fontSize:11,color:position===0?'white':C.green}}>{(row.points??0).toLocaleString()} P</Text></View></View>;})}</View>}
 
  {me&&<View style={[S.between,{padding:18,borderRadius:18,backgroundColor:C.leaf}]}><View style={S.row}><Icon name="trending-up"/><Text style={S.label}>현재 내 순위</Text></View><Text style={S.heading}>{me.rank}위</Text></View>}
  {me&&me.rank>10&&<Button title="내 순위까지 보기" quiet onPress={()=>setPage(Math.floor(rows.findIndex(r=>r.id===me.id)/10))}/>}
