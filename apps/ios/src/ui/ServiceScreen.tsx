@@ -1,3 +1,4 @@
+import {ProcessingStatus} from './MascotMedia';
 import {RewardShop} from './RewardShop';
 import {AccountSettings,PrivacyNotice,UserGuide} from './AccountPages';
 import {IllustratedIcon,type ArtName} from './IllustratedIcon';
@@ -75,9 +76,7 @@ export function ServiceScreen(p:ServiceProps){
       {tab==='notifications'&&<NotificationPanel value={p.notifications} onOpen={setTab} onRefresh={p.onRefreshCommunity}/>}
       {tab==='tripdetail'&&p.serverTrip?.status==='ready'&&<Card><TripResult trip={p.serverTrip} pending={p.feedbackPending} onFeedback={p.onFeedback}/></Card>}
       {tab==='result'&&<>
-        {p.serverTrip?.status==='ready'?<JourneyComplete trip={p.serverTrip} onHome={()=>setTab('home')} onDetail={()=>setTab('tripdetail')} onWallet={()=>{p.onRefreshCommunity?.();setTab('rewards');}}/>:(p.resultTrip||p.tripId)?<Card><Icon name="leaf-outline" size={42}/><Icon name={stage.failed?'alert-circle-outline':'hourglass-outline'} size={38}/><Text style={S.heading}>{stage.title}</Text>
-          {!stage.failed&&<ActivityIndicator color={C.green}/>}<Note>{stage.detail}</Note>
-          {['위치 전송','이동 확인','결과 확인'].map((label,i)=><View key={label} style={S.row}><Icon name={i<stage.step?'checkmark-circle':i===stage.step?'radio-button-on':'ellipse-outline'} color={i<=stage.step?C.green:C.muted}/><Text style={S.label}>{label}</Text></View>)}
+        {p.serverTrip?.status==='ready'?<JourneyComplete trip={p.serverTrip} onHome={()=>setTab('home')} onDetail={()=>setTab('tripdetail')} onWallet={()=>{p.onRefreshCommunity?.();setTab('rewards');}}/>:(p.resultTrip||p.tripId)?<Card><ProcessingStatus stage={stage}/>
           {!!p.tripError&&<Note error>{p.tripError}</Note>}
           {(stage.failed||!!p.tripError)&&<Button title={stage.failed?"처리 다시 시도":"결과 다시 확인"} onPress={()=>p.onRetryTrip?.()}/>}
           {!!p.pending&&<Button title="전송 재시도" quiet onPress={()=>p.onRetry?.()}/>}

@@ -21,6 +21,7 @@ vi.mock('./NotificationPanel',()=>({NotificationPanel:'NotificationPanel'}));
 vi.mock('./JourneyHistory',()=>({JourneyHistory:'JourneyHistory'}));
 vi.mock('./HomeDashboard',()=>({HomeDashboard:'HomeDashboard'}));
 vi.mock('./RewardExperience',()=>({JourneyComplete:'JourneyComplete'}));
+vi.mock('./MascotMedia',()=>({ProcessingStatus:'ProcessingStatus',MascotMedia:'MascotMedia',MapFace:'MapFace'}));
 vi.mock('./CanopyMascot',()=>({CanopyMascot:'CanopyMascot'}));
 vi.mock('./LocalTools',()=>({LivePrediction:'LivePrediction',LocalWeekly:'LocalWeekly'}));
 vi.mock('./MeasurementScreen',()=>({MeasurementScreen:'MeasurementScreen'}));

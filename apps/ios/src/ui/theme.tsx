@@ -40,7 +40,7 @@ export const S=StyleSheet.create({
   title:{fontSize:28,lineHeight:37,fontFamily:'Jua',fontWeight:'800',letterSpacing:-1.3,color:C.deep},heading:{fontSize:18,lineHeight:25,fontWeight:'700',color:C.ink},
   label:{fontSize:14,fontWeight:'600',color:C.ink},note:{fontSize:13,lineHeight:21,color:C.muted},metric:{fontSize:26,fontFamily:'Jua',fontWeight:'700',color:C.deep},
   card:{backgroundColor:C.surface,borderRadius:24,padding:20,gap:16,borderWidth:1,borderColor:C.line},
-  input:{borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
+  input:{fontFamily:'Jua',borderWidth:1,borderColor:C.line,borderRadius:14,padding:16,fontSize:16,color:C.ink,backgroundColor:C.white,minHeight:54},
   button:{minHeight:56,borderRadius:18,backgroundColor:C.leaf,alignItems:'center',justifyContent:'center',padding:13,flexDirection:'row',gap:10},
   buttonText:{flexShrink:1,textAlign:'center',fontSize:16,fontWeight:'700',color:C.deep},quiet:{backgroundColor:C.leaf},
   pill:{color:C.green,backgroundColor:C.mint,alignSelf:'flex-start',paddingHorizontal:10,paddingVertical:5,borderRadius:8,fontSize:12,fontWeight:'600'},

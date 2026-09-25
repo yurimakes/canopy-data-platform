@@ -1,3 +1,5 @@
+import {MascotMedia} from './MascotMedia';
+import {CelebrationDust} from './CelebrationDust';
 import {PreviewIcon} from './PreviewIcon';
 import {displaySegments,recordedDuration} from '../displaySegments';
 import {rewardPresentation,type RewardComparison} from './rewardPresentation';
@@ -56,14 +58,14 @@ export function JourneyComplete({trip,onDetail,onWallet,onHome,previewComparison
   const label=(mode:string)=>MODES.find(m=>m.value===mode)?.title??'확인 중';
   const modeIcon=(mode:string)=>mode==='walk'?'sneaker-move':mode==='bike'?'bicycle':mode==='bus'?'bus':mode==='car'?'car':'train';
   return <>
-   <View style={{alignItems:'center',paddingTop:8,paddingBottom:8,gap:10}}><CanopyMascot pose="complete" animated height={175}/><Text style={[S.title,{fontSize:28,textAlign:'center'}]}>오늘도 한 걸음 해냈어요!</Text><Note>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')||'이번 여정의 이동 기록'}</Note></View>
+   <View style={{alignItems:'center',paddingTop:8,paddingBottom:8,gap:10}}><CelebrationDust><MascotMedia kind="complete" size={175}/></CelebrationDust><Text style={[S.title,{fontSize:28,textAlign:'center'}]}>오늘도 한 걸음 해냈어요!</Text><Note>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')||'이번 여정의 이동 기록'}</Note></View>
    {(trip.estimated_duration_seconds??0)>0?<Note>위치 신호가 부족한 구간은 앞뒤 이동수단을 바탕으로 연결했어요. 일부 구간의 시간은 추정이며, 탄소량은 분석 가능한 구간만 계산했어요.</Note>:trip.mode_detection_status==='partial'&&<Note>위치 기록이 부족해 일부 구간의 이동수단을 분석하지 못했어요. 탄소량은 분석 가능한 구간만 계산했어요.</Note>}{trip.mode_detection_status==='insufficient_data'&&<Note>이동수단을 판단할 만큼 위치 기록이 모이지 않았어요.</Note>}{trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
    {trip.is_mock&&<Note>합성 GPS 테스트 여정입니다.</Note>}
    <View style={{backgroundColor:'white',borderWidth:1,borderColor:C.line,borderRadius:27,padding:20,gap:20}}>
     <View style={S.between}><Text style={S.heading}>이번 여정 요약</Text><Text style={[S.pill,{fontSize:10}]}>분석 완료</Text></View>
     <View style={{flexDirection:'row',gap:18}}>
      <View style={{flex:1,gap:9}}><Note>이번 탄소 배출</Note><Text style={{fontSize:32,fontFamily:'Jua',color:C.ink}}>{actual==null?'—':actual.toFixed(2)} <Text style={{fontSize:13}}>kg</Text></Text><Note>CO₂e</Note></View>
-     <View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:18,gap:9}}><Note>{result?.source||(result?.planned_baseline_kg!=null?'출발 전 KTDB 기준':waiting?'비교 기준 확인 중':'비교 결과 없음')}</Note><Text style={{fontSize:30,fontFamily:'Jua',color:C.ink}}>{saved==null?(result?.planned_baseline_kg?.toFixed(2)??'—'):Math.abs(saved).toFixed(2)} <Text style={{fontSize:12}}>{saved==null?(result?.planned_baseline_kg!=null?'kg 예상':''):saved>=0?'kg 절감':'kg 더 배출'}</Text></Text>{reduction!=null&&<Text style={[S.pill,{fontSize:10}]}>{Math.abs(reduction)}% {reduction>=0?'덜':'더'} 배출했어요</Text>}</View>
+     <View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:18,gap:9}}><Note>{result?.baseline_kg!=null||result?.planned_baseline_kg!=null?'비교 기준보다':waiting?'비교 기준 확인 중':'비교 결과 없음'}</Note><Text style={{fontSize:30,fontFamily:'Jua',color:C.ink}}>{saved==null?(result?.planned_baseline_kg?.toFixed(2)??'—'):Math.abs(saved).toFixed(2)} <Text style={{fontSize:12}}>{saved==null?(result?.planned_baseline_kg!=null?'kg 예상':''):saved>=0?'kg 절감':'kg 더 배출'}</Text></Text>{reduction!=null&&<Text style={[S.pill,{fontSize:10}]}>{Math.abs(reduction)}% {reduction>=0?'덜':'더'} 배출했어요</Text>}</View>
     </View>
     {result?.comparison_message&&<Note>{result.comparison_message}</Note>}
     {result?.comparison_scope==='observed_segments'&&<Note>분석 가능한 구간의 거리와 탄소량만 비교했어요. 전체 여정의 감축량은 아니에요.</Note>}

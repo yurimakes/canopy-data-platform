@@ -1,0 +1,42 @@
+import React from 'react';
+import {act,create,type ReactTestRenderer} from 'react-test-renderer';
+import {afterEach,expect,it,vi} from 'vitest';
+import {RankingPanel,BaselinePanel,type RankingView} from './CommunityPanels';
+vi.mock('react-native',()=>({View:'View',Pressable:'Pressable',ActivityIndicator:'ActivityIndicator'}));
+vi.mock('expo-crypto',()=>({randomUUID:()=> 'test'}));
+vi.mock('expo-linear-gradient',()=>({LinearGradient:'LinearGradient'}));
+vi.mock('../communityClient',()=>({localAction:vi.fn()}));
+vi.mock('./RankMedal',()=>({RankMedal:'RankMedal'}));
+vi.mock('./MissionCard',()=>({MissionCard:'MissionCard'}));
+vi.mock('./IllustratedIcon',()=>({IllustratedIcon:'IllustratedIcon'}));
+vi.mock('./MascotConversation',()=>({MascotConversation:'MascotConversation'}));
+vi.mock('./ProfileAvatar',()=>({ProfileAvatar:'ProfileAvatar'}));
+vi.mock('./DesignPrimitives',()=>({Disclosure:'Disclosure',Eyebrow:'Eyebrow',ProgressTrack:'ProgressTrack',Segmented:'Segmented',SectionTitle:'SectionTitle'}));
+vi.mock('./CanopyMascot',()=>({CanopyMascot:'CanopyMascot'}));
+vi.mock('./RewardExperience',()=>({RewardCelebration:'RewardCelebration'}));
+vi.mock('./AppText',()=>({default:'Text'}));
+vi.mock('./theme',()=>({C:{},S:{},Note:'Note',Icon:'Icon',Button:'Button',Card:'Card',Stat:'Stat'}));
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;
+let rendered:ReactTestRenderer;
+afterEach(async()=>{if(rendered)await act(()=>rendered.unmount());});
+const rows=Array.from({length:21},(_,i)=>({id:String(i).padStart(2,'0'),name:`user${i}`,rank:i<3?1:i+1,points:i<3?100:100-i,carbonKg:0,isMe:i===20}));
+const data:RankingView={week:'2026-W38',updatedAt:'',personal:[...rows].reverse(),department:[]};
+it('sorts unsorted results, shows tied podium ranks and reveals ten more rows',async()=>{
+ await act(()=>{rendered=create(<RankingPanel value={{state:'ready',data}}/>);});
+ const avatars=()=>rendered.root.findAllByType('ProfileAvatar' as any).map(n=>n.props.name);
+ expect(avatars().slice(3)).toEqual(rows.slice(0,10).map(r=>r.name));
+ expect(JSON.stringify(rendered.toJSON())).toContain('공동 ');
+ expect(JSON.stringify(rendered.toJSON())).not.toContain('도전자를 기다려요');
+ await act(()=>rendered.root.findByProps({title:'10명 더 보기'}).props.onPress());
+ expect(avatars().slice(3)).toEqual(rows.slice(0,20).map(r=>r.name));
+ await act(()=>rendered.root.findByProps({title:'10명 더 보기'}).props.onPress());
+ expect(avatars().slice(3)).toEqual(rows.map(r=>r.name));
+ expect(rendered.root.findAllByProps({title:'10명 더 보기'})).toHaveLength(0);
+});
+it('shows global baseline outside the disclosure even for a new member',async()=>{
+ await act(()=>{rendered=create(<BaselinePanel value={{state:'ready',data:{status:'collecting',personalKg:null,globalKg:44.883983953,updatedAt:'',reason:''}}}/>);});
+ const metric=rendered.root.findAllByType('Text' as any).find(n=>n.props.children==='44.88 gCO₂e/km');
+ expect(metric).toBeDefined();
+ let node=metric?.parent;
+ while(node){expect(node.type).not.toBe('Disclosure');node=node.parent;}
+});
