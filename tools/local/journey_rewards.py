@@ -122,6 +122,8 @@ def settle(data,user,trip,points):
     if q and (q['user_id']!=user['user_id'] or q['campaign_id']!=user['campaign_id']):raise ApiError(403,'forbidden','다른 사용자의 여정')
     def stamp(v):return datetime.fromisoformat(v.replace('Z','+00:00'))
     valid=sorted([p for p in points if stamp(trip['started_at'])-timedelta(seconds=1)<=stamp(p['event_time'])<=stamp(trip['ended_at'])+timedelta(seconds=1)],key=lambda p:stamp(p['event_time']))
+    if trip.get('mode_detection_status') == 'insufficient_data':
+        return {'status':'insufficient_gps','message':'위치 기록이 부족해 전체 여정의 보상을 확정하지 않았어요.'}
     confirmed=trip.get('confirmed_trip') or {}
     meters=confirmed.get('total_distance_m')
     actual=confirmed.get('total_carbon_kg')
@@ -162,5 +164,24 @@ def settle(data,user,trip,points):
         'week':context['week'],'baseline_week':context['week'],'baseline_snapshot_id':context['id'],'classification':classification,
         'personal_g_per_km':personal,'global_g_per_km':global_value,'baseline_g_per_km':selected,'distance_m':meters,
         'saved_kg':saved,'baseline_kg':reference,'actual_kg':actual,'source':source,'development_only':__import__('services.domain_context',fromlist=['backend']).backend.get() is None,
+        'comparison_scope':'observed_segments' if trip.get('mode_detection_status')=='partial' else 'trip',
         'model_version':model_version,'settlement_version':'local-trip-settlement-v2','policy_version':policy['version'],'baseline_policy':context,
         'created_at':datetime.now(timezone.utc).isoformat()})
+
+
+def comparison(data, user, trip, points):
+    """Display a recorded quote independently of reward eligibility."""
+    result = settle(data, user, trip, points)
+    if result.get('baseline_kg') is not None:
+        return result
+    from math import isfinite
+    quote = (trip.get('start_context') or {}).get('quote') or {}
+    if quote and any(quote.get(k) != user.get(k) for k in ('user_id', 'campaign_id')):
+        raise ApiError(403, 'forbidden', '다른 사용자의 비교 기준')
+    expected = quote.get('expected_kg')
+    if not isinstance(expected, (int, float)) or isinstance(expected, bool) or not isfinite(expected) or expected < 0:
+        return result
+    return {**result, 'planned_baseline_kg': expected,
+            'planned_baseline_source': quote.get('source', 'KTDB'),
+            'comparison_status': 'unavailable',
+            'comparison_message': '출발 전 KTDB 기준은 있으나, 이번 결과와의 비교를 확정하지 못했어요.'}

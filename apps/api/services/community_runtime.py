@@ -129,9 +129,9 @@ def dispatch_domain(method,path,body,user,api,provider=None):
             if not isinstance(body.get('assignment_id'),str):raise ApiError(400,'invalid_assignment','미션 식별자가 필요합니다.')
             return 200,acknowledge_mission(data,user,body['assignment_id'],api.store.for_user(user['user_id']))
         if path.startswith('/api/comparison/') and method=='GET':
-            from journey_rewards import settle
+            from journey_rewards import comparison
             trip=api.get(path.rsplit('/',1)[-1],user['user_id'])
-            return 200,settle(data,user,trip,trip.get('endpoint_observations') or [])
+            return 200,comparison(data,user,trip,trip.get('endpoint_observations') or [])
     raise ApiError(404,'not_found','요청한 기능을 찾을 수 없습니다.')
 
 

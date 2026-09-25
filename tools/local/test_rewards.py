@@ -15,6 +15,15 @@ from services.reward_rules import journey_points
 USER={'user_id':'owner','campaign_id':'test'}
 
 
+@pytest.mark.parametrize('quality', ['insufficient_data'])
+def test_incomplete_hgb_trip_does_not_pay_rewards(tmp_path, quality):
+    trip, points = prepared(tmp_path)
+    trip['mode_detection_status'] = quality
+    result = settle(tmp_path, USER, trip, points)
+    assert result['status'] == 'insufficient_gps'
+    assert ledger(tmp_path).all() == []
+
+
 def prepared(tmp_path):
     quote=fixture_quote(tmp_path,USER,None)
     prepare(tmp_path,USER,quote['quoteId']);bind(tmp_path,USER,'trip')
@@ -107,3 +116,24 @@ def test_real_ktdb_quote(tmp_path):
     assert len(record['features'])==19
     assert 0<quote['expectedKg']<1
     assert 'fixture' not in record['model_version']
+
+
+def test_partial_uses_observed_distance_instead_of_rejecting_whole_trip(tmp_path):
+    trip, points = prepared(tmp_path)
+    trip['mode_detection_status'] = 'partial'
+    result = settle(tmp_path, USER, trip, points)
+    assert result['status'] == 'paid'
+    assert result['comparison_scope'] == 'observed_segments'
+    assert result['distance_m'] == trip['confirmed_trip']['total_distance_m']
+
+
+def test_baseline_is_visible_even_without_settlement_endpoints(tmp_path):
+    from journey_rewards import comparison
+    trip, points = prepared(tmp_path)
+    quote = store(tmp_path).read_item(fixture_quote(tmp_path, USER, None)['id'])
+    trip['start_context'] = {'quote': quote}
+    trip['mode_detection_status'] = 'insufficient_data'
+    result = comparison(tmp_path, USER, trip, [])
+    assert result['status'] == 'insufficient_gps'
+    assert result['planned_baseline_kg'] == quote['expected_kg']
+    assert ledger(tmp_path).all() == []
