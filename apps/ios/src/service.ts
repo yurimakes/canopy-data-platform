@@ -14,16 +14,18 @@ export function routeApiUrl(config:{routeApiUrl?:unknown;tripApiUrl?:unknown}):s
   return '';
 }
 export function gpsDistance(events:GpsEvent[]):number {
-  let total=0;
-  for(let i=1;i<events.length;i++) {
-    const a=events[i-1],b=events[i];
-    if(a.trip_id!==b.trip_id || a.accuracy==null || b.accuracy==null || a.accuracy>100 || b.accuracy>100)continue;
-    const dt=(Date.parse(b.event_time)-Date.parse(a.event_time))/1000;
-    if(dt<=0 || dt>60)continue;
-    const rad=Math.PI/180, dlat=(b.lat-a.lat)*rad,dlon=(b.lon-a.lon)*rad;
-    const h=Math.sin(dlat/2)**2+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dlon/2)**2;
-    const d=6371000*2*Math.asin(Math.sqrt(Math.min(1,h)));
-    if(Number.isFinite(d) && d/dt<70)total+=d;
+  let total=0,anchor:GpsEvent|undefined;
+  for(const point of events){
+    if(point.accuracy==null||!Number.isFinite(point.accuracy)||point.accuracy<0||point.accuracy>100){anchor=undefined;continue;}
+    if(!anchor||anchor.trip_id!==point.trip_id){anchor=point;continue;}
+    const dt=(Date.parse(point.event_time)-Date.parse(anchor.event_time))/1000;
+    if(!Number.isFinite(dt)||dt<0.5)continue;
+    if(dt>15){anchor=point;continue;}
+    const rad=Math.PI/180,dlat=(point.lat-anchor.lat)*rad,dlon=(point.lon-anchor.lon)*rad;
+    const h=Math.sin(dlat/2)**2+Math.cos(anchor.lat*rad)*Math.cos(point.lat*rad)*Math.sin(dlon/2)**2;
+    const meters=6371008.8*2*Math.asin(Math.sqrt(Math.min(1,h)));
+    if(!Number.isFinite(meters)||meters/dt>=70)continue;
+    total+=meters;anchor=point;
   }
   return total;
 }

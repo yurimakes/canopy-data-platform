@@ -47,7 +47,7 @@ export function JourneyComplete({trip,onDetail,onWallet,onHome,previewComparison
   const [expanded,setExpanded]=useState(true),[explain,setExplain]=useState(false);
   const c=trip.confirmed_trip,seconds=trip.ended_at?Math.max(0,Math.round((Date.parse(trip.ended_at)-Date.parse(trip.started_at))/1000)):0;
   const segments=displaySegments(trip.confirmed_segments??trip.segments);
-  const distance=c?.total_distance_m??(segments.length?segments.reduce((sum,s)=>sum+s.distance_m,0):null);
+  const distance=trip.observed_distance_m??c?.total_distance_m??(segments.length?segments.reduce((sum,s)=>sum+s.distance_m,0):null);
   const actual=c?.total_carbon_kg??result?.actual_kg;
   const baseline=result?.baseline_kg;
   const comparable=typeof baseline==='number'&&Number.isFinite(baseline)&&baseline>0&&typeof actual==='number';
@@ -57,14 +57,16 @@ export function JourneyComplete({trip,onDetail,onWallet,onHome,previewComparison
   const modeIcon=(mode:string)=>mode==='walk'?'sneaker-move':mode==='bike'?'bicycle':mode==='bus'?'bus':mode==='car'?'car':'train';
   return <>
    <View style={{alignItems:'center',paddingTop:8,paddingBottom:8,gap:10}}><CanopyMascot pose="complete" animated height={175}/><Text style={[S.title,{fontSize:28,textAlign:'center'}]}>오늘도 한 걸음 해냈어요!</Text><Note>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')||'이번 여정의 이동 기록'}</Note></View>
-   {trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
+   {trip.mode_detection_status==='partial'&&<Note>위치 기록이 부족해 일부 구간의 이동수단을 분석하지 못했어요. 탄소량은 분석 가능한 구간만 계산했어요.</Note>}{trip.mode_detection_status==='insufficient_data'&&<Note>이동수단을 판단할 만큼 위치 기록이 모이지 않았어요.</Note>}{trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
    {trip.is_mock&&<Note>합성 GPS 테스트 여정입니다.</Note>}
    <View style={{backgroundColor:'white',borderWidth:1,borderColor:C.line,borderRadius:27,padding:20,gap:20}}>
     <View style={S.between}><Text style={S.heading}>이번 여정 요약</Text><Text style={[S.pill,{fontSize:10}]}>분석 완료</Text></View>
     <View style={{flexDirection:'row',gap:18}}>
      <View style={{flex:1,gap:9}}><Note>이번 탄소 배출</Note><Text style={{fontSize:32,fontFamily:'Jua',color:C.ink}}>{actual==null?'—':actual.toFixed(2)} <Text style={{fontSize:13}}>kg</Text></Text><Note>CO₂e</Note></View>
-     <View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:18,gap:9}}><Note>{result?.source||'비교 기준 확인 중'}</Note><Text style={{fontSize:30,fontFamily:'Jua',color:C.ink}}>{saved==null?'—':Math.abs(saved).toFixed(2)} <Text style={{fontSize:12}}>{saved==null?'':saved>=0?'kg 절감':'kg 더 배출'}</Text></Text>{reduction!=null&&<Text style={[S.pill,{fontSize:10}]}>{Math.abs(reduction)}% {reduction>=0?'덜':'더'} 배출했어요</Text>}</View>
+     <View style={{flex:1,borderLeftWidth:1,borderColor:C.line,paddingLeft:18,gap:9}}><Note>{result?.source||(result?.planned_baseline_kg!=null?'출발 전 KTDB 기준':waiting?'비교 기준 확인 중':'비교 결과 없음')}</Note><Text style={{fontSize:30,fontFamily:'Jua',color:C.ink}}>{saved==null?(result?.planned_baseline_kg?.toFixed(2)??'—'):Math.abs(saved).toFixed(2)} <Text style={{fontSize:12}}>{saved==null?(result?.planned_baseline_kg!=null?'kg 예상':''):saved>=0?'kg 절감':'kg 더 배출'}</Text></Text>{reduction!=null&&<Text style={[S.pill,{fontSize:10}]}>{Math.abs(reduction)}% {reduction>=0?'덜':'더'} 배출했어요</Text>}</View>
     </View>
+    {result?.comparison_message&&<Note>{result.comparison_message}</Note>}
+    {result?.comparison_scope==='observed_segments'&&<Note>분석 가능한 구간의 거리와 탄소량만 비교했어요. 전체 여정의 감축량은 아니에요.</Note>}
     {comparable&&<View style={{gap:8}}><View accessibilityRole="progressbar" accessibilityValue={{min:0,max:100,now:Math.round(Math.min(1,actual!/baseline!)*100)}} style={{height:10,borderRadius:10,backgroundColor:'#E8EDDF',overflow:'hidden'}}><View style={{height:10,borderRadius:10,backgroundColor:'#63866B',width:`${Math.min(1,Math.max(0,actual!/baseline!))*100}%`}}/></View><View style={S.between}><Text style={{fontSize:10,color:C.muted}}>실제 {actual!.toFixed(2)} kg</Text><Text style={{fontSize:10,color:C.muted}}>비교 기준 {baseline!.toFixed(2)} kg</Text></View></View>}
     <Pressable accessibilityRole="button" accessibilityState={{expanded:explain}} onPress={()=>setExplain(!explain)} style={[S.row,{minHeight:44}]}><PreviewIcon name="info" size={17}/><Text style={[S.note,{flex:1,fontSize:11}]}>어떤 기준으로 비교하나요?</Text><Icon name={explain?'chevron-up':'chevron-forward'} size={16}/></Pressable>
     {explain&&<Note>{result?.source?`비교 기준: ${result.source}. 이 기준의 배출량과 이번 여정의 배출량을 비교하며, 표시값은 반올림했어요.`:'서버에서 비교 기준을 확인하고 있어요. 개인 기준과 KTDB 기준은 서로 다르며, 확인되지 않은 감축량은 표시하지 않습니다.'}</Note>}

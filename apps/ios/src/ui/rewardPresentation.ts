@@ -1,5 +1,5 @@
 /** Presentation only: reward status and amounts always come from the server. */
-export type RewardComparison={status:string;points?:number;title?:string;classification?:string;baseline_kg?:number;saved_kg?:number;actual_kg?:number;source?:string;development_only?:boolean};
+export type RewardComparison={status:string;planned_baseline_kg?:number;planned_baseline_source?:string;comparison_message?:string;comparison_scope?:string;points?:number;title?:string;classification?:string;baseline_kg?:number;saved_kg?:number;actual_kg?:number;source?:string;development_only?:boolean};
 export function rewardPresentation(result:RewardComparison|null){
  const amount=result?.status==='paid'&&typeof result.points==='number'&&Number.isFinite(result.points)&&result.points>0?result.points:0;
  const waiting=!result||['processing','awaiting_baseline','retrying'].includes(result.status);
