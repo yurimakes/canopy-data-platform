@@ -57,7 +57,7 @@ export function JourneyComplete({trip,onDetail,onWallet,onHome,previewComparison
   const modeIcon=(mode:string)=>mode==='walk'?'sneaker-move':mode==='bike'?'bicycle':mode==='bus'?'bus':mode==='car'?'car':'train';
   return <>
    <View style={{alignItems:'center',paddingTop:8,paddingBottom:8,gap:10}}><CanopyMascot pose="complete" animated height={175}/><Text style={[S.title,{fontSize:28,textAlign:'center'}]}>오늘도 한 걸음 해냈어요!</Text><Note>{segments.map(s=>label(s.confirmed_mode??s.mode)).join(' → ')||'이번 여정의 이동 기록'}</Note></View>
-   {trip.mode_detection_status==='partial'&&<Note>위치 기록이 부족해 일부 구간의 이동수단을 분석하지 못했어요. 탄소량은 분석 가능한 구간만 계산했어요.</Note>}{trip.mode_detection_status==='insufficient_data'&&<Note>이동수단을 판단할 만큼 위치 기록이 모이지 않았어요.</Note>}{trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
+   {(trip.estimated_duration_seconds??0)>0?<Note>위치 신호가 부족한 구간은 앞뒤 이동수단을 바탕으로 연결했어요. 일부 구간의 시간은 추정이며, 탄소량은 분석 가능한 구간만 계산했어요.</Note>:trip.mode_detection_status==='partial'&&<Note>위치 기록이 부족해 일부 구간의 이동수단을 분석하지 못했어요. 탄소량은 분석 가능한 구간만 계산했어요.</Note>}{trip.mode_detection_status==='insufficient_data'&&<Note>이동수단을 판단할 만큼 위치 기록이 모이지 않았어요.</Note>}{trip.data_quality?.status==='partial'&&<Note>위치 기록이 일부 빠졌어요. 이번 여정은 보상에서 제외돼요.</Note>}
    {trip.is_mock&&<Note>합성 GPS 테스트 여정입니다.</Note>}
    <View style={{backgroundColor:'white',borderWidth:1,borderColor:C.line,borderRadius:27,padding:20,gap:20}}>
     <View style={S.between}><Text style={S.heading}>이번 여정 요약</Text><Text style={[S.pill,{fontSize:10}]}>분석 완료</Text></View>

@@ -20,7 +20,7 @@ export type FeedbackInput = {has_issue:boolean;feedback_text?:string|null};
 export type FeedbackIntent = FeedbackInput & {request_id:string;api_url:string};
 type ConfirmIntent = {request_id:string;expected_revision:number;segments:Confirmation[];api_url:string};
 export type ServerTrip = {
-  observed_distance_m?:number; analyzed_distance_m?:number; mode_detection_status?:string;mode_detection_reason?:string|null;
+  estimated_duration_seconds?:number; observed_distance_m?:number; analyzed_distance_m?:number; mode_detection_status?:string;mode_detection_reason?:string|null;
   data_quality?:{status:'complete'|'partial';version:string;excluded_intervals:unknown[]}|null;
   expected_last_sequence?:number;
   trip_id:string; user_id:string; device_id:string; started_at:string; ended_at:string|null;
