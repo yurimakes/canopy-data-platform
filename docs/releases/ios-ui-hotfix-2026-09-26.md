@@ -14,3 +14,8 @@
 - Build: https://expo.dev/accounts/haydens2hn/projects/canopy-gps-collector/builds/4a2ef0d4-d802-418a-bf01-e472a0dafc4f
 - Submission: https://expo.dev/accounts/haydens2hn/projects/canopy-gps-collector/submissions/93b5f349-5c05-4772-8e61-741740d7686f
 - Initial status: build IN_PROGRESS; submission AWAITING_BUILD, no reported error.
+
+## Verified final check
+- Build 17: FINISHED (successful).
+- Automatic submission: IN_QUEUE; error: null. Apple upload and TestFlight availability are not yet confirmed.
+- Previous build 16 submission is FINISHED. Do not mistake that older binary for this hotfix.
