@@ -9,3 +9,5 @@ Fix: preserve direct code matches. Only when absent, compare the full administra
 Deployment uses the current full package, changing only runtime-assets/reference-model/src/integration/ktdb_context.py plus release-id.txt. Previous package preserved at .local-data/route-quote-hotfix/live-before.zip outside the repo. No app rebuild, model retraining, wallet or GPS inference changes.
 
 Remaining limitation: RoutePlanner currently treats quote failure as fatal even when TMAP succeeds. Ambiguous or still-unmapped administrative names can therefore still block the search. That broader UI fallback is not part of this narrowly scoped server patch.
+
+Deployment verified: /api/health HTTP 200, release route-name-33e4e3a2923b8df9041e. Exact user-authenticated route request was not replayed; validation used the deployed model/reference assets and representative coordinates.
