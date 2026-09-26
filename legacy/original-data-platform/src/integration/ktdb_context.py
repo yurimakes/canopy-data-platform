@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence
 from zoneinfo import ZoneInfo
 
+import re
 import pandas as pd
 from pyproj import Transformer
 
@@ -60,13 +61,19 @@ def _nearest_centroid(latitude: float, longitude: float, centroids: pd.DataFrame
     return centroids.loc[distance.idxmin()].copy()
 
 
-def _ktdb_admin_row(sgis_code: object, mapping: pd.DataFrame) -> pd.Series:
+def _ktdb_admin_row(sgis_code: object, mapping: pd.DataFrame, full_name: object = None) -> pd.Series:
     required = {"ktdb_admin_code", "ktdb_full_name", "sgis_adm_cd"}
     missing = sorted(required - set(mapping.columns))
     if missing:
         raise ValueError(f"KTDB to SGIS mapping columns missing: {missing}")
     target = _code_text(sgis_code)
     rows = mapping[mapping["sgis_adm_cd"].map(_code_text).eq(target)]
+    if rows.empty and full_name is not None:
+        # SGIS uses 홍은1동 while KTDB uses 홍은제1동. Match the entire
+        # province/city/dong name and never choose between historical duplicates.
+        name = " ".join(str(full_name).split())
+        variants = {name, re.sub(r"(\d+동)$", r"제\1", name)}
+        rows = mapping[mapping["ktdb_full_name"].map(lambda v: " ".join(str(v).split())).isin(variants)]
     if len(rows) != 1:
         raise ValueError(f"SGIS centroid {sgis_code!r} has {len(rows)} KTDB mappings")
     return rows.iloc[0]
@@ -100,8 +107,8 @@ def build_expected_features(
     mapping = pd.read_csv(mapping_path, encoding="utf-8-sig")
     origin_centroid = _nearest_centroid(events[0].latitude, events[0].longitude, centroids)
     destination_centroid = _nearest_centroid(events[-1].latitude, events[-1].longitude, centroids)
-    origin = _ktdb_admin_row(origin_centroid["adm_cd"], mapping)
-    destination = _ktdb_admin_row(destination_centroid["adm_cd"], mapping)
+    origin = _ktdb_admin_row(origin_centroid["adm_cd"], mapping, origin_centroid["adm_nm"])
+    destination = _ktdb_admin_row(destination_centroid["adm_cd"], mapping, destination_centroid["adm_nm"])
     origin_code = str(origin["ktdb_admin_code"])
     destination_code = str(destination["ktdb_admin_code"])
     origin_sido, origin_sigungu = _parts(origin["ktdb_full_name"])

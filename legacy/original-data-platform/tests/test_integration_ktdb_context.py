@@ -40,3 +40,23 @@ def test_build_expected_features_uses_centroid_mapping_and_real_time(tmp_path):
     assert scenario.features["commute_direction"] == "to_work"
     assert scenario.features["od_straight_distance_km"] > 0
     assert scenario.provenance["purpose_source"].startswith("KTDB")
+
+
+def test_numbered_dong_name_fallback_is_exact_and_unambiguous():
+    import pytest
+    from src.integration.ktdb_context import _ktdb_admin_row
+    mapping = pd.DataFrame([
+        {"ktdb_admin_code":"1141066000", "ktdb_full_name":"서울특별시 서대문구 홍은제1동", "sgis_adm_cd":None},
+        {"ktdb_admin_code":"other", "ktdb_full_name":"다른시 서대문구 홍은제1동", "sgis_adm_cd":None},
+    ])
+    assert _ktdb_admin_row(1113062, mapping, "서울특별시 서대문구 홍은1동")["ktdb_admin_code"] == "1141066000"
+    with pytest.raises(ValueError):
+        _ktdb_admin_row(1113062, pd.concat([mapping, mapping.iloc[:1]]), "서울특별시 서대문구 홍은1동")
+    with pytest.raises(ValueError):
+        _ktdb_admin_row(1113062, mapping, "서울특별시 서대문구 홍은2동")
+
+
+def test_hongje_name_preserves_je_in_the_place_name():
+    from src.integration.ktdb_context import _ktdb_admin_row
+    mapping = pd.DataFrame([{"ktdb_admin_code":"1141062000", "ktdb_full_name":"서울특별시 서대문구 홍제제1동", "sgis_adm_cd":None}])
+    assert _ktdb_admin_row(1113062, mapping, "서울특별시 서대문구 홍제1동")["ktdb_admin_code"] == "1141062000"
