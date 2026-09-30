@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.mission-bundle.v1",
+  "title": "Canopy Mission Bundle",
+  "type": "object",
+  "required": ["id", "pk", "type", "bundle_id", "user_id", "campaign_id", "week_start", "week_end", "policy_version", "policy_hash", "common_target_count", "missions", "created_at"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "pk": {"type": "string", "minLength": 3},
+    "type": {"const": "mission_bundle"},
+    "bundle_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "week_start": {"type": "string", "format": "date"},
+    "week_end": {"type": "string", "format": "date"},
+    "policy_version": {"type": "string", "minLength": 1},
+    "policy_hash": {"type": "string", "minLength": 32},
+    "profile_source_week": {"type": ["string", "null"]},
+    "profile_version": {"type": ["string", "null"]},
+    "profile_hash": {"type": ["string", "null"]},
+    "profile_status_at_issue": {"enum": ["current", "history_only", "cold_start"]},
+    "common_target_count": {"type": "integer", "minimum": 1},
+    "difficulty_reason": {"type": "string"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "missions": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "required": ["assignment_id", "category_id", "category_label", "mission_template_id", "mission_family", "mission_name", "difficulty_band", "target_count", "affinity_comparable", "difficulty_comparable", "preference_comparable", "completion_rule", "progress_count", "achievement_rate", "completed", "status"],
+        "properties": {
+          "assignment_id": {"type": "string", "minLength": 1},
+          "category_id": {"enum": ["challenge", "habit", "easy_win", "explore"]},
+          "category_label": {"type": "string"},
+          "mission_template_id": {"type": "string", "minLength": 1},
+          "mission_family": {"type": "string", "minLength": 1},
+          "mission_name": {"type": "string", "minLength": 1},
+          "mission_description": {"type": ["string", "null"]},
+          "progress_unit": {"type": "string"},
+          "difficulty_band": {"type": "string"},
+          "common_target_count": {"type": "integer", "minimum": 1},
+          "target_count": {"type": "integer", "minimum": 1},
+          "affinity_comparable": {"type": "boolean", "description": "Eligible for descriptive category-affinity evidence."},
+          "difficulty_comparable": {"type": "boolean", "description": "Eligible for next-week adaptive target calculation."},
+          "preference_comparable": {"type": "boolean", "description": "Backward-compatible alias of affinity_comparable."},
+          "completion_rule": {
+            "type": "object",
+            "required": ["metric", "target_count", "dedupe_key", "time_window", "source"],
+            "properties": {
+              "metric": {"enum": ["qualifying_trip_count", "distinct_day_count", "distinct_mode_count"]},
+              "accepted_primary_modes": {"type": "array", "items": {"enum": ["walk", "bike", "car", "bus", "rail"]}, "uniqueItems": true},
+              "min_trip_distance_km": {"type": "number", "minimum": 0},
+              "max_trip_distance_km": {"type": "number", "exclusiveMinimum": 0},
+              "date_field": {"type": "string"},
+              "target_count": {"type": "integer", "minimum": 1},
+              "dedupe_key": {"const": "trip_id"},
+              "time_window": {"const": "assignment_week"},
+              "source": {"const": "canonical_ready_trip"}
+            },
+            "additionalProperties": false
+          },
+          "progress_count": {"type": "integer", "minimum": 0},
+          "achievement_rate": {"type": "number", "minimum": 0},
+          "completed": {"type": "boolean"},
+          "status": {"enum": ["active", "completed", "expired"]}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

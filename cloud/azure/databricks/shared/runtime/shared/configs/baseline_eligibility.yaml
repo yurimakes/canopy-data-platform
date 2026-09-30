@@ -1,0 +1,19 @@
+policy_version: eligibility-v1
+personal:
+  minimum_observation_days: 7
+  minimum_confirmed_commute_trips: 6
+  require_positive_total_distance: true
+  require_valid_total_carbon: true
+  status:
+    before_eligible: collecting
+    when_eligible: ready
+  cold_start:
+    primary_baseline: population
+    personal_baseline_enabled: false
+global:
+  participant_rule:
+    require_personal_status: ready
+  minimum_eligible_participants: 6
+  status:
+    below_minimum_participants: collecting
+    when_eligible: ready

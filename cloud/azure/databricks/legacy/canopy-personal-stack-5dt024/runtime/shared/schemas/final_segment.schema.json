@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.final-segment.v1",
+  "title": "ML Final Segment completed result",
+  "description": "One immutable row per user_id/trip_id/processing_generation. Delta columns: trip STRUCT, result STRUCT, completed_at TIMESTAMP. Write only after all segments are complete. Retry preserves the same content and completion time.",
+  "type": "object",
+  "required": [
+    "trip",
+    "result",
+    "completed_at"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "trip": {
+      "type": "object",
+      "required": [
+        "trip_id",
+        "user_id",
+        "campaign_id",
+        "started_at",
+        "ended_at",
+        "processing_generation"
+      ],
+      "properties": {
+        "trip_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "campaign_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "ended_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "processing_generation": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "trip_id",
+        "model_version",
+        "segments"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "trip_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "segments": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "type": "object",
+            "required": [
+              "segment_id",
+              "mode",
+              "start_time",
+              "end_time",
+              "distance_m",
+              "confidence"
+            ],
+            "properties": {
+              "segment_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mode": {
+                "enum": [
+                  "walk",
+                  "bike",
+                  "car",
+                  "bus",
+                  "rail"
+                ]
+              },
+              "start_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "end_time": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "distance_m": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Segment GPS cumulative distance in metres; never recalculated by Carbon. Outlier and transition-boundary policies remain subject to team agreement."
+              },
+              "confidence": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      }
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Producer completion time for this generation; preserved on retries."
+    }
+  }
+}

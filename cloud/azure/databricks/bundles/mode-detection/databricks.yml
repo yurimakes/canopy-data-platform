@@ -1,0 +1,148 @@
+bundle:
+  name: canopy-mode-detection
+
+include:
+  - resources/*.yml
+  - ../../shared/*.yml
+
+sync:
+  include:
+    - mode_detection/**
+    - assets/**
+    - scripts/**
+    - tests/**
+    - pyproject.toml
+
+  exclude:
+    - .venv/**
+    - .pytest_cache/**
+    - "**/__pycache__/**"
+    - "**/*.pyc"
+    - canopy_mode_detection.egg-info/**
+
+variables:
+  silver_schema:
+    description: Schema containing validated GPS and trip-end inputs.
+    default: silver
+  gps_observations_table:
+    description: Validated GPS observation source table.
+    default: gps_observations
+  trip_ended_events_table:
+    description: Parsed trip-end lifecycle source table.
+    default: trip_ended_events
+  output_schema:
+    description: Schema containing mode-detection debug/sealed output.
+    default: sandbox
+  complete_payloads_table:
+    description: Final Gold complete-trip payload emitted directly by the pipeline.
+    default: complete_payloads
+  prediction_stride_seconds:
+    description: Normal mode-prediction cadence.
+    default: "10"
+  gps_gap_tolerance_seconds:
+    description: Maximum adjacent GPS interval allowed before a recovery window is required.
+    default: "15"
+  state_ttl_ms:
+    description: Per-trip transformWithState TTL in milliseconds.
+    default: "7200000"
+  state_store_partitions:
+    description: Number of Spark state-store partitions for the mode-detection processor.
+    default: "4"
+  model_artifact_path:
+    description: Bundle-local staged HGBC joblib artifact.
+    default: ${workspace.file_path}/assets/models/aihub_canonical_raw120.joblib
+  transit_reference_root:
+    description: Bundle-local root containing the vendored transit_context Python package.
+    default: ${workspace.file_path}/assets/reference-model
+  transit_reference_dir:
+    description: Bundle-local directory containing externally staged transit reference CSVs.
+    default: ${workspace.file_path}/assets/transit
+  carbon_policy_path:
+    description: Bundle-local carbon policy used during final payload assembly.
+    default: ${workspace.file_path}/assets/carbon_policy.yaml
+  direct_cosmos_sink_enabled:
+    description: Enable Lakeflow Gold-to-Cosmos ForEachBatch append flow.
+    default: "false"
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+  cosmos_key:
+    default: cosmos-key
+  allow_missing_cosmos_create:
+    description: Sandbox-only creation when no lifecycle Trip exists.
+    default: "false"
+  mode_detection_pause_status:
+    description: Pause status for the continuous wrapper job.
+    default: PAUSED
+  mode_detection_trigger_interval:
+    description: Lakeflow micro-batch trigger interval.
+    default: 1 second
+
+targets:
+  trial:
+    default: true
+    mode: production
+    variables:
+      silver_schema: silver
+      gps_observations_table: gps_observations
+      trip_ended_events_table: trip_ended_events
+      output_schema: gold
+      complete_payloads_table: complete_payloads
+      prediction_stride_seconds: "10"
+      mode_detection_pause_status: PAUSED
+      mode_detection_trigger_interval: 1 second
+      direct_cosmos_sink_enabled: "true"
+      allow_missing_cosmos_create: "false"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production
+        component: mode-detection
+    resources:
+      pipelines:
+        mode_detection_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
+
+  sandbox:
+    # Shared experimental target: collaborators intentionally deploy/manage the
+    # same sandbox resources instead of creating per-user bundle identities.
+    mode: production
+    variables:
+      silver_schema: sandbox
+      gps_observations_table: jun_016_silver_gps_observations
+      trip_ended_events_table: jun_016_silver_trip_ended_events
+      output_schema: sandbox
+      complete_payloads_table: jun_016_gold_complete_payloads
+      prediction_stride_seconds: "10"
+      mode_detection_pause_status: PAUSED
+      mode_detection_trigger_interval: 1 second
+      direct_cosmos_sink_enabled: "true"
+      allow_missing_cosmos_create: "true"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: experimental
+        component: mode-detection
+    resources:
+      pipelines:
+        mode_detection_pipeline:
+          name: 5dt016-mode-detection-sandbox
+          configuration:
+            pipelines.trigger.interval: ${var.mode_detection_trigger_interval}
+      jobs:
+        mode_detection_continuous:
+          name: 5dt016-mode-detection-sandbox-job-wrapper
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}

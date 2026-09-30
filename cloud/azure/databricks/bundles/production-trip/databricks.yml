@@ -1,0 +1,44 @@
+bundle:
+  name: canopy-production-trip
+
+include:
+  - resources/*.yml
+  - ../../shared/*.yml
+
+permissions:
+  - group_name: users
+    level: CAN_MANAGE
+
+variables:
+  silver_schema:
+    default: silver
+  gold_schema:
+    default: gold
+  gps_observations_table:
+    default: gps_observations
+  final_trips_table:
+    default: final_trips
+  cosmos_endpoint:
+    default: https://cosmos-canopy-dev.documents.azure.com
+  cosmos_database:
+    default: canopy-db
+  cosmos_container:
+    default: trips
+  cosmos_secret_scope:
+    default: canopy-production-trip
+    description: Databricks secret scope containing cosmos-key. This is credential storage, not the Cosmos database name.
+  cosmos_key:
+    default: cosmos-key
+  production_trip_pause_status:
+    default: PAUSED
+
+targets:
+  trial:
+    default: true
+    # Shared integration target: all collaborators intentionally use one deployment
+    # identity and therefore manage the same bound workspace job.
+    mode: production
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}

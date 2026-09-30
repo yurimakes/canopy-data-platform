@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    full_path_observer:
+      name: canopy-full-path-observer-${bundle.target}
+      max_concurrent_runs: 1
+      parameters:
+        - name: trip_id
+          default: ""
+        - name: timeout_seconds
+          default: "600"
+      tasks:
+        - task_key: observe_full_path
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/observe_full_path_trip.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --gps-table=${var.source_gps_table}
+              - --trip-ended-table=${var.source_trip_ended_table}
+              - --segments-table=${var.baseline_integrated_segments_table}
+              - --trip-id={{job.parameters.trip_id}}
+              - --timeout-seconds={{job.parameters.timeout_seconds}}
+              - --poll-seconds=0.5
+          environment_key: benchmark_env
+      environments:
+        - environment_key: benchmark_env
+          spec:
+            environment_version: "4"

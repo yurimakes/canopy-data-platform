@@ -1,0 +1,99 @@
+{
+  "scope": "isolated Databricks stack; direct Event Hub and normal TripService lifecycle, excludes mobile/HTTP latency",
+  "trips": [
+    {
+      "trip_id": "7a86d4f3-cc2e-5370-8afa-94fa7e947c7e",
+      "status": "ready",
+      "stop_to_cosmos_seconds": 37.094,
+      "segments": [
+        {
+          "segment_id": "7a86d4f3-cc2e-5370-8afa-94fa7e947c7e:segment:1",
+          "mode": "walk",
+          "start_time": "2026-09-21T09:23:12.654592+00:00",
+          "end_time": "2026-09-21T09:24:14.008353+00:00",
+          "distance_m": 83.39631017528596,
+          "confidence": 0.9628071457683474,
+          "model_prediction": "walk",
+          "confirmed_mode": null,
+          "corrected": false,
+          "correction_status": "none",
+          "confirmation_time": null,
+          "last_request_id": null,
+          "started_at": "2026-09-21T09:23:12.654592+00:00",
+          "ended_at": "2026-09-21T09:24:14.008353+00:00",
+          "duration_min": 1.0225626833333332,
+          "start_name": null,
+          "end_name": null,
+          "route_name": null,
+          "carbon_kg": 0
+        }
+      ],
+      "error": null,
+      "timings": {
+        "worker_id": "c731812f-5116-497c-b277-1b7e7935e835",
+        "trip_id": "7a86d4f3-cc2e-5370-8afa-94fa7e947c7e",
+        "generation": 1,
+        "detected_at": "2026-09-21T09:24:14.753479+00:00",
+        "stages": {
+          "existing_gold": 0.206,
+          "gps_read_and_wait": 22.714,
+          "model_and_transit": 1.311,
+          "gold_write_and_verify": 11.879,
+          "cosmos_publish": 0.055
+        },
+        "gps_count": 31,
+        "publish_status": "published",
+        "state": "ready",
+        "worker_seconds": 36.482,
+        "completed_at": "2026-09-21T09:24:51.235091+00:00"
+      }
+    },
+    {
+      "trip_id": "9d3da394-099d-5f83-8eda-9849dc3cfc98",
+      "status": "ready",
+      "stop_to_cosmos_seconds": 32.704,
+      "segments": [
+        {
+          "segment_id": "9d3da394-099d-5f83-8eda-9849dc3cfc98:segment:1",
+          "mode": "walk",
+          "start_time": "2026-09-21T09:24:53.716753+00:00",
+          "end_time": "2026-09-21T09:25:54.292868+00:00",
+          "distance_m": 83.39631017528596,
+          "confidence": 0.9626908853701217,
+          "model_prediction": "walk",
+          "confirmed_mode": null,
+          "corrected": false,
+          "correction_status": "none",
+          "confirmation_time": null,
+          "last_request_id": null,
+          "started_at": "2026-09-21T09:24:53.716753+00:00",
+          "ended_at": "2026-09-21T09:25:54.292868+00:00",
+          "duration_min": 1.0096019166666668,
+          "start_name": null,
+          "end_name": null,
+          "route_name": null,
+          "carbon_kg": 0
+        }
+      ],
+      "error": null,
+      "timings": {
+        "worker_id": "c731812f-5116-497c-b277-1b7e7935e835",
+        "trip_id": "9d3da394-099d-5f83-8eda-9849dc3cfc98",
+        "generation": 1,
+        "detected_at": "2026-09-21T09:25:55.221613+00:00",
+        "stages": {
+          "existing_gold": 0.356,
+          "gps_read_and_wait": 24.551,
+          "model_and_transit": 0.565,
+          "gold_write_and_verify": 4.449,
+          "cosmos_publish": 0.054
+        },
+        "gps_count": 31,
+        "publish_status": "published",
+        "state": "ready",
+        "worker_seconds": 30.215,
+        "completed_at": "2026-09-21T09:26:25.436131+00:00"
+      }
+    }
+  ]
+}

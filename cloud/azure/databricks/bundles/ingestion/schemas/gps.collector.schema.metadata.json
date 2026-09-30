@@ -1,0 +1,7 @@
+{
+  "source_repository": "https://github.com/aletheia-ops/canopy-data-platform",
+  "source_path": "shared/schemas/gps.collector.schema.json",
+  "source_checkout_commit": "d295aeec0b545ee527f9fc5900f5f7091b802efb",
+  "schema_introducing_commit": "3acc91ec9ed40504f4b529219f7948c4057c09e9",
+  "sha256": "89131353ceb203c3dcf5f40a6fdd5c5df7a2a0ff85c7ce1e671a9799a8622261"
+}

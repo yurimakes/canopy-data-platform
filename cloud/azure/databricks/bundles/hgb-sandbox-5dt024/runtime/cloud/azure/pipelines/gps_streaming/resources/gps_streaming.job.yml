@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    gps_streaming:
+      name: canopy-gps-streaming-${bundle.target}
+      max_concurrent_runs: 1
+      performance_target: STANDARD
+      continuous:
+        pause_status: PAUSED
+      tasks:
+        - task_key: gps_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gps_streaming_pipeline.id}

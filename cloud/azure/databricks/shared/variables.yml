@@ -1,0 +1,4 @@
+variables:
+  catalog:
+    description: Unity Catalog catalog used by Canopy trial workloads.
+    default: dbw_canopy_trial

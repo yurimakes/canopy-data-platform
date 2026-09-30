@@ -1,0 +1,10 @@
+{
+  "version": "local-reward-extensions-v1",
+  "development_only": true,
+  "grams_per_token": 10,
+  "trip_cap": 30,
+  "mission_tokens": 10,
+  "rank_awards": {"1": 100, "2": 60, "3": 30},
+  "daily_commute_limit_enabled": false,
+  "endpoint_radius_m": 200
+}

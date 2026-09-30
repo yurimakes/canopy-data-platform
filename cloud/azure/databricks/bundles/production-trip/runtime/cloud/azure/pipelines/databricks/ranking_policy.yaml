@@ -1,0 +1,63 @@
+policy_version: "ranking-policy-v1"
+
+score_source:
+  metric: weekly_reward_points
+  source_dataset: reward_ledger_history
+  status_filter: [paid, adjusted]
+  note: "해당 주의 지급 확정(paid) 및 승인된 조정(adjusted) points를 합산한다. 계산 예정 points는 포함하지 않는다."
+
+aggregation_period:
+  scope: weekly
+  key: [campaign_id, week]
+  note: "캠페인·리워드·미션 통계와 동일하게 주 단위로 집계한다. 각 주 Snapshot에는 해당 주에 누적된 points만 반영하고 다음 주는 새 주차로 집계한다."
+
+snapshot_vs_live:
+  weekly_snapshot: "매주 확정 시점에 한 번 생성, 이후 변경 안 됨"
+  live_query: "현재 진행 중 조회값은 confirmed=false로 표시, weekly_snapshot과 혼동 금지"
+
+eligibility:
+  include_when:
+    - "campaign_membership.joined_at <= week_end_date"
+    - "campaign_membership.left_at is null OR left_at > week_end_date"
+  minimum_participants: null
+  note: "Global Baseline 생성 조건(참여자 6명)을 여기 자동으로 복사하지 않음. 랭킹은 최소 인원 제한 없이 있는 사람 전부 포함."
+  no_department:
+    status: "excluded_from_department_ranking"
+    still_in_personal_ranking: true
+    note: "department_id가 없는 사용자는 부서 랭킹에서만 빠지고, 개인 랭킹에는 그대로 포함."
+  insufficient_data:
+    status: "not_ranked"
+    never_default_rank: 0
+
+department_scoring:
+  method: average_per_member
+  denominator: department_member_count
+  minimum_participants: 5
+  options: ["sum_of_member_points", "average_per_member"]
+  note: "부서 평균 방식 확정. 부서원 5명 미만이면 표본이 작아 평균이 튈 수 있어 부서 랭킹에서 제외(개인 랭킹에는 그대로 포함)."
+
+tie_handling:
+  method: standard_competition_rank
+  options: ["standard_competition_rank", "dense_rank"]
+  note: "동점자는 표준 경쟁순위(1,2,2,4) 사용 확정."
+
+sort_order: descending
+
+exposure_fields:
+  personal_ranking:
+    allowed: ["display_name_or_nickname", "score", "rank"]
+    forbidden: ["reward_detail_breakdown", "gps", "home_work_address"]
+    source: "access_matrix.xlsx - 개인 랭킹: 허용(본인/타인/기업관리자 전부), 공개한 이름/닉네임과 점수만"
+  department_ranking:
+    allowed: ["department_id_or_label", "aggregate_score", "rank"]
+    forbidden: ["individual_member_breakdown"]
+    source: "access_matrix.xlsx - 부서 랭킹: 부서 집계만 표시"
+  reward_detail:
+    allowed_to: ["self", "server_internal"]
+    denied_to: ["other_users"]
+    aggregate_only_to: ["enterprise_admin"]
+    source: "access_matrix.xlsx - 개인 보상 내역: 본인만 허용, 기업 관리자는 집계만"
+
+reprocessing_and_adjustment:
+  rule: "재처리/승인된 조정은 다음 미확정 Snapshot 생성 시점에만 반영. 이미 확정되어 앱에 노출된 과거 Snapshot은 소급 수정하지 않음."
+  adjustment_source: "reward_ledger_history의 adjusts_reward_id로 연결된 조정 기록"

@@ -1,0 +1,70 @@
+bundle:
+  name: canopy-gps-streaming
+
+include:
+  - resources/*.yml
+
+sync:
+  paths:
+    - ..
+  exclude:
+    - ../**/__pycache__/**
+
+variables:
+  catalog:
+    description: Existing Unity Catalog catalog.
+    default: dbw_canopy_dev
+  bronze_schema:
+    description: Existing dedicated Bronze schema.
+    default: bronze
+  silver_schema:
+    description: Existing dedicated Silver schema.
+    default: silver
+  gold_schema:
+    description: Existing dedicated Gold schema.
+    default: gold
+  ml_schema:
+    description: Existing dedicated schema for Unity Catalog registered models.
+    default: ml
+  bronze_events_table:
+    default: gps_events
+  observations_table:
+    default: gps_observations
+  quarantine_table:
+    default: gps_quarantine
+  features_table:
+    default: gps_features
+  segments_table:
+    default: mode_segments
+  predictions_table:
+    default: mode_segment_predictions
+  event_hubs_namespace:
+    description: Azure Event Hubs namespace name, without the servicebus suffix.
+    default: evhns-canopy-dev
+  event_hubs_topic:
+    description: Event Hub entity name.
+    default: evh-canopy-gps-dev
+  event_hubs_consumer_group:
+    description: Dedicated consumer group for the Bronze stream.
+    default: canopy-databricks
+  event_hubs_sas_policy_name:
+    description: Listen-only Event Hubs shared access policy name.
+    default: canopy-databricks-listen
+  event_hubs_secret_scope:
+    description: Existing Databricks secret scope.
+    default: canopy-dev
+  event_hubs_secret_key:
+    description: Key containing only the listen-only Event Hubs SAS policy key.
+    default: canopy-databricks-listen
+  model_uri:
+    description: Existing Unity Catalog MLflow model alias URI.
+    default: models:/dbw_canopy_dev.ml.canopy_speedtransformer@champion
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405605578654524.4.azuredatabricks.net
+      profile: CANOPY_DEV
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

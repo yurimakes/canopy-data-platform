@@ -1,0 +1,68 @@
+bundle:
+  name: canopy-integrated-mode-segmentation
+
+include:
+  - resources/*.yml
+
+artifacts:
+  default:
+    type: whl
+    path: .
+    build: uv build --wheel --out-dir dist
+
+sync:
+  include:
+    - integrated_mode_segmentation/**
+    - requirements.lakeflow.txt
+    - dist/*.whl
+  exclude:
+    - .venv/**
+    - tests/**
+    - '**/__pycache__/**'
+
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  silver_schema:
+    default: silver
+  baseline_input_observations_table:
+    default: gps_observations
+  baseline_input_trip_ended_table:
+    default: trip_ended_events
+  baseline_output_segments_table:
+    default: mode_segments
+  transition_model_uri:
+    default: models:/dbw_canopy_trial.ml.canopy_transition_lgbm_pointwise/1
+  transition_model_artifact_path:
+    default: /Volumes/dbw_canopy_trial/ml/runtime_artifacts/canopy_transition_lgbm_pointwise_v1.skops
+  state_timeout:
+    description: Processing-time TTL for inference and segmentation state.
+    default: 2h
+  state_store_partitions:
+    description: State-store partitions retained from the verified inference latency configuration.
+    default: 4
+  max_repair_gap_seconds:
+    description: Maximum adjacent event-time gap for smoothing repairs.
+    default: 3
+  timezone:
+    default: UTC
+  baseline_continuous_pause_status:
+    description: Pause status for the production-shaped baseline continuous job wrapper.
+    default: PAUSED
+  baseline_trigger_interval:
+    description: Lakeflow trigger interval for the production-shaped integrated baseline pipeline.
+    default: 1 second
+
+targets:
+  trial:
+    default: true
+    mode: development
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production
+        component: integrated-mode-segmentation
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
