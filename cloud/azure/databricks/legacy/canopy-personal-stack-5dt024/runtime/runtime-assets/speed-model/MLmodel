@@ -1,0 +1,53 @@
+flavors:
+  python_function:
+    artifacts:
+      checkpoint:
+        path: artifacts/best_macro_model.pth
+        uri: /home/aletheia/projects/speedtransformer-aihub/experiments/aihub_stitched200_checkpoint_selection/lr_3e-4_checkpoint_selection_seed316/best_macro_model.pth
+      label_encoder:
+        path: artifacts/label_encoder.joblib
+        uri: /home/aletheia/projects/speedtransformer-aihub/experiments/aihub_stitched200_checkpoint_selection/lr_3e-4_checkpoint_selection_seed316/label_encoder.joblib
+      scaler:
+        path: artifacts/scaler.joblib
+        uri: /home/aletheia/projects/speedtransformer-aihub/experiments/aihub_stitched200_checkpoint_selection/lr_3e-4_checkpoint_selection_seed316/scaler.joblib
+    cloudpickle_version: 3.1.2
+    code: code
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pyfunc.loaders.code_model
+    model_code_path: /home/aletheia/projects/speedtransformer-aihub/models/transformer/mlflow_pyfunc.py
+    python_version: 3.12.3
+    streamable: false
+is_signature_from_type_hint: false
+metadata:
+  artifact_role: playground_snapshot
+  checkpoint_sha256: f72e918051c20ad3b4b3e6eb0bae3ba235b0155e3a33079ffb334a8d97840d06
+  classes:
+  - bike
+  - bus
+  - car
+  - train
+  - walk
+  input_speed_unit: km/h
+  model_id: speedtransformer-aihub-speed-v1
+  sequence_length: 200
+mlflow_version: 3.16.0
+model_id: null
+model_size_bytes: 2954304
+model_uuid: da2f12f474584fed8a733f57f46c8dce
+prompts: null
+saved_input_example_info:
+  artifact_path: input_example.json
+  pandas_orient: split
+  serving_input_path: serving_input_example.json
+  type: dataframe
+signature:
+  inputs: '[{"type": "array", "items": {"type": "double"}, "name": "speed_sequence",
+    "required": true}]'
+  outputs: '[{"type": "string", "name": "predicted_class", "required": true}, {"type":
+    "double", "name": "confidence", "required": true}, {"type": "array", "items":
+    {"type": "double"}, "name": "probabilities", "required": true}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-09-14 08:59:32.466093'

@@ -1,0 +1,248 @@
+{
+  "checked_at": "2026-09-21T10:15:30.429472+00:00",
+  "runtime_original_files_verified": 261,
+  "history": {
+    "run_id": 294146716532335,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "SUCCESS",
+      "state_message": "",
+      "user_cancelled_or_timedout": false
+    },
+    "output": "{\"verified_history_rows\": 8, \"source\": \"dbw_canopy_trial.gold_5dt024.final_trips\", \"target\": \"dbw_canopy_trial.personal_app_gold_5dt024.final_trips\"}\n"
+  },
+  "api_cutover": {
+    "settings": {
+      "EVENTHUB_NAME": "evh-personal-5dt024",
+      "TRIP_EVENTHUB_CONSUMER_GROUP": "canopy-trip-finalization",
+      "TRIP_DATABRICKS_JOB_ID": "421770332247848",
+      "TRIP_DATABRICKS_DISPATCH_MODE": "resident"
+    },
+    "worker_id": "a7a32ce2-322b-4c21-a1d9-a69270b2b3b9",
+    "applied": true
+  },
+  "api_patch": {
+    "release": "8aae8ff058a0d39908ea48108c8c608a1ff2b5a7791807eb484373ddb6b9be4a",
+    "changed_files": [
+      "release-id.txt",
+      "services/trip_lifecycle.py"
+    ],
+    "verified": true
+  },
+  "http": {
+    "scope": "synthetic GPS through the unchanged main mobile API; original personal ML/Trip stack",
+    "trips": [
+      {
+        "trip_id": "7535bfbb-a88a-5c7c-bb54-75e8e83d6e1d",
+        "baseline_source": "KTDB \ubaa8\ub378 \u00b7 \uc778\uadfc \ud589\uc815\ub3d9 \uc911\uc2ec\uc810 / \ucd9c\ubc1c\u00b7\ub3c4\ucc29 \uc9c1\uc120\uac70\ub9ac \uae30\uc900",
+        "expected_kg": 0.002033,
+        "stop_request_seconds": 0.765,
+        "status": "ready",
+        "stop_to_result_seconds": 27.203,
+        "model_version": "local-speedtransformer-playground-v1-transit-v3-quality-v1",
+        "failed_step": null,
+        "reward_status": "no_reduction",
+        "reward_points": 0,
+        "worker_report": {
+          "worker_id": "a7a32ce2-322b-4c21-a1d9-a69270b2b3b9",
+          "trip_id": "7535bfbb-a88a-5c7c-bb54-75e8e83d6e1d",
+          "generation": 1,
+          "detected_at": "2026-09-21T10:12:24.858174+00:00",
+          "stages": {
+            "existing_gold": 0.565,
+            "gps_read_and_wait": 19.831,
+            "model_and_transit": 0.54,
+            "gold_write_and_verify": 4.984,
+            "cosmos_publish": 0.056
+          },
+          "gps_count": 31,
+          "publish_status": "published",
+          "state": "ready",
+          "worker_seconds": 26.285,
+          "completed_at": "2026-09-21T10:12:51.142710+00:00"
+        }
+      },
+      {
+        "trip_id": "a0ca950e-56c0-5d58-b760-398ee9c33f09",
+        "baseline_source": "KTDB \ubaa8\ub378 \u00b7 \uc778\uadfc \ud589\uc815\ub3d9 \uc911\uc2ec\uc810 / \ucd9c\ubc1c\u00b7\ub3c4\ucc29 \uc9c1\uc120\uac70\ub9ac \uae30\uc900",
+        "expected_kg": 0.002033,
+        "stop_request_seconds": 0.718,
+        "status": "ready",
+        "stop_to_result_seconds": 27.265,
+        "model_version": "local-speedtransformer-playground-v1-transit-v3-quality-v1",
+        "failed_step": null,
+        "reward_status": "no_reduction",
+        "reward_points": 0,
+        "worker_report": {
+          "worker_id": "a7a32ce2-322b-4c21-a1d9-a69270b2b3b9",
+          "trip_id": "a0ca950e-56c0-5d58-b760-398ee9c33f09",
+          "generation": 1,
+          "detected_at": "2026-09-21T10:13:58.295125+00:00",
+          "stages": {
+            "existing_gold": 0.504,
+            "gps_read_and_wait": 20.377,
+            "model_and_transit": 0.537,
+            "gold_write_and_verify": 4.479,
+            "cosmos_publish": 0.057
+          },
+          "gps_count": 31,
+          "publish_status": "published",
+          "state": "ready",
+          "worker_seconds": 26.215,
+          "completed_at": "2026-09-21T10:14:24.510129+00:00"
+        }
+      }
+    ],
+    "history_count": 2,
+    "community_status": "ok",
+    "status": "passed"
+  },
+  "previous_jobs": [
+    {
+      "id": 414334327223137,
+      "name": "[dev 5dt016] canopy-ingestion-pipeline-progress-trial",
+      "continuous": null,
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 823332938285325,
+      "name": "[dev 5dt016] canopy-ingestion-latency-observer-trial",
+      "continuous": null,
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 451662324384749,
+      "name": "[dev 5dt024] canopy-weekly-trial",
+      "continuous": null,
+      "schedule": {
+        "quartz_cron_expression": "0 10 0 ? * MON",
+        "timezone_id": "Asia/Seoul",
+        "pause_status": "PAUSED"
+      },
+      "active_run_ids": []
+    },
+    {
+      "id": 1058296223350877,
+      "name": "[dev 5dt024] canopy-final-trip-trial",
+      "continuous": {
+        "pause_status": "PAUSED"
+      },
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 947036667965559,
+      "name": "[dev 5dt016] canopy-generic-event-ingestion-continuous-ingestion_latency",
+      "continuous": {
+        "pause_status": "PAUSED"
+      },
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 550674498674297,
+      "name": "[dev 5dt016] canopy-full-path-observer-trial",
+      "continuous": null,
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 379136790093613,
+      "name": "[dev 5dt016] canopy-integrated-mode-segmentation-baseline-continuous-trial",
+      "continuous": {
+        "pause_status": "PAUSED"
+      },
+      "schedule": null,
+      "active_run_ids": []
+    },
+    {
+      "id": 313929125401537,
+      "name": "[dev 5dt016] canopy-generic-event-ingestion-continuous-trial",
+      "continuous": {
+        "pause_status": "PAUSED"
+      },
+      "schedule": null,
+      "active_run_ids": []
+    }
+  ],
+  "active_stack": [
+    {
+      "id": 402768089239280,
+      "name": "[dev 5dt024] canopy-personal-weekly-trial",
+      "continuous": null,
+      "schedule": {
+        "quartz_cron_expression": "0 10 0 ? * MON",
+        "timezone_id": "Asia/Seoul",
+        "pause_status": "UNPAUSED"
+      },
+      "active_run_ids": []
+    },
+    {
+      "id": 421770332247848,
+      "name": "[dev 5dt024] canopy-personal-trip-trial",
+      "continuous": {
+        "pause_status": "UNPAUSED"
+      },
+      "schedule": null,
+      "active_run_ids": [
+        94664418151818
+      ]
+    }
+  ],
+  "pipelines": [
+    {
+      "pipeline_id": "2089be7f-2647-4a31-879c-14784dc56078",
+      "name": "[dev 5dt016] canopy-generic-event-ingestion-trial",
+      "state": "IDLE"
+    },
+    {
+      "pipeline_id": "6d34c164-af15-407d-afe7-d5c1f8646a5c",
+      "name": "[dev 5dt016] canopy-integrated-mode-segmentation-baseline-trial",
+      "state": "IDLE"
+    },
+    {
+      "pipeline_id": "75bbaacb-f4a1-4a37-9496-db58c87a4bf7",
+      "name": "[dev 5dt024] canopy-weekly-etl-trial",
+      "state": "IDLE"
+    },
+    {
+      "pipeline_id": "b862968d-b674-4f78-8137-a2ac2e8fcee9",
+      "name": "[dev 5dt016] canopy-generic-event-ingestion-ingestion_latency",
+      "state": "IDLE"
+    },
+    {
+      "pipeline_id": "c54de8c4-1240-4835-97b3-e5db2a835e67",
+      "name": "[dev 5dt024] canopy-personal-gps-trial",
+      "state": "RUNNING"
+    },
+    {
+      "pipeline_id": "c889133e-2e6a-4077-80eb-ee3615670e4b",
+      "name": "[dev 5dt024] canopy-final-trip-etl-trial",
+      "state": "IDLE"
+    }
+  ],
+  "weekly": {
+    "run_id": 679493455871420,
+    "state": {
+      "life_cycle_state": "TERMINATED",
+      "result_state": "SUCCESS",
+      "state_message": "",
+      "user_cancelled_or_timedout": false
+    },
+    "cosmos_publication": "published"
+  },
+  "worker": {
+    "worker_id": "a7a32ce2-322b-4c21-a1d9-a69270b2b3b9",
+    "state": "ready",
+    "updated_at": "2026-09-21T10:15:26.587843+00:00",
+    "trip_count": 4
+  },
+  "api_settings": {
+    "EVENTHUB_NAME": "evh-personal-5dt024",
+    "COSMOS_TRIPS_DATABASE": "canopy-db",
+    "TRIP_DATABRICKS_JOB_ID": "421770332247848",
+    "TRIP_DATABRICKS_DISPATCH_MODE": "resident"
+  }
+}

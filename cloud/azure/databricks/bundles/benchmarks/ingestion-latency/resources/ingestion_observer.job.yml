@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    ingestion_latency_observer:
+      name: canopy-ingestion-latency-observer-${bundle.target}
+      max_concurrent_runs: 1
+      parameters:
+        - name: trip_id
+          default: ""
+        - name: timeout_seconds
+          default: "600"
+      tasks:
+        - task_key: observe_ingestion
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/observe_ingestion_trip.py
+            parameters:
+              - --catalog=${var.catalog}
+              - --schema=${var.schema}
+              - --bronze-table=${var.bronze_table}
+              - --gps-table=${var.gps_table}
+              - --trip-ended-table=${var.trip_ended_table}
+              - --trip-id={{job.parameters.trip_id}}
+              - --timeout-seconds={{job.parameters.timeout_seconds}}
+              - --poll-seconds=0.5
+          environment_key: benchmark_env
+      environments:
+        - environment_key: benchmark_env
+          spec:
+            environment_version: "4"

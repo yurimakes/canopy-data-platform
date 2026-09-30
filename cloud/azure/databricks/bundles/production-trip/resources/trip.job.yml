@@ -1,0 +1,52 @@
+resources:
+  jobs:
+    production_trip:
+      name: canopy-production-trip-${bundle.target}
+
+      tags:
+        component: production-trip
+        environment: ${bundle.target}
+
+      max_concurrent_runs: 1
+
+      queue:
+        enabled: true
+
+      continuous:
+        pause_status: ${var.production_trip_pause_status}
+
+      performance_target: PERFORMANCE_OPTIMIZED
+
+      environments:
+        - environment_key: canopy_env
+          spec:
+            environment_version: "4"
+            dependencies:
+              - azure-cosmos==4.17.1
+              - azure-identity==1.25.3
+              - pandas==3.0.6
+              - pyarrow==25.0.1
+              - scikit-learn==1.6.1
+              - joblib==1.6.0
+              - catboost==1.2.10
+              - pyproj==3.7.2
+              - PyYAML==6.0.3
+              - torch==2.14.0
+
+      tasks:
+        - task_key: trip
+          environment_key: canopy_env
+          spark_python_task:
+            source: WORKSPACE
+            python_file: ${workspace.file_path}/service/resident_worker.py
+            parameters:
+              - --config
+              - >-
+                {"cosmos_endpoint":"${var.cosmos_endpoint}",
+                "database":"${var.cosmos_database}",
+                "trips_container":"${var.cosmos_container}",
+                "cosmos_secret_scope":"${var.cosmos_secret_scope}",
+                "cosmos_key":"${var.cosmos_key}",
+                "gps_table":"${var.catalog}.${var.silver_schema}.${var.gps_observations_table}",
+                "gold_table":"${var.catalog}.${var.gold_schema}.${var.final_trips_table}"}
+          timeout_seconds: 0

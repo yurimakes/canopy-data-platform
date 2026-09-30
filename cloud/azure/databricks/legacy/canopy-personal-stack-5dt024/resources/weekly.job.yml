@@ -1,0 +1,48 @@
+resources:
+  jobs:
+    personal_weekly:
+      max_concurrent_runs: 1
+      queue:
+        enabled: true
+      environments:
+      - environment_key: canopy_env
+        spec:
+          dependencies:
+          - azure-cosmos==4.17.1
+          - azure-identity==1.25.3
+          - azure-storage-blob==12.30.2
+          - pandas==3.0.6
+          - pyarrow==25.0.1
+          - scikit-learn==1.6.1
+          - joblib==1.6.0
+          - catboost==1.2.10
+          - pyproj==3.7.2
+          - PyYAML==6.0.3
+          - torch==2.14.0
+          environment_version: '4'
+      name: canopy-personal-weekly-${bundle.target}
+      performance_target: PERFORMANCE_OPTIMIZED
+      schedule:
+        quartz_cron_expression: 0 10 0 ? * MON
+        timezone_id: Asia/Seoul
+        pause_status: ${var.weekly_pause_status}
+      tasks:
+      - task_key: weekly
+        environment_key: canopy_env
+        spark_python_task:
+          source: WORKSPACE
+          python_file: ${workspace.file_path}/runtime/cloud/azure/pipelines/weekly_analysis/weekly_managed_job.py
+          parameters:
+          - --cosmos-endpoint
+          - https://cosmos-canopy-dev.documents.azure.com
+          - --database
+          - ${var.cosmos_database}
+          - --secret-scope
+          - ${var.secret_scope}
+          - --cosmos-secret-key
+          - cosmos-key
+          - --gold-table
+          - ${var.catalog}.${var.gold_schema}.final_trips
+          - --output-schema
+          - ${var.catalog}.${var.weekly_schema}
+        timeout_seconds: 7200

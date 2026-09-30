@@ -1,0 +1,121 @@
+bundle:
+  name: canopy-generic-event-ingestion
+
+include:
+  - resources/*.yml
+  - ../../shared/*.yml
+
+
+sync:
+  paths:
+    - .
+
+variables:
+  bronze_schema:
+    default: bronze
+  silver_schema:
+    default: silver
+  bronze_events_table:
+    default: events
+  gps_observations_table:
+    default: gps_observations
+  gps_quarantine_table:
+    default: gps_quarantine
+  trip_ended_events_table:
+    default: trip_ended_events
+  deduplication_watermark:
+    description: Development default for bounded event_id deduplication state; tune per environment.
+    default: 1 day
+  apply_deduplication:
+    description: Apply bounded event_id deduplication to GPS and trip_ended streams.
+    default: "true"
+  event_hubs_namespace:
+    default: evhns-canopy-dev
+  event_hubs_topic:
+    default: evh-canopy-gps-dev
+  event_hubs_consumer_group:
+    description: Keep Trial isolated from the legacy consumer group while both pipelines run.
+    default: canopy-databricks-trial
+  event_hubs_sas_policy_name:
+    default: canopy-databricks-listen
+  event_hubs_secret_scope:
+    default: canopy-trial
+  event_hubs_secret_key:
+    default: canopy-databricks-listen
+  ingestion_continuous_pause_status:
+    description: Pause status for the generic ingestion continuous job wrapper.
+    default: PAUSED
+  ingestion_trigger_interval:
+    description: Trigger interval used only by the ingestion latency sandbox target.
+    default: 1 second
+  fuse_gps_parse_validation:
+    description: Inline GPS parsing/validation into Silver outputs instead of materializing gps_events_parsed.
+    default: "false"
+  direct_eventhub_fanout:
+    description: Read Event Hubs directly for latency-critical Silver outputs instead of routing through persisted Bronze.
+    default: "false"
+
+targets:
+  trial:
+    default: true
+    # Shared integration target: all collaborators intentionally use one deployment
+    # identity and therefore manage the same bound workspace resources.
+    mode: production
+    variables:
+      ingestion_continuous_pause_status: PAUSED
+      ingestion_trigger_interval: 1 second
+      fuse_gps_parse_validation: "true"
+      apply_deduplication: "false"
+      direct_eventhub_fanout: "true"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: production
+        component: ingestion
+    resources:
+      pipelines:
+        generic_event_ingestion_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.ingestion_trigger_interval}
+            canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
+            canopy.apply_deduplication: ${var.apply_deduplication}
+            canopy.direct_eventhub_fanout: ${var.direct_eventhub_fanout}
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/bundles/.bundle/canopy/${bundle.name}/${bundle.target}
+
+  ingestion_latency:
+    # Personal/experimental target retained for isolated latency experiments.
+    mode: development
+    variables:
+      bronze_schema: sandbox
+      silver_schema: sandbox
+      bronze_events_table: bronze_events
+      gps_observations_table: silver_gps_observations
+      gps_quarantine_table: silver_gps_quarantine
+      trip_ended_events_table: silver_trip_ended_events
+      event_hubs_topic: evh-canopy-sandbox
+      event_hubs_consumer_group: canopy-ingestion-latency
+      ingestion_continuous_pause_status: PAUSED
+      ingestion_trigger_interval: 1 second
+      fuse_gps_parse_validation: "true"
+      apply_deduplication: "false"
+      direct_eventhub_fanout: "true"
+    presets:
+      tags:
+        environment: trial
+        lifecycle: experimental
+        component: ingestion-latency
+    resources:
+      pipelines:
+        generic_event_ingestion_pipeline:
+          configuration:
+            pipelines.trigger.interval: ${var.ingestion_trigger_interval}
+            canopy.fuse_gps_parse_validation: ${var.fuse_gps_parse_validation}
+            canopy.apply_deduplication: ${var.apply_deduplication}
+            canopy.direct_eventhub_fanout: ${var.direct_eventhub_fanout}
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      profile: CANOPY_TRIAL
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}

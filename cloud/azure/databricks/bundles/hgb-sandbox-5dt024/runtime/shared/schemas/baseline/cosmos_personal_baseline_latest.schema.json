@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "canopy.cosmos-personal-baseline-latest.v1",
+  "title": "Canopy Cosmos Personal Baseline Latest",
+  "description": "Operational serving projection of the latest Personal Baseline for low-latency API/App/Dashboard reads. Written from Personal Baseline Gold with deterministic ItemOverwrite semantics. It is not a canonical processing source for Reward, Ranking, or Behavior Change; those consumers must read ADLS Gold.",
+  "type": "object",
+  "required": [
+    "id", "document_type", "campaign_id", "user_id", "week", "status",
+    "value_gco2e_per_km", "cumulative_g_co2e", "cumulative_distance_km",
+    "method", "policy_version", "eligibility_policy_version", "observation_days",
+    "confirmed_trip_count", "observation_source", "eligibility_reason", "primary_baseline"
+  ],
+  "properties": {
+    "id": {"type": "string", "pattern": "^baseline:personal:"},
+    "document_type": {"const": "personal_baseline_latest"},
+    "campaign_id": {"type": "string", "minLength": 1},
+    "user_id": {"type": "string", "minLength": 1},
+    "week": {"type": "string", "pattern": "^[0-9]{4}-W[0-9]{2}$"},
+    "status": {"enum": ["collecting", "ready"]},
+    "value_gco2e_per_km": {"type": ["number", "null"], "minimum": 0},
+    "cumulative_g_co2e": {"type": ["number", "null"], "minimum": 0},
+    "cumulative_distance_km": {"type": ["number", "null"], "minimum": 0},
+    "method": {"enum": ["personal_cumulative", "population_fallback"]},
+    "policy_version": {"type": "string", "minLength": 1},
+    "eligibility_policy_version": {"type": "string", "minLength": 1},
+    "observation_days": {"type": ["integer", "null"], "minimum": 0},
+    "confirmed_trip_count": {"type": ["integer", "null"], "minimum": 0},
+    "observation_source": {"type": ["string", "null"]},
+    "eligibility_reason": {"type": ["string", "null"]},
+    "primary_baseline": {"enum": ["population", null]}
+  },
+  "additionalProperties": true
+}

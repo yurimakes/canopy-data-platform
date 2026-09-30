@@ -1,0 +1,56 @@
+bundle:
+  name: canopy-personal-stack-5dt024
+include:
+- resources/*.yml
+variables:
+  catalog:
+    default: dbw_canopy_trial
+  bronze_schema:
+    default: personal_bronze_5dt024
+  silver_schema:
+    default: personal_silver_5dt024
+  gold_schema:
+    default: personal_app_gold_5dt024
+  weekly_schema:
+    default: personal_app_weekly_5dt024
+  cosmos_database:
+    default: canopy-db
+  secret_scope:
+    default: canopy-personal-5dt024
+  eventhub_namespace:
+    default: evhns-canopy-dev
+  eventhub_topic:
+    default: evh-canopy-gps-dev
+  eventhub_secret_scope:
+    default: canopy-trial
+  eventhub_secret_key:
+    default: canopy-databricks-listen
+  eventhub_sas_policy:
+    default: canopy-databricks-listen
+  storage_account:
+    default: stcanopydev5dt
+  report_container:
+    default: personal-5dt024
+  trip_pause_status:
+    default: PAUSED
+  weekly_pause_status:
+    default: PAUSED
+targets:
+  trial:
+    default: true
+    mode: production
+    presets:
+      name_prefix: '[dev 5dt024] '
+      tags:
+        owner: 5dt024
+        purpose: personal-stack-app
+    workspace:
+      host: https://adb-7405612422597045.5.azuredatabricks.net
+      root_path: /Workspace/Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.target}
+    run_as:
+      user_name: ${workspace.current_user.userName}
+sync:
+  exclude:
+  - '**/__pycache__/**'
+  - '**/.pytest_cache/**'
+

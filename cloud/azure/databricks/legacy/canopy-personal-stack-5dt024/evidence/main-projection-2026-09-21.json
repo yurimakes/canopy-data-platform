@@ -1,0 +1,32 @@
+{
+  "behavior_change": 2,
+  "next_week_missions": 2,
+  "campaign_kpi": 1,
+  "personal_baseline": 0,
+  "global_baseline": 0,
+  "reward_ledger": 0,
+  "trip_statuses": [
+    {
+      "status": "failed"
+    },
+    {
+      "status": "ready"
+    },
+    {
+      "status": "ready"
+    }
+  ],
+  "weekly_run": {
+    "life_cycle_state": "TERMINATED",
+    "result_state": "SUCCESS",
+    "state_message": "",
+    "user_cancelled_or_timedout": false
+  },
+  "ingestion_state": "IDLE",
+  "worker_state": {
+    "life_cycle_state": "TERMINATED",
+    "result_state": "CANCELED",
+    "state_message": "Run cancelled by user",
+    "user_cancelled_or_timedout": true
+  }
+}
