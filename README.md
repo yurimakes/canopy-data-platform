@@ -10,6 +10,29 @@ Canopy 프로젝트 통합 모노레포입니다. iPhone 애플리케이션, 백
 
 현재 플랫폼은 iPhone GPS 수집부터 Azure Functions·Event Hubs·ADLS, Databricks 기반 GPS 처리와 주간 분석, Baseline·Behavior Change·Mission·Reward·Ranking·Campaign KPI, API/iOS 소비까지의 데이터 흐름을 통합합니다.
 
+## 시스템 아키텍처
+
+![CANOPY 전체 시스템 아키텍처](docs/architecture/canopy-system-architecture.svg)
+
+[원본 크기로 보기](docs/architecture/canopy-system-architecture.svg)
+
+프로젝트 최종 설계의 실시간 Trip 처리와 주간 행동 분석 흐름입니다. 공개 사본에서 제외된 외부 데이터·모델과 실행·검증 범위는 [데이터 출처](DATA_SOURCES.md), [모델 고지](MODEL_NOTICES.md), [공개 사본 안내](docs/PUBLIC_EDITION.md)에 정리되어 있습니다.
+
+## 담당 역할 · yurimakes
+
+팀장 및 분석팀 구성원으로 참여하여 GPS 수집 경로와 Databricks 주간 분석의 연결을 맡았습니다. 팀원들이 작성한 정책·계산 모듈을 재사용하면서 데이터 계약, 단계별 입출력, 실행 순서와 예외 처리를 연결했습니다.
+
+| 영역 | 직접 담당한 내용 | 원본 PR 근거 |
+| --- | --- | --- |
+| GPS 수집·Raw 보존 | GPS 이벤트 스키마와 Azure Functions → Event Hubs 수집 구현, Bronze 원본 JSON 보존 정책 반영, Capture → ADLS Raw 검증 기록, 공용 Function App 배포 소스 정리 | [#7](https://github.com/aletheia-ops/canopy-data-platform/pull/7), [#9](https://github.com/aletheia-ops/canopy-data-platform/pull/9), [#10](https://github.com/aletheia-ops/canopy-data-platform/pull/10) |
+| 주간 분석·기준 산정 | Personal/Global Baseline 모듈화, 회원·캠페인 정보 기반 Eligibility 연결, Baseline Gold 구성 및 중복·누락 스냅샷 검사 | [#38](https://github.com/aletheia-ops/canopy-data-platform/pull/38), [#47](https://github.com/aletheia-ops/canopy-data-platform/pull/47), [#62](https://github.com/aletheia-ops/canopy-data-platform/pull/62) |
+| 미션·보상·성과 집계 | Mission Response/Profile, 보상 계산과 멱등 Reward Ledger 이력, 개인·부서 랭킹, Behavior Change·Campaign KPI를 주간 Job에 연결하고 통합 main 반영 | [#43](https://github.com/aletheia-ops/canopy-data-platform/pull/43), [#45](https://github.com/aletheia-ops/canopy-data-platform/pull/45), [#51](https://github.com/aletheia-ops/canopy-data-platform/pull/51), [#58–#63](https://github.com/aletheia-ops/canopy-data-platform/pull/63) |
+| ML 실험·연결 | 노션의 모델 1 고도화 공동 담당 및 고도화 방안 정리, SpeedTransformer 후보의 strict artifact 검증·MLflow pyfunc 연결 | [#27](https://github.com/aletheia-ops/canopy-data-platform/pull/27) |
+| 관리자·기업 데모 | Power BI 스냅샷 기반 KPI 화면, 데이터 탐색·CSV 내보내기, 관리자/기업 역할 전환, 미션 템플릿 선택 UI 구현 | [#64](https://github.com/aletheia-ops/canopy-data-platform/pull/64) |
+| 문서·발표 | 시스템 아키텍처와 데이터 Lifecycle 공동 정리, 실제 파이프라인 구조에 맞춘 README 보완 | [#65](https://github.com/aletheia-ops/canopy-data-platform/pull/65) |
+
+노션 업무 카드의 `choiyuri` 담당 기록과 원본 PR·커밋을 대조한 내용입니다. 원본 PR은 비공개 팀 저장소의 접근 권한이 필요하며, 이 공개 사본에는 정리된 Git 개발 이력이 보존되어 있습니다. #59–#62는 단계별 검토 PR이며 최종 #63에서 main으로 통합됐습니다. 관리자 미션 선택은 브라우저 localStorage를 사용하는 데모입니다.
+
 ## 저장소 구조
 
 ```text
