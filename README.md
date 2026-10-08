@@ -20,18 +20,32 @@ Canopy 프로젝트 통합 모노레포입니다. iPhone 애플리케이션, 백
 
 ## 담당 역할 · yurimakes
 
-팀장 및 분석팀 구성원으로 참여하여 GPS 수집 경로와 Databricks 주간 분석의 연결을 맡았습니다. 팀원들이 작성한 정책·계산 모듈을 재사용하면서 데이터 계약, 단계별 입출력, 실행 순서와 예외 처리를 연결했습니다.
+분석팀의 팀원으로 참여하여 GPS 수집, 이동수단·전환점 모델 실험, Databricks 주간 분석과 관리자·기업 데모를 개발했습니다. 주간 분석에서는 팀원들이 작성한 정책·계산 모듈을 활용해 데이터 계약, 단계별 입출력, 실행 순서와 예외 처리를 연결했습니다.
 
-| 영역 | 직접 담당한 내용 | 원본 PR 근거 |
+| 영역 | 직접 담당한 내용 | 관련 원본 PR |
 | --- | --- | --- |
-| GPS 수집·Raw 보존 | GPS 이벤트 스키마와 Azure Functions → Event Hubs 수집 구현, Bronze 원본 JSON 보존 정책 반영, Capture → ADLS Raw 검증 기록, 공용 Function App 배포 소스 정리 | [#7](https://github.com/aletheia-ops/canopy-data-platform/pull/7), [#9](https://github.com/aletheia-ops/canopy-data-platform/pull/9), [#10](https://github.com/aletheia-ops/canopy-data-platform/pull/10) |
+| GPS 수집·Raw 보존 | GPS 이벤트 스키마와 Azure Functions → Event Hubs 수집 구현, Bronze 원본 JSON 보존 정책 반영, Capture → ADLS Raw 검증, 공용 Function App 배포 소스 정리 | [#7](https://github.com/aletheia-ops/canopy-data-platform/pull/7), [#9](https://github.com/aletheia-ops/canopy-data-platform/pull/9), [#10](https://github.com/aletheia-ops/canopy-data-platform/pull/10) |
 | 주간 분석·기준 산정 | Personal/Global Baseline 모듈화, 회원·캠페인 정보 기반 Eligibility 연결, Baseline Gold 구성 및 중복·누락 스냅샷 검사 | [#38](https://github.com/aletheia-ops/canopy-data-platform/pull/38), [#47](https://github.com/aletheia-ops/canopy-data-platform/pull/47), [#62](https://github.com/aletheia-ops/canopy-data-platform/pull/62) |
 | 미션·보상·성과 집계 | Mission Response/Profile, 보상 계산과 멱등 Reward Ledger 이력, 개인·부서 랭킹, Behavior Change·Campaign KPI를 주간 Job에 연결하고 통합 main 반영 | [#43](https://github.com/aletheia-ops/canopy-data-platform/pull/43), [#45](https://github.com/aletheia-ops/canopy-data-platform/pull/45), [#51](https://github.com/aletheia-ops/canopy-data-platform/pull/51), [#58–#63](https://github.com/aletheia-ops/canopy-data-platform/pull/63) |
-| ML 실험·연결 | 노션의 모델 1 고도화 공동 담당 및 고도화 방안 정리, SpeedTransformer 후보의 strict artifact 검증·MLflow pyfunc 연결 | [#27](https://github.com/aletheia-ops/canopy-data-platform/pull/27) |
+| ML 모델 개발·검증 | GPS 전환점 탐지용 XGBoost 분류기 개발(단기 움직임 feature 350개), PELT 후보 필터링·Hard Negative Mining 실험, SpeedTransformer 이동수단 분류·Temporal Smoothing 평가, strict artifact 검증과 MLflow pyfunc 연동 | 후보 연동 [#27](https://github.com/aletheia-ops/canopy-data-platform/pull/27) |
 | 관리자·기업 데모 | Power BI 스냅샷 기반 KPI 화면, 데이터 탐색·CSV 내보내기, 관리자/기업 역할 전환, 미션 템플릿 선택 UI 구현 | [#64](https://github.com/aletheia-ops/canopy-data-platform/pull/64) |
-| 문서·발표 | 시스템 아키텍처와 데이터 Lifecycle 공동 정리, 실제 파이프라인 구조에 맞춘 README 보완 | [#65](https://github.com/aletheia-ops/canopy-data-platform/pull/65) |
 
-노션 업무 카드의 `choiyuri` 담당 기록과 원본 PR·커밋을 대조한 내용입니다. 원본 PR은 비공개 팀 저장소의 접근 권한이 필요하며, 이 공개 사본에는 정리된 Git 개발 이력이 보존되어 있습니다. #59–#62는 단계별 검토 PR이며 최종 #63에서 main으로 통합됐습니다. 관리자 미션 선택은 브라우저 localStorage를 사용하는 데모입니다.
+원본 PR은 비공개 팀 저장소의 접근 권한이 필요합니다. #59–#62의 변경은 최종 #63에서 main으로 통합됐습니다. 관리자 미션 선택은 브라우저 localStorage를 사용하는 데모입니다.
+
+### 모델 개발·성능 검증
+
+XGBoost는 이동수단이 바뀌는 시점을 찾는 이진 분류기로 개발하고, SpeedTransformer는 구간별 이동수단 분류 후보로 평가했습니다. 후보 단위 분류와 Trip 전체 전환점 탐지, 이동수단 분류의 지표를 구분해 검증했습니다.
+
+| 실험 | 평가 조건 | 확인한 변화 | 함께 확인한 한계 |
+| --- | --- | --- | --- |
+| PELT → XGBoost 후보 필터링 | Development Tune 180 Trips, 전환점 매칭 ±10초, threshold 0.42 | Trip당 오탐 **26.128 → 5.539**(약 78.8% 감소), Event F1 **0.0357 → 0.1176** | Recall **0.4734 → 0.3936**으로 감소 |
+| XGBoost Stage 2 · Hard Negative Mining | Train UID에서만 오탐 769건 추가 학습; Development Tune 180 Trips, 5초 scan·10초 NMS, Stage 1/2 threshold 0.55/0.50 | Trip당 오탐 **18.150 → 17.128**, 전환 없는 Trip의 오탐 **9.900 → 8.663**, Event F1 **0.0784 → 0.0810** | Recall **0.7500 → 0.7340**, 최종 Event Precision **0.0428**; 오탐 추가 개선 필요 |
+| SpeedTransformer · Temporal Smoothing | 탐색에 사용한 11 OD를 제외한 새 40 Mixed OD·27,907 windows, stride 2, smoothing width 11 | Accuracy **61.54% → 61.77%**(+0.23%p), Macro F1 **0.5968 → 0.5985** | 개선 폭이 작고 window가 겹치는 Development/Validation holdout 평가 |
+
+XGBoost Stage 1의 후보 단위 Binary F1은 **0.7697**, Stage 2는 **0.7666**이었습니다. Stage 2는 Trip 전체 오탐 감소를 기준으로 선택했으며, 후보 단위 F1이 상승한 것으로 해석하지 않았습니다. SpeedTransformer의 CAR/BUS 보정 후보는 Accuracy가 68.45%까지 올랐지만 Macro F1이 0.5781로 낮아져 제외했습니다.
+
+위 수치는 개발 단계의 실험 결과입니다. XGBoost Outer Test와 최종 서비스 E2E 평가는 수행하지 않았으며, SpeedTransformer 후보의 MLflow 등록·추론 확인과 실제 Lakeflow/Event Hubs 연동 검증을 구분했습니다.
+
 
 ## 저장소 구조
 
