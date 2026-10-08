@@ -1,5 +1,11 @@
 # Canopy Data Platform
 
+<!-- CANOPY_PUBLIC_EDITION_START -->
+> 팀의 허락을 받아 정리한 별도 공개 사본입니다. 원본은 비공개로 유지합니다.
+> [공개 사본의 실행·검증 범위](docs/PUBLIC_EDITION.md) · [이용 조건](LICENSE) · [고지](NOTICE.md) · [데이터 출처](DATA_SOURCES.md) · [모델 고지](MODEL_NOTICES.md)
+<!-- CANOPY_PUBLIC_EDITION_END -->
+
+
 Canopy 프로젝트 통합 모노레포입니다. iPhone 애플리케이션, 백엔드/API, 머신러닝 모델, Azure 인프라, 데이터 자산, 공통 계약을 관리합니다.
 
 현재 플랫폼은 iPhone GPS 수집부터 Azure Functions·Event Hubs·ADLS, Databricks 기반 GPS 처리와 주간 분석, Baseline·Behavior Change·Mission·Reward·Ranking·Campaign KPI, API/iOS 소비까지의 데이터 흐름을 통합합니다.
@@ -146,3 +152,26 @@ final_trip_gold_input
 이 저장소는 원래 `Hayden-Shin-Dev/canopy-data-platform`에서 포크되었습니다. 기존 구현 중 새 구조의 소유 위치가 명확하지 않은 항목은 부분적으로 옮겨 구조를 깨뜨리지 않도록 `legacy/original-data-platform/` 아래에 원형에 가깝게 보존합니다.
 
 `legacy/`의 코드를 활성 영역으로 옮길 때는 대상 위치가 명확하고, 같은 변경에서 import와 테스트까지 함께 정리할 수 있을 때만 진행합니다.
+
+<!-- CANOPY_PUBLIC_UI_START -->
+## UI preview
+
+현재 코드의 예시 데이터로 실행한 화면입니다. 모바일은 Expo web 미리보기, 관리자는 정적 데모입니다. 실제 iPhone·GPS·운영 클라우드 연동 검증을 의미하지 않습니다.
+
+| 홈 | 미션 | 예시 보상 | 이동 결과 |
+| --- | --- | --- | --- |
+| <img src="docs/screenshots/mobile-home.png" width="190" alt="모바일 홈"> | <img src="docs/screenshots/mobile-missions.png" width="190" alt="모바일 미션"> | <img src="docs/screenshots/mobile-rewards.png" width="190" alt="모바일 예시 보상"> | <img src="docs/screenshots/mobile-result.png" width="190" alt="모바일 이동 결과"> |
+
+<details>
+<summary>관리자 화면 2장 보기</summary>
+
+### 캠페인 현황
+
+![관리자 캠페인 현황](docs/screenshots/admin-dashboard.png)
+
+### 기업 캠페인 설정
+
+![기업 캠페인 설정](docs/screenshots/admin-company.png)
+
+</details>
+<!-- CANOPY_PUBLIC_UI_END -->
