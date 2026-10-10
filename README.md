@@ -5,6 +5,12 @@
 <!-- CANOPY_PUBLIC_EDITION_END -->
 
 
+## CANOPY 서비스 소개
+
+**CANOPY는 일상 이동 데이터를 바탕으로 친환경 교통 선택을 돕는 GPS 기반 탄소 저감 참여 서비스 프로젝트입니다.** iPhone에서 수집한 이동 기록을 한 번의 이동(Trip) 단위로 정리하고, 도보·자전거·자동차·버스·철도 등 이동수단을 분류해 탄소 배출량을 추정하는 흐름을 설계했습니다. 모델이 예측한 이동수단은 사용자가 확인·수정하는 것을 전제로 합니다.
+
+사용자의 실제 이동 이력과 CANOPY 참여자 집단의 이동 패턴을 바탕으로 **개인화된 주간 친환경 이동 미션**을 구성하고, 참여 결과를 **보상·랭킹**에 연결합니다. 기업·관리자에게는 캠페인 참여 현황과 이동 행동 변화의 관측 지표를 제공하는 것을 목표로 합니다. 행동 변화 지표는 CANOPY의 인과효과가 입증됐다는 의미가 아닙니다.
+
 Canopy 프로젝트 통합 모노레포입니다. iPhone 애플리케이션, 백엔드/API, 머신러닝 모델, Azure 인프라, 데이터 자산, 공통 계약을 관리합니다.
 
 현재 플랫폼은 iPhone GPS 수집부터 Azure Functions·Event Hubs·ADLS, Databricks 기반 GPS 처리와 주간 분석, Baseline·Behavior Change·Mission·Reward·Ranking·Campaign KPI, API/iOS 소비까지의 데이터 흐름을 통합합니다.
