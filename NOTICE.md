@@ -2,6 +2,14 @@
 
 This repository is an independently prepared, sanitized portfolio edition of the collaborative CANOPY project. The private team repository remains the source of truth. Public-safe Git history is retained where possible; sanitization changes commit hashes. Original GitHub pull requests, reviews and issues remain in the private source repository and are not copied here.
 
+## Third-party trademarks and architecture icons
+
+The [CANOPY system architecture diagram](docs/architecture/canopy-system-architecture.svg) describes the technology stack and data flows of a non-commercial CANOPY project. Product names, icons and logos shown in the diagram—including Microsoft Azure, Power BI, Databricks and MLflow—remain the trademarks or other protected material of their respective rights holders. Their inclusion does not imply sponsorship, endorsement, certification or affiliation.
+
+Microsoft Azure architecture icons are permitted for architecture diagrams, training materials and documentation subject to [Microsoft's published icon terms](https://learn.microsoft.com/en-us/azure/architecture/icons/). Other third-party names, icons and logos remain subject to their respective conditions, including the [Databricks brand guidelines](https://brand.databricks.com/databricks-brand-guidelines/welcome) and [LF Projects trademark policy](https://lfprojects.org/policies/trademark-policy/) (which covers MLflow). This attribution is not a license to reproduce any mark beyond the owner's permitted uses, nor does it confirm that each logo asset has been individually cleared.
+
+This notice is limited to third-party names and artwork in the architecture diagram and does not alter the separate rights of the CANOPY contributors or the terms in [LICENSE](LICENSE).
+
 ## Fonts
 
 The font software remains licensed under SIL Open Font License 1.1, independently of this repository's root rights notice. Copyright statements and Reserved Font Name declarations are preserved in the linked license texts.

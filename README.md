@@ -1,7 +1,7 @@
 # Canopy Data Platform
 
 <!-- CANOPY_PUBLIC_EDITION_START -->
-> [공개 사본의 실행·검증 범위](docs/PUBLIC_EDITION.md) · [이용 조건](LICENSE) · [고지](NOTICE.md) · [데이터 출처](DATA_SOURCES.md) · [모델 고지](MODEL_NOTICES.md)
+> [공개 사본의 실행·검증 범위](docs/PUBLIC_EDITION.md) · [이용 조건](LICENSE) · [상표·아이콘 및 기타 고지](NOTICE.md) · [데이터 출처](DATA_SOURCES.md) · [모델 고지](MODEL_NOTICES.md)
 <!-- CANOPY_PUBLIC_EDITION_END -->
 
 
